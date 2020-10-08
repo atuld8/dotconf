@@ -1,0 +1,63 @@
+# ==================================================
+# byobu setting on cygwin
+# ==================================================
+# only for cygwin
+#escape ^Qq
+#else
+escape ^Oo
+
+# Look and feel
+# https://www.kilobitspersecond.com/2014/02/10/understanding-gnu-screens-hardstatus-strings/
+#caption always "%{= bb}%{+b w}Screen: %n | %h %=%t %c"
+caption always "%{= bb}%?%F%{+bBu w}%:%{+b w}%?Screen: %n"
+hardstatus alwayslastline "%-Lw%{= BW}%50>%n%f* %t%{-}%+Lw%<"
+hardstatus alwayslastline
+#hardstatus string '%{= kG}[%{G}%H : %S%{g}][%= %{= kw}%?%-Lw%?%{r}(%{+bu gW}%n*%f %t%?(%u)%?%{-}%{r})%{w}%?%+Lw%?%?%= %{g}][%{B}%d/%m/%Y %{W}%c%{g}]'
+hardstatus string '%{= kG}Scr [%{G}%H : %S%{g}][%{= kw}%?%-Lw%?%{r}(%{+bu gW}%n*%f %t%?(%u)%?%{-}%{r})%{w}%?%+Lw%?%?%= %{g}][%{+ b}%l][%{B}%d/%m/%Y %{W}%c%{g}]'
+
+
+# Our warning of activity
+activity "Activity in %t(%n)"
+
+bind j focus down
+bind k focus up
+bind t focus top
+bind b focus bottom
+bind l focus right
+bind h focus left
+
+bind c screen 1
+bind ^c screen 1
+bind 0 select 10
+screen 1
+
+# Turn off that annoying start up message
+startup_message off
+
+# Turn the even more annoying whole-screen-flash-on-tab-complete "feature"
+vbell off
+
+# Enable 256 color term
+#### term xterm-256color
+
+# Cache 30000 lines for scroll back
+defscrollback 30000
+
+# Enables use of shift-PgUp and shift-PgDn
+termcapinfo xterm|xterms|xs|rxvt ti@:te@
+
+# Hide hardstatus: HOT-KEY f
+bind f eval "hardstatus ignore"
+# Show hardstatus: HOT-KEY F
+bind F eval "hardstatus alwayslastline"
+
+# Hide caption: HOT-KEY p
+##bind p eval "caption splitonly"
+# Show hardstatus: HOT-KEY P
+bind P eval "caption always"
+
+# removing the binding of x to lock the screen
+bind x
+
+# reload the config change without exit
+bind r source ~/.screenrc

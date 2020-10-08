@@ -1,0 +1,9 @@
+alias a.gr="alias   | grep ' gr\..*='"
+alias a.fmt="alias   | grep ' fmt\..*='"
+
+alias set.fmt.maxchars='export MAX_CHARS=`stty size | awk '"'"'{print $2;}'"'"'`'
+alias fmt.trim='cut -c -$MAX_CHARS'
+alias fmt.fold='fold -w $MAX_CHARS -s'
+alias fmt.unalias='sed -e'"'"'s/^\(alias\) \([a-zA-Z0-9\.\]*\)*\=.*/un\1 \2/g'"'"''
+alias fmt.clip='xclip -d $ENG_VM_NAME -selection clipboard'
+

@@ -1,0 +1,33 @@
+
+alias .oc.uninst.lr='function af.oc.uninst.lr() { or f in `rpm -qa | egrep "VRTSOpsCenterServer|VRTSOpsCenterGUI|VRTSvlic|VRTSperl" | sort`; do echo "uninstall $f"; rpm -qi $f;rpm -e $f --nodeps; if [ $? -ne 0 ]; then echo "*** failed to uninstall $f"; fi; done; cd /opt/SYMCOpsCenterServer/; ls -l; }; af.oc.uninst.lr'
+
+alias .oc.uninst.svr='/opt/VRTS/install/uninstallOpsCenterServer'
+alias .oc.uninst.agnt='/opt/VRTS/install/uninstallOpsCenterAgent'
+
+alias .oc.svc.status='/opt/SYMCOpsCenterServer/bin/opsadmin.sh monitor'
+alias .oc.svc.start='/opt/SYMCOpsCenterServer/bin/opsadmin.sh start'
+alias .oc.svc.stop='/opt/SYMCOpsCenterServer/bin/opsadmin.sh stop'
+
+alias .oc.vxl6='/opt/SYMCOpsCenterServer/bin/vxlogcfg -a -p 58330 -s DebugLevel=6 -o'
+alias .oc.vxl0='/opt/SYMCOpsCenterServer/bin/vxlogcfg -a -p 58330 -s DebugLevel=0 -o'
+alias .oc.vxlids='grep OIDNames /opt/SYMCOpsCenterServer/config/log.conf'
+alias .oc.vxlview='/opt/SYMCOpsCenterServer/bin/vxlogview -p 58330 -o'
+
+alias cd.oc.svr='af.cd /opt/SYMCOpsCenterServer/bin'
+alias cd.oc.gui='af.cd /opt/SYMCOpsCenterGUI/bin'
+alias cd.oc.at='af.cd /opt/SYMCOpsCenterServer/authbroker/bin'
+alias cd.oc.log='af.cd /opt/SYMCOpsCenterServer/logs'
+alias cd.oc.cfg='af.cd /opt/SYMCOpsCenterServer/config'
+
+alias .oc.web='echo https://`hostname`:443/opscenter'
+
+alias e.oc.atconf='$CFG_EDITOR /opt/SYMCOpsCenterServer/authbroker/data/root/.VRTSat/profile/VRTSatlocal.conf'
+alias e.oc.log='$CFG_EDITOR /opt/SYMCOpsCenterServer/config/log.conf'
+alias e.oc.server='$CFG_EDITOR /opt/SYMCOpsCenterServer/config/server.conf'
+
+export PATH=$PATH:/opt/SYMCOpsCenterServer/bin
+export PATH=$PATH:/opt/SYMCOpsCenterGUI/bin
+export PATH=$PATH:/opt/SYMCOpsCenterServer/authbroker/bin
+
+alias a.oc="alias   | grep ' \.oc\..*='"
+alias a.oc.all="alias   | egrep '\.?(oc)\..*='"

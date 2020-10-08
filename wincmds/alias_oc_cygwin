@@ -1,0 +1,15 @@
+if [ -L /opt/SYMCOpsCenterServer ]; then
+    echo "Current link is:"
+    ls -l /opt/SYMCOpsCenter*
+    echo ""
+    echo "To change:"
+    echo "unlink /opt/SYMCOpsCenterServer; unlink /opt/SYMCOpsCenterGUI;"
+else
+    ln -s /cygdrive/c/Program\ Files/Symantec/OpsCenter/server/ /opt/SYMCOpsCenterServer
+    ln -s /cygdrive/c/Program\ Files/Symantec/OpsCenter/gui/ /opt/SYMCOpsCenterGUI
+fi
+
+. ~/.vim/alias.oc
+
+PATH=$PATH:/opt/SYMCOpsCenterServer/bin:/opt/SYMCOpsCenterServer/authbroker/bin:/opt/SYMCOpsCenterServer/db/WIN64:/opt/SYMCOpsCenterServer/jre/bin:/opt/SYMCOpsCenterGUI/bin
+export PATH

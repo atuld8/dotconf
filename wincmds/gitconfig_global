@@ -1,0 +1,8 @@
+[include]
+    path=../gitconfig_global
+[alias]
+    bclean = "!f() { git branch --merged ${1-master} | grep -v \" ${1-master}$\" | xargs -r git branch -d; }; f"
+    dtg = difftool --extcmd=\"gvim.bat -d -f\"
+    dtt = difftool --extcmd=\"vim -d -f\"
+    dtgenc = difftool --extcmd=\"gvim.bat --cmd \\\"set key=$VIMPASS\\\" -d -f\"
+

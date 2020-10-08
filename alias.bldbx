@@ -1,0 +1,64 @@
+
+# Commands for nbsu
+alias x.get-token='python git-credential-veritas-stash.pex -p https -H $GIT_SERVER -u $GIT_USER get-token'
+alias x.epr='eprint'
+alias x.eprshrt='eprint -v'
+alias x.eprsbsrb='eprint -u'
+alias x.eprnocmt='eprint -v -l -A -f -s -u'
+alias x.eprall='eprint  -v -l -A -f -c -s -u'
+alias x.epreebbin='function af.eprint_eebbin() { eprint -c $1  | awk '"'"'/Checksums for all files/,/Checksums for eebinstallers will be available at the/'"'"' | grep -v "Checksums for"; }; af.eprint_eebbin'
+alias x.epreebdet='function af.eprint_eebdet() { eprint -c $1  | awk '"'"'/This entry has been automatically updated/,/Checksums for eebinstallers will be available at the/'"'"'; }; af.eprint_eebdet'
+alias x.eprsuper='function af.eprint_super() { eprint -vdK $1 | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -i eprint -vdK  {}; }; af.eprint_super'
+alias x.eprlastCmt='function af.eprint_lastcmt() { eprint -c $1 | tac | awk '"'"'! flag; /\([0-9]*\) @ /{flag = 1};'"'"' | tac; }; af.eprint_lastcmt'
+alias x.eqls='equery | column -t -s ","'
+alias x.eq='function af.equery_runner() { COLS="cols=*"; EQ_EXTRA_ARGS=""; if [[ $2 == cols* ]] ; then COLS="$2"; fi; if [ "$2" == "-u" ] ; then EQ_EXTRA_ARGS="$2 $3"; fi; equery $EQ_EXTRA_ARGS $1 | egrep "^INCIDENT|^[0-9]" |  awk -F"\t" -f ~/.vim/scripts/et_data_in_col.awk -v $COLS; }; af.equery_runner'
+alias x.eqlmtclm='function af.x.eqlim() {  x.eq $1 cols=INCIDENT,ABSTRACT,VERSION,TYPE,STATE; }; af.x.eqlim'
+alias x.geteebverfrombin='function af.geteebver () { for f in `find $1  -iname $2 -o -iname $2.exe -o -iname $2.dll -o -iname $2.so`; do echo $f; strings -a $f | grep EEB;done; }; af.geteebver'
+alias x.eebver='function x.eebver() { SUPER=`eprint -vdK $1 | grep "superincident:" | awk '"'"'{ print $2}'"'"'`;VERSION=`eprint -vdK $1 | grep "^version:" | awk '"'"'{print $2 }'"'"'`; echo NetBackup_${VERSION}_EEB1_PET${SUPER}_SET$1; }; x.eebver'
+alias x.eset.tpip_up='function af.eset.tpip_up(){ eprint -k $@; eset -w TPIP_UP $@; eprint -k $@; }; af.eset.tpip_up'
+alias x.eset.cftsp='function af.eset.cftsp(){ for et in "$@"; do UD2=`eprint -v $et | grep user_defined2 | grep -v CFTSP | sed -e '"'"'s/user_defined2:\s*\(.*\)\s*/CFTSP \1/'"'"'`;  if [[ ! -z "$UD2" ]]; then eset --u2 "$UD2" $et; fi; eprint -v $et | grep user_defined2; done }; af.eset.cftsp'
+
+alias e.nb.stver='$CFG_EDITOR `git rev-parse --show-toplevel`/common/include/nb_static_version.h'
+alias e.cmtmsg='for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; do et=`echo $a | sed -e'"'"'s/feature\//\//gi'"'"'| sed -e'"'"'s/bugfix\//\//gi'"'"'|sed -e'"'"'s/eeb\//\//gi'"'"'| sed -e'"'"'s/\/et//gi'"'"'| sed -e'"'"'s/\..*//gi'"'"'| sed -e'"'"'s/_.*//gi'"'"'`; gbase_path=`git rev-parse --show-toplevel`; cmtmsg_file=$gbase_path/../cmtmsg/$et.cmtmsg; echo $cmtmsg_file; if [ ! -f $cmtmsg_file ]; then echo>>$cmtmsg_file; echo>>$cmtmsg_file; echo "Incident:$et">>$cmtmsg_file; fi; $CFG_EDITOR $cmtmsg_file;done'
+alias g.cmtmsg='for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; do et=`echo $a | sed -e'"'"'s/feature\//\//gi'"'"'| sed -e'"'"'s/bugfix\//\//gi'"'"'|sed -e'"'"'s/eeb\//\//gi'"'"'| sed -e'"'"'s/\/et//gi'"'"'| sed -e'"'"'s/\..*//gi'"'"'| sed -e'"'"'s/_.*//gi'"'"'`; gbase_path=`git rev-parse --show-toplevel`; cmtmsg_file=$gbase_path/../cmtmsg/$et.cmtmsg; if [ -f $cmtmsg_file ]; then echo $cmtmsg_file; else echo $cmtmsg_file not exists; fi; done'
+
+alias gr.srtype='egrep "TYPE|SERVICE_REQUEST|---"'
+alias gr.deftype='egrep "TYPE|DEFECT|---"'
+alias g.et1linfo='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -a {}'
+alias g.et1linfoall='git branch 2> /dev/null | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -a {}'
+alias g.etdet='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s {}'
+alias g.etdetcmt='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s -c {}'
+alias g.etdetall='git branch 2> /dev/null | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s {}'
+alias g.etsuper='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v {} | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -i eprint -vdK  {}'
+
+
+# change dir quickly
+alias cd.nbdt='af.cd ~/nbdata'
+alias mcd.nbdt='mcd ~/nbdata'
+alias cd.cstdt='af.cd ~/custdata'
+alias mcd.cstdt='mcd ~/custdata'
+
+export GIT_CREDS=$GIT_USER
+alias set.gcred.usr='export GIT_CREDS=$GIT_USER'
+alias set.gcred.usracctkn='export GIT_CREDS=$GIT_USER:$ACCESS_TOKEN'
+# Git commands for quick nbu
+alias g.nbcln.src='git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/src.git ./src'
+alias g.nbcln.src..br='git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/src.git ./src --branch'
+alias g.nbcln.src.sngl..br='git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/src.git ./src --single-branch --branch'
+
+alias g.nbcln..rp='function af.nbcln1() { git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/$1.git ./$1; }; af.nbcln1'
+alias g.nbcln..rp.br='function af.nbclnsb2() { git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/$1.git ./$1 --branch $2; }; af.nbclnsb2'
+alias g.nbcln.sngl..rp.br='function af.nbclnsb2() { git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/$1.git ./$1 --single-branch --branch $2; }; af.nbclnsb2'
+alias g.addtag='echo -n "EEB version : "; read EEB_VER;for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; do et=`echo $a | sed -e'"'"'s/eeb\/et//gi'"'"'`; git log -1;  echo git tag -a EEB_et${et}_v${EEB_VER} -m \"EEB Version ${EEB_VER}\" `git rev-parse HEAD`; echo git push origin EEB_et${et}_v${EEB_VER}; echo git log -1; done'
+alias g.log.tags.4.br='function af.g.log.tag() { NBSM_TAG1=$(git describe --tags --abbrev=0 $1); NBSM_TAG2=$(git describe --tags --abbrev=0 ${NBSM_TAG1}~); echo "-- NBSM_TAG1=$NBSM_TAG1"; echo "-- NBSM_TAG2=${NBSM_TAG2}"; echo -e "\n\n\n"; git log ${NBSM_TAG2}..${NBSM_TAG1} $@; }; af.g.log.tag'
+alias g.log.tags..tag='function af.g.log.tag() { NBSM_TAG1=$1; NBSM_TAG2=$(git describe --tags --abbrev=0 ${NBSM_TAG1}~); echo "-- NBSM_TAG1=$NBSM_TAG1"; echo "-- NBSM_TAG2=${NBSM_TAG2}"; echo -e "\n\n\n"; git log ${NBSM_TAG2}..${NBSM_TAG1} $@; }; af.g.log.tag'
+
+#misc commands
+alias x.md.nb.serverplatfs..path='function af.md.nb.serverplatfs () { mkdir -p $1/AMD64 $1/solaris $1/solaris_x86 $1/linuxR_x86 $1/linuxS_x86; }; af.md.nb.serverplatfs'
+alias x.ln.nb.tomcateeb='function af.ln.nb.tomcateeb () { mkdir AMD64; mkdir Unix; for f in  linuxR_x86 linuxS_x86 solaris solaris_x86; do if [ -e $f ]; then echo $f is exists; else echo $f; ln -s Unix  $f ; fi; done ; }; af.ln.nb.tomcateeb'
+alias x.ln.nb.jreeeb='function af.ln.nb.jreeeb() { mkdir AMD64 linuxR_x86 solaris solaris_x86; ln -s linuxR_x86 linuxR_x86_2.6.32; ln -s linuxR_x86 linuxS_x86; ln -s linuxR_x86 linuxS_x86_3.0.76; ln -s solaris solaris10; ln -s solaris_x86 solaris_x86_10_64; };af.ln.nb.jreeeb'
+alias x.ln.nb.all='function af.ln.nb.all () { if [ ! -d ${1:-all} ]; then mkdir ${1:-all}; fi;  for f in  AMD64 linuxR_x86 linuxS_x86 solaris solaris_x86; do if [ -e $f ]; then echo $f is exists; else echo $f; ln -s ${1:-all}  $f ; fi; done ; }; af.ln.nb.all'
+alias x.ln.nb.svr2clnt='function af.ln.nb.svr2clnt() { [ -d linuxR_x86_2.6.18 ] && ln -s linuxR_x86_2.6.18 linuxR_x86; [ -d linuxR_x86_2.6.32 ] && ln -s linuxR_x86_2.6.32 linuxR_x86; [ -d linuxS_x86_3.0.76 ] && ln -s linuxS_x86_3.0.76 linuxS_x86; [ -d zlinuxR_2.6.18 ] && ln -s zlinuxR_2.6.18 zlinuxR; [ -d zlinuxR_2.6.32 ] && ln -s zlinuxR_2.6.32 zlinuxR; [ -d zlinuxS_3.0.76 ] && ln -s zlinuxS_3.0.76 zlinuxS; [ -d solaris10 ] && ln -s solaris10 solaris; [ -d solaris_x86_10_32 ] && ln -s solaris_x86_10_32 solaris_x86; [ -d solaris_x86_10_64 ] && ln -s solaris_x86_10_64 solaris_x86; [ -d rs6000_61 ] && echo ln -s rs6000_61 rs6000; [ -d hpia11.31 ] && echo ln -s hpia11.31 hpia64; }; af.ln.nb.svr2clnt'
+
+export nbdt='~/nbdata'
+export cstdt='~/custdata'

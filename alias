@@ -1,0 +1,28 @@
+if [ -f ~/.export.var ]; then
+    source ~/.export.var
+fi
+
+if [ -f ~/.export.vrts ]; then
+    source ~/.export.vrts
+fi
+
+source ~/.vim/alias.global
+#source ~/.vim/alias.nbu
+#source ~/.vim/alias.nbsd.test
+#source ~/.vim/alias.bldbx
+#source ~/.vim/alias.extra
+#source ~/.vim/alias.dotconf
+#source ~/.vim/alias.jira
+#source ~/.vim/scripts/definstallpathsaliases.sh
+#source ~/.vim/alias.sf
+#source ~/.vim/wincmds/alias_cygwin
+#source ~/.vim/wincmds/alias_nbu_cygwin
+
+if [ -f ~/.alias.tmp ]; then
+    source ~/.alias.tmp
+fi
+
+if [ -f ~/.alias.loc ]; then
+    source ~/.alias.loc
+fi
+

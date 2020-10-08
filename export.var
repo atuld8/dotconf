@@ -1,0 +1,9 @@
+# export GIT_USER=
+# export GIT_SERVER=
+# export VIMPASS=
+# export CFG_EDITOR=vim/gvim/cat
+# export GIT_STATUS_LEVEL=0/1/2/3
+# export SCP_HOSTNAME=`hostname`.`domainname`
+# export DOTCONF_HOSTNAME=
+# export SPECIAL_PRMPT_DATA='T/B/L/E '
+

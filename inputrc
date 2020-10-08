@@ -1,0 +1,21 @@
+if [[ "$(set -o | grep 'emacs\|\bvi\b' | cut -f2 | tr '\n' ':')" != 'off:off:' ]]; then
+# cntrol-b c
+# HELP <HOTKEY> c clear
+bind -x '"\C-Bc":clear'
+
+#get inputrc help
+# HELP <HOTKEY> h inputrc file
+bind -x '"\C-Bh":grep "^# HELP" ~/.vim/inputrc'
+
+#get key
+# HELP <HOTKEY> k key value
+bind -x '"\C-Bk":cat ~/.keyfile'
+
+#get key
+# HELP <HOTKEY> v pull dotconf
+bind -x '"\C-Bv":x.vimpull'
+
+#expand alias
+# bind -x '"\C-Be":alias-expand-line'
+# bind -x '"\C-Bh":history-and-alias-expand-line'
+fi

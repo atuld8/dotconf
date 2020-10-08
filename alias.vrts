@@ -1,0 +1,4 @@
+alias cp.nb.json.win='echo C:\nbdata\veritas_customer_registration_key.json'
+alias cp.nb.json.winrmt='echo H:\veritas_customer_registration_key.json'
+alias cp.nb.json.unix='echo /root/nbdata/veritas_customer_registration_key.json'
+alias cp.nb.json.unixrmt='echo /public/adas/veritas_customer_registration_key.json'

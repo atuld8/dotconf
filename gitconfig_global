@@ -1,0 +1,256 @@
+[core]
+	editor = vim
+	pager = less -F -X
+[credential]
+	helper = cache --timeout=99999
+[http]
+	sslVerify = false
+[diff]
+	tool = vimdiff
+[difftool]
+	prompt = false
+[alias]
+    a = add
+    atrkcwd = !git add -u . && git status
+    addallcwd = !git add . && git add -u . && git status
+    aCPP = ! git commit -a --reuse-message=HEAD && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push
+    aCPh = ! git commit -a --reuse-message=HEAD && git push
+    aCmPP = "!f_acmp() { git add -u . && git commit -m \"$@\" && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acmp"
+    aCFPP = "!f_acfp() { git add -u . && git commit -F $@ && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acfp"
+    aCmPh = "!f_acmp() { git add -u . && git commit -m \"$@\" && git push; }; f_acmp"
+    aCFPh = "!f_acfp() { git add -u . && git commit -F $@ && git push; }; f_acfp"
+    aCmPhUpCb = "!f_acmphupcb() { git add -u . && git commit -m \"$@\" && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acmphupcb"
+    aCFPhUpcb = "!f_acfphupcb() { git add -u . && git commit -F $@ && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acfphupcb"
+    aCmPhfwl = "!f_acmphfwl() { git add -u . && git commit -m \"$@\" && git push --force-with-leasse; }; f_acmphfwl"
+    aCFPhfwl = "!f_acfphfwl() { git add -u . && git commit -F $@ && git push --force-with-lease; }; f_acfphfwl"
+    ; alias with format alias.a def
+    aList = config --get-regexp alias
+    aGList = config --global --get-regexp alias
+    ; alias with format a ==> def
+    alias = !git config --list | grep 'alias\\.' | sed 's/alias\\.\\([^=]*\\)=\\(.*\\)/\\1\\\t => \\2/' | sort
+    ap = apply
+    apChk = apply --check --stat
+
+    ; delete local branches which are merged into Master; The default value setting works with ${1:-master} and ${1-master}
+    bClean = "!f() { git branch --merged ${1-master} | grep -v \" ${1-master}$\" | xargs -r  git branch -d; }; f"
+    ; list branches from local repo
+    br = branch
+    ; list branches from local with summary like sh, rmt br, cmtmsg of top
+    brVv = branch -vv
+    ; list only current branch name
+    brCrnt = rev-parse --abbrev-ref HEAD
+    ; branch which are merged with master
+    brMrgd ="!f() { git branch --merged origin/${1:-master}; }; f"
+    ; branch which are not merged with master
+    brNomrgd = branch --no-merged
+    ; all remote branch list
+    brRmt = branch --remote
+    ; list of branches with Auther and diff formats
+    brbyAuth = for-each-ref --format='%(authorname) %09 %(refname)' --sort=authorname
+    brbyAuthOn = for-each-ref --format='%(committerdate) %09 %(authorname) %09 %(refname)' --sort=committerdate
+    brbyAuthColor = for-each-ref --format='%(color:cyan)%(authordate:format:%m/%d/%Y %I:%M %p)    %(align:25,left)%(color:yellow)%(authorname)%(end) %(color:reset)%(refname:strip=3)' --sort=authordate refs/remotes
+    brbyme ="!f() { git branch -a --format=\"%(committerdate:iso8601), %(color:bold blue)%(committerdate:relative)%(color:reset), %(color:magenta)%(authorname)%(color:reset), %(refname:short), %(contents:subject)\"  | grep \"$(git config user.name)\" | sort -r | head -20 | column -t -s \",\"; }; f"
+    brbymewin ="!f() { git branch -a --format=\"%(committerdate:iso8601), %(color:bold blue)%(committerdate:relative)%(color:reset), %(color:magenta)%(authorname)%(color:reset), %(refname:short), %(contents:subject)\"  | sort -r | head -20 | column -t -s \",\"; }; f"
+
+    chpk = cherry-pick
+    chpke = cherry-pick -e
+    cl = clone
+    ; clone the repository without history but all the branches
+    clDpt1 = clone --depth 1
+    ; clone the repository without history and only one branch
+    clDpt1Nosbr = clone --depth 1 --no-single-branch
+    ; clone the repository with signle branch which is master and all history
+    clMstrOnly = clone --single-branch
+    clSnglbr = clone --single-branch --branch
+    cleanx = clean -f -d
+    cleanxx = clean -d -f -x
+    cleanDry  = clean -f -d -n
+    cmtm = commit --verbose -m
+    cmtf = commit --verbose -F
+    cmtAf = commit --verbose -a -F
+    cmtAm = commit --verbose -a -m
+    cmtLstMsg = commit --reuse-message=HEAD
+    cmtALstMsg = commit -a --reuse-message=HEAD
+    cmtAmdNedt = commit --amend --no-edit
+    cmtAAmd = commit -a --verbose --amend --no-edit
+    cmtAmd  = commit --amend
+    cmtAuther = commit --amend --reset-author --no-edit
+    cmtmPP = "!f_cmtp() { git commit -m \"$@\" && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_cmtp"
+    cmtfPP = "!f_cmtp() { git commit -F $@ && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_cmtp"
+    cmtmPh = "!f_cmtp() { git commit -m \"$@\" && git push; }; f_cmtp"
+    cmtfPh = "!f_cmtp() { git commit -F $@ && git push; }; f_cmtp"
+    cmtmPhUpCb = "!f_cmtmphupcb() { git commit -m \"$@\" && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_cmtmphupcb"
+    cmtFPhUpCb = "!f_cmtFphupcb() { git commit -F $@ && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_cmtFphupcb"
+    co = checkout
+    crbreeb = "!f_coeeb() { git checkout -b eeb/et$1 NB_$2; }; f_coeeb"
+    crbrbfx = "!f_coeeb() { git checkout -b bugfix/et$1 ${2:-origin/master}; }; f_coeeb"
+    coMstr = !git fetch origin -p && git checkout master && git pull
+    crbr = "!f_coeeb() { git checkout -b $1 ${2:-origin/master}; }; f_coeeb"
+
+    confLs = config --list
+    confG = config --global
+    confGLs = config --global --list
+    confS = config --system
+    confL = config --local
+    confLoc = config --list --show-origin
+
+    dg = difftool --gui --no-prompt
+    dl = diff --no-ext-diff
+    dll = diff --no-ext-diff .
+    ; this will check for error like trailing spaces and report
+    dlChk = diff --no-ext-diff --check
+    dlICr = diff --no-ext-diff --ignore-cr-at-eol
+    dlICrSpc = diff --no-ext-diff --ignore-cr-at-eol --ignore-all-space
+    dlR = diff --no-ext-diff -R
+    dlNmo = diff --no-ext-diff --name-only
+    dllNmo = diff --no-ext-diff --name-only .
+    dlNmoCwdOnly = diff --no-ext-diff --name-only --relative
+    dC = diff --cached
+    dlC = diff --cached --no-ext-diff
+    dlCR = diff --cached --no-ext-diff -R
+    dlCNmo = diff --cached --no-ext-diff --name-only
+    dlCNmoCwd = diff --cached --no-ext-diff --name-only --relative
+    dlCw = diff --no-ext-diff --color-words
+    dlCwd = diff --no-ext-diff --color-words=.
+    dlWrx = diff --no-ext-diff --word-diff-regex=. --color-words=.
+    dlWrxSp = diff --no-ext-diff --word-diff-regex=.
+    dlWrxSp1 = diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\"
+    dlf ="!dlfm() { git diff --no-ext-diff --diff-filter=$@;}; dlfm"
+    dlWrxSp1f ="!dlfm() { git diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\" --diff-filter=$@;}; dlfm"
+    dlWrxSpf ="!dlfm() { git diff --no-ext-diff --word-diff-regex=. --diff-filter=$@;}; dlfm"
+    dt = difftool
+    ; git diff in patch format. Expects cmtid
+    dlPatch = diff-tree -p
+    dlPatch1= "!f() { git diff ${1-HEAD}^!; }; f"
+    dlnmoabs= "!f() { git diff --name-only $@| xargs -I '{}' echo $(git rev-parse --show-toplevel)/'{}'; }; f"
+    ; git diff with vim tool
+    dtg = difftool --extcmd=\"gvim -d -f\"
+    dtt = difftool --extcmd=\"vim -d -f\"
+    dttenc = difftool --extcmd=\"vim --cmd \\\"set key=$VIMPASS\\\" -d -f\"
+    dtgenc = difftool --extcmd=\"gvim --cmd \\\"set key=$VIMPASS\\\" -d -f\"
+
+
+    ; find alias of git
+    finda = "!fa() { git alias | grep $@; }; fa"
+    forg = "!git fetch origin -p"
+    forgcb = "!git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\""
+    fus = fetch --unshallow
+    fp  = fetch --prune
+
+    gcNow = gc --prune=now
+    gcprune = !git gc --prune=now && git remote prune origin
+    gr = log --graph --full-history --all --color --pretty=tformat:"%x1b[31m%h%x09%x1b[32m%d%x1b[0m%x20%s%x20%x1b[33m(%an)%x1b[0m"
+    grS = log --oneline --all --graph --decorate
+
+    helpv = help -a
+
+    l = log
+    ; log stat of commit with short hash
+    ; sh= short hash
+    ; 1 one liner
+    lstatsh = log --stat --abbrev-commit
+    l1sh = log --pretty=oneline --abbrev-commit
+    l1 = log --pretty=oneline
+    l1diff = log --pretty=oneline --abbrev-commit -p
+    lfmt1 = log --pretty=tformat:'%h - %an,  %ar : %s'
+    lstat = log --stat
+    lnmo = log --name-only
+    lgrp = log --all --grep
+    lgrh0 = !"git lg1"
+    lgrh1 = !"git lg1-specific --all"
+    lgrh2 = !"git lg2-specific --all"
+    lgrh3 = !"git lg3-specific --all"
+    lgrh4 = !"git lg4-specific --all"
+    lgrh5 = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset' --abbrev-commit --date=relative
+    lgrh6 = log --pretty=format:'%h %s'  --graph
+    llg = log --color --graph --pretty=format:'%C(bold white)%H %d%Creset%n%s%n%+b%C(bold blue)%an <%ae>%Creset %C(bold green)%cr (%ci)' --abbrev-commit
+    lnomrgd = "!git log \"$(git rev-parse --abbrev-ref HEAD)\" -not master --stat"
+    lcmtbyme = !"git log --author=$GIT_USER"
+
+    lg1-specific = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(bold yellow)%d%C(reset)'
+    lg2-specific = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold cyan)%aD%C(reset) %C(bold green)(%ar)%C(reset)%C(bold yellow)%d%C(reset)%n''          %C(white)%s%C(reset) %C(dim white)- %an%C(reset)'
+    lg3-specific = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold cyan)%aD%C(reset) %C(bold green)(%ar)%C(reset) %C(bold cyan)(committed: %cD)%C(reset) %C(bold yellow)%d%C(reset)%n''          %C(white)%s%C(reset)%n''          %C(dim white)- %an <%ae> %C(reset) %C(dim white)(committer: %cn <%ce>)%C(reset)'
+    lg4-specific = log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+
+    lEebDet = log --simplify-by-decoration --decorate --graph
+    lEebShrt = log --graph --simplify-by-decoration --oneline --decorate
+    lcmtmsg = log --pretty=format:'%s'
+    lcmtMsg1 = log --pretty=format:'%s%n%n%b'
+    lcmtMsg2 = log --format=%B
+
+    ltag = !"git -c color.decorate.tag='bold blue' log --pretty=format:'%C(auto)%h%d - %s %Cgreen(%cr) %Cblue<%an>%Creset'"
+
+    modTrkRltv= status -s -uno
+    modTrk= status --porcelain -uno
+    modAll= status --porcelain
+    mrg = merge
+
+    pl = pull -p
+    ; Pull current branch only
+    plCb = "!git pull origin \"$(git rev-parse --abbrev-ref HEAD)\""
+    ph = push
+    phF = push --force
+    phFwl= push --force-with-lease
+    phUp = push --set-upstream origin
+    ; push current branch which is not exists at remote server
+    phUpCb = "!git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\""
+    plph = !git pull -p && git push
+    ; command which will pull the new branch using fetch and checkout
+    plRmtBr = "!plnewbr() { git fetch origin $@; git checkout $@; }; plnewbr"
+
+    ; Git repository path wrt OS path
+    root = rev-parse --show-toplevel
+    ; Git current directory wrt git base path
+    rPath = rev-parse --show-prefix
+    rstHOrgmstr = reset --hard origin/master
+    rstHOrgcb = "!f_rsthocb() { git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\"; }; f_rsthocb"
+    rstAllmstr = ! git fetch && git reset --hard origin && git pull -p
+    rstAllcb = "!f_rstallcb() { git fetch && git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\" && git pull; }; f_rstallcb"
+    rmt = ls-remote --head
+    rmtPrune = remote update --prune
+    rborgbr= "!f_rborgbr() { git fetch origin ${1:-master} && git rebase origin/${1:-master}; }; f_rborgbr"
+    ; rebase the branch with specific tag; this will help to to rebase with master with specific build tag
+    rborgon2br= "!f_rborgbr() { git fetch origin ${2:-master} && git rebase --onto $1 origin/${2:-master}; }; f_rborgbr"
+    rbsftorgbr= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/${1:-master}` && git diff --cached --name-only; }; f_rbsftrp"
+
+    st = status
+    stSB = status --short --branch
+    stuall = status -u
+    stunrm = status -unormal
+    stuno = status -uno
+    strel = status -uno -s
+    sti = status --ignored
+    sh = show
+    shSt = show --stat
+    shNmo = show --name-only
+    shdiff = show --pretty=format:
+    shnmols = show --name-only --pretty=oneline
+    ; List of files commited in commitid
+    shflist = show --name-only --pretty=""
+    shflistCwd = show --name-only --pretty="" --relative
+    shFlist4Cmtid ="!f() { git diff-tree --no-commit-id --name-only -r ${1-HEAD}; }; f"
+    shcmtmsg = log --format=%B -n 1
+    shcmtidmsg ="!f() { git rev-list --format=%B --max-count=1 ${1-HEAD}; }; f"
+    serve = daemon --reuseaddr --base-path=. --export-all --verbose
+
+    ; list tag name in which this cmtid present
+    ; How to find the first tag that contains a git commit
+    cmtintag = name-rev --tags --name-only
+    cmtintags= tag --contains
+    ; List the most recent tag present in the branch
+    recenttag=describe --tags --abbrev=0
+
+    ; statistics of user and number of commits
+    top-cmts = shortlog --summary --numbered --no-merges
+    tags="!f_tags() { git log --pretty=format:%h%d | grep 'tag:'; }; f_tags"
+
+    ; list files in current directory with full path wrt current location
+    treeCwd = ls-tree --name-only -r master
+    ; list files in current directory with full path wrt git base
+    treeCwdWrtBase = ls-tree --name-only -r master --full-name
+    ; list all files in master with respect to base irrespective of current path within the repo
+    treeAllWrtBase = ls-tree -r master --name-only  --full-tree
+
+    ; list of user modified the file or folder
+    authors1 = shortlog -n -s --
+    authors2 = log --pretty=format:"%an%x09"

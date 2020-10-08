@@ -1,0 +1,37 @@
+# This is for cygwin compatible aliases
+
+alias a.cyg="alias  | grep ' cyg\..*='"
+
+alias cyg.pkglist='cygcheck -c'
+alias cyg.thm.sollight='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-solarized-light.sh'
+alias cyg.thm.sollight.v2='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-solarized-light.v2.sh'
+alias cyg.thm.soldark='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-solarized-dark.sh'
+alias cyg.thm.soldark.v2='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-solarized-dark.v2.sh'
+alias cyg.thm.dark='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-dark-theme.sh'
+alias cyg.thm.dark.2='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-dark-2.sh'
+alias cyg.thm.dark.3='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-dark-3.sh'
+alias cyg.thm.custdark='. ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/mintty-custom-dark-theme.sh'
+alias cyg.rc2echo='awk -f ~/.vim/wincmds/mintty_settings/minttyrc2echo.awk'
+alias cyg.genlink2drive='(for f in `\ls /cygdrive`; do echo $f; if [ ! -d /${f} ]; then ln -s /cygdrive/${f} /${f}; else ls -ld /${f}; fi; done)'
+
+alias d.minttyrc='vimdiff ~/.minttyrc ~/.vim/wincmds/mintty_settings/minttyrc'
+
+alias cd.down='af.cd $USERPROFILE/Downloads'
+alias cd.up='af.cd $USERPROFILE'
+alias cd.~='af.cd ~'
+alias cd.windows='af.cd `cygpath.exe -W`'
+alias cd.sys32='af.cd `cygpath.exe -S`'
+alias cd.sysdrv='af.cd $SYSTEMDRIVE'
+alias cd.pf='cd "${SYSTEMDRIVE}/Program Files"'
+alias cd.pfx86='cd "${SYSTEMDRIVE}/Program Files (x86)"'
+alias cd.desk='af.cd `cygpath.exe -D`'
+
+alias cp.alias='af.cp.alias () { alias $1|clip; }; af.cp.alias'
+alias cp.cwd='cygpath -w $PWD|clip'
+
+alias e.si='vim ${SYSTEMDRIVE}/setupinfo.txt'
+
+alias set.a.occyg='. ~/.vim/wincmds/alias_oc_cygwin'
+alias set.a.nbcyg='. ~/.vim/wincmds/alias_nbu_cygwin'
+
+export OSName=$OSTYPE

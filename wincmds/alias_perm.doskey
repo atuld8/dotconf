@@ -1,0 +1,46 @@
+alias=DOSKEY /MACROS $*
+cd.up=cd /d %userprofile%
+cd.nbtstdt=IF EXIST "C:\nbtestdata\$*" ( cd /d C:\nbtestdata\$* ) ELSE ( mkdir "C:\nbtestdata\$*" & cd /d C:\nbtestdata\$*  )
+cd.nbdt=IF EXIST "C:\nbdata\$*" ( cd /d C:\nbdata\$* ) ELSE ( mkdir "C:\nbdata\$*" & cd /d C:\nbdata\$* 2> NUL )
+cd.cstdt=IF EXIST "C:\custdata\$*" ( cd /d C:\custdata\$* ) ELSE ( mkdir "C:\custdata\$*" & cd /d C:\custdata\$* 2> NUL )
+cd.qTE=cd /d C:\nbdata\quickTestEnv\$* 2> NUL
+
+..=cd ../$*
+...=cd ../../$*
+....=cd ../../../$*
+.....=cd ../../../../$*
+set.alias=%userprofile%\alias.cmd $*
+set.qalias=%userprofile%\alias.cmd QUICK_ACCESS $*
+
+cp.cwd=echo|set /p=%CD%$*|clip
+
+.mini=start "cmd" /I /D %USERPROFILE% cmd "/k mini.cmd"
+
+g=git $*
+e=gvim $*
+mcd=mkdir $* && cd /d $*
+paths=cmd /v:on /c "for %p in ("!path:;=" "!") do @echo %~p | findstr /V /C:"ECHO is on""
+
+e.clink=notepad "%SYSTEMDRIVE%\Program Files (x86)\clink\0.4.9\clink.bat"
+e.l.apdk=notepad %userprofile%\alias_perm.doskey
+e.apdk=notepad %userprofile%\.vim\wincmds\alias_perm.doskey
+r.clink=reg query "HKCU\Software\Microsoft\Command Processor" /v Autorun
+.rc=echo %ERRORLEVEL% $*
+.xp=%WINDIR%\explorer.exe $*
+.shell=%WINDIR%\explorer.exe shell:$*
+.chrome=IF EXIST "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" ("C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" $* ) ELSE ("C:\Program Files\Google\Chrome\Application\chrome.exe" $*)
+.firefox="%SYSTEMDRIVE%\Program Files (x86)\Mozilla Firefox\firefox.exe" $*
+.fs=findstr /I $*
+.np++="%SYSTEMDRIVE%\Program Files (x86)\Notepad++\notepad++.exe" $*
+.np=notepad $*
+.wmrg="%SYSTEMDRIVE%\Program Files (x86)\\WinMerge\WinMergeU.exe" $*
+.mv2org=rename $* $*.org
+.mv4org=rename $*.org $*
+.7z="%SYSTEMDRIVE%\Program Files\7-Zip\7z.exe" $*
+.st3="%SYSTEMDRIVE%\Program Files\Sublime Text 3\sublime_text.exe" $*
+.tp="%SYSTEMDRIVE%\Program Files (x86)\TextPad 4\TextPad.exe" $*
+.ff=FORFILES /S /C "cmd /c echo @path" $*
+.mbxtrm.cwd="C:\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -openfolder "%cd%" $*
+.mbxtrm.tb="C:\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -newtab $*
+.mbxtrm.cmd="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -bookmark Cmd $*
+.mbxtrm="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" $*

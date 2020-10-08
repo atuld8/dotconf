@@ -1,0 +1,19 @@
+export PATH=$PATH:/opt/VRTS/bin
+
+alias a.sf="alias   | grep ' sf\..*='"
+alias a.sf.all="alias   | egrep '\.?(sf)\..*='"
+
+alias cd.sf.clust.conf='cd /etc/VRTSvcs/conf/config/main.cf'
+
+alias sf.clust.status='hasys -state'
+alias sf.clust.stop='hastop -all'
+alias sf.clust.start='hastart -all'
+alias sf.clust.cf.verify='hacf -verify'
+alias sf.clust.force1='hasys -force'
+alias sf.clust.status.det='hastatus'
+alias sf.clust.version='haclus -value EngineVersion'
+alias sf.clust.gui='hagui'
+alias sf.clust.passreset='haconf -makerw; hauser -update admin; haconf -dump -makero'
+
+alias e.sf.maincf='$CFG_EDITOR /etc/VRTSvcs/conf/config/main.cf'
+alias e.sf.typescf='$CFG_EDITOR /etc/VRTSvcs/conf/types.cf'

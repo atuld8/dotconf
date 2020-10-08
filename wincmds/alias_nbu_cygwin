@@ -1,0 +1,109 @@
+# Changed the aliases for cygwin compatibility
+
+NBU_INST_PATH=/cygdrive/C/Program\ Files/Veritas
+reg query  HKEY_LOCAL_MACHINE\\\\SOFTWARE\\\\Veritas\\\\NetBackup\\\\CurrentVersion /reg:64 /v INSTALLDIR  >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+    NBU_INST_PATH=`reg query  HKEY_LOCAL_MACHINE\\\\SOFTWARE\\\\Veritas\\\\NetBackup\\\\CurrentVersion /reg:64 /v INSTALLDIR  2>&1 | grep INSTALLDIR | sed -e 's/.*INSTALLDIR.*REG_SZ//g'  | sed -e 's/[ ]*//' | xargs -0  cygpath -u | sed -e 's/..$//g'`
+fi
+
+if [ -L /usr/openv ]; then
+    echo "Current link is:"
+    ls -l /usr/openv
+    echo ""
+    echo "To change:"
+    echo "unlink /usr/openv; ln -s \"$NBU_INST_PATH\" /usr/openv"
+else
+    echo "ln -s \"${NBU_INST_PATH}\" /usr/openv"
+fi
+
+if [ ! -L ~/nbdata ]; then
+    ln -s `cygpath $SYSTEMDRIVE`/nbdata ~/nbdata
+fi
+
+if [ ! -L ~/custdata ]; then
+    ln -s `cygpath $SYSTEMDRIVE`/custdata ~/custdata
+fi
+
+if [ ! -L ~/nbtestdata ]; then
+    ln -s `cygpath $SYSTEMDRIVE`/nbtestdata ~/nbtestdata
+fi
+
+alias x.vxdbms_env='. /usr/openv/NetBackupDB/vxdbms_env.sh'
+alias e.nb.bpconf='vim /usr/openv/NetBackup/bp.conf'
+alias e.nb.logconf='vim /usr/openv/NetBackup/nblog.conf'
+alias e.nb.serverconf='vim /usr/openv/NetBackup/var/global/server.conf'
+alias e.nb.vxdbmsconf='vim /usr/openv/NetBackupDB/data/vxdbms.conf'
+
+alias cat.nb.bpconf='cat /usr/openv/NetBackup/bp.conf'
+alias cat.nb.binver='cat /usr/openv/NetBackup/bin/version'
+alias cat.nb.logconf='cat /usr/openv/NetBackup/nblog.conf'
+alias cat.nb.ver='cat /usr/openv/NetBackup/version'
+alias cat.nb.serverconf='cat /usr/openv/NetBackup/var/global/server.conf'
+alias cat.nb.vxdbmsconf='cat /usr/openv/NetBackupDB/data/vxdbms.conf'
+
+alias cd.vrts='cd "${SYSTEMDRIVE}/Program Files/Veritas"'
+alias cd.symc='cd "${SYSTEMDRIVE}/Program Files/Symantec"'
+
+alias cd.nb='af.cd /usr/openv/netbackup'
+alias cd.nb.adm='af.cd /usr/openv/NetBackup/bin/admincmd/'
+alias cd.nb.gd='af.cd /usr/openv/NetBackup/bin/goodies/'
+alias cd.nb.bin='af.cd /usr/openv/NetBackup/bin/'
+alias cd.nb.logs='af.cd /usr/openv/NetBackup/logs'
+alias cd.nb.ologs='af.cd /usr/openv/NetBackup/logs'
+alias cd.nb.ov='af.cd /usr/openv'
+alias cd.nb.var='af.cd /usr/openv/NetBackup/var'
+alias cd.nb.vgbl='af.cd /usr/openv/NetBackup/var/global'
+alias cd.nb.at='af.cd /usr/openv/NetBackup/sec/at/bin'
+alias cd.nb.odb='af.cd /usr/openv/NetBackupDB'
+alias cd.nb.odb.data='af.cd /usr/openv/NetBackupDB/data'
+alias cd.nb.odb.bin='af.cd /usr/openv/NetBackupDB/WIN64'
+alias cd.nb.odb.log='af.cd /usr/openv/NetBackupDB/log'
+alias cd.nb.odb.sc='af.cd /usr/openv/NetBackupDB/scripts'
+alias cd.nb.wmcinstall='af.cd /usr/openv/NetBackup/wmc/bin/install/'
+alias cd.bmr.sd='af.cd /usr/openv/NetBackup/BareMetal/server/data'
+alias cd.bmr.cd='af.cd /usr/openv/NetBackup/BareMetal/client/data'
+alias cd.nb.instlogs='af.cd "$ALLUSERSPROFILE/VERITAS/NetBackup/InstallLogs"'
+alias cd.nb.instlogssym='af.cd "$ALLUSERSPROFILE/Symantec/NetBackup/InstallLogs"'
+alias cd.oc.instlogssym='af.cd "$ALLUSERSPROFILE/Symantec/opsCenter/InstallLogs"'
+alias cd.nb.db='af.cd /usr/openv/NetBackup/db'
+alias cd.nb.floc='af.cd /usr/openv/NetBackup/db/images/'
+alias cd.nb.gvxss='af.cd /usr/openv/NetBackup/var/global/vxss'
+alias cd.nb.bkpcomp='af.cd /usr/openv/bkpcomp'
+alias cd.nb.java='af.cd /usr/openv/NetBackup/Java'
+alias cd.nb.jre='af.cd /usr/openv/NetBackup/jre/bin'
+alias cd.nb.report='af.cd /usr/openv/NetBackup/var/global/report'
+alias cd.nb.tstdt='af.cd ~/nbtestdata'
+alias cd.nb.tir='af.cd /usr/openv/NetBackup/tir_info'
+alias cd.nb.tmp='af.cd /usr/openv/NetBackup/Temp'
+alias cd.nb.temp='af.cd /usr/openv/NetBackup/Temp'
+alias cd.nb.trylogs='af.cd /usr/openv/NetBackup/db/jobs/trylogs/'
+alias cd.nb.usercert='af.cd ~/.vxss'
+alias cd.nb.vxss='af.cd /usr/openv/NetBackup/var/vxss'
+alias cd.nb.vxuprepo='af.cd /usr/openv/NetBackup/var/global/repo'
+alias cd.nb.wmc='af.cd /usr/openv/NetBackup/wmc'
+alias cd.nb.tc='af.cd /usr/openv/NetBackup/wmc/webserver/'
+
+# Keep CD only
+alias cd.nb.pbx='cd ${SYSTEMDRIVE}/Program\ Files\ \(x86\)/VERITAS/VxPBX'
+alias cd.nb.vxms='cd  $SYSTEMDRIVE/Program\ Files/Common\ Files/VERITAS/VxMS'
+
+alias cat.nb.bpconf='cat /usr/openv/NetBackup/bp.conf'
+alias cat.nb.ver='cat /usr/openv/NetBackup/bin/version'
+alias cat.nb.logconf='cat /usr/openv/NetBackup/nblog.conf'
+alias cat.nb.ver='cat /usr/openv/NetBackup/version'
+alias cat.nb.serverconf='cat /usr/openv/NetBackup/var/global/server.conf'
+alias cat.nb.vxdbmsconf='cat /usr/openv/NetBackupDB/data/vxdbms.conf'
+
+
+alias r.nb.path='reg query  HKEY_LOCAL_MACHINE\\SOFTWARE\\Veritas\\NetBackup\\CurrentVersion /reg:64 /v INSTALLDIR'
+alias bpup='bpup -v -f '
+alias bpdown='bpdown -v -f '
+alias bp.start_all='bpup -v -f '
+alias bp.kill_all='bpdown -v -f '
+
+alias cyg.pkglist='cygcheck -c'
+
+PATH=$PATH:/usr/openv/netbackup/bin/admincmd:/usr/openv/netbackup/bin:/usr/openv/NetBackupDB/WIN64//usr/openv/db/bin:/usr/openv/netbackup/bin/goodies:/usr/openv/netbackup/bin/support:/usr/openv/Volmgr/bin:/usr/openv/NetBackup/jre/bin
+export PATH
+
+export OSName=$OSTYPE
