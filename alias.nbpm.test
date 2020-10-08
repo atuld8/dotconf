@@ -31,3 +31,5 @@ alias t.nbpm.top='TOP_ARG=; for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| 
 
 alias t.nbpm.rerun="t.nbpm.trunklog;t.nbpm.termnbperfmon;sleep 2; t.nbpm.runnbperfmon"
 alias t.nbpm.scprun="t.nbpm.trunklog;t.nbpm.termnbperfmon;t.nbpm.scp.nbperfmon.r ;t.nbpm.runnbperfmon"
+alias t.nbpm.genlkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbperfmon.json /usr/openv/netbackup/nbperfmon.json.lkgc$1; }; af.cplkgc'
+alias t.nbpm.rev2lkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbperfmon.json.lkgc$1 /usr/openv/netbackup/nbperfmon.json; }; af.cplkgc'

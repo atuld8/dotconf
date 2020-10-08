@@ -150,6 +150,7 @@ alias .tmux=' tmux attach -d -t main; if [ $? -ne 0 ]; then tmux new -s main; fi
 alias .dfl='df --type btrfs --type ext4 --type ext3 --type ext2 --type vfat --type iso9660 --type xfs'
 alias .ascii='man ascii'
 alias .signals='kill -l'
+alias .date='date +%Y.%m.%d_%H.%M.%S'
 
 # frequeently used alias, hence quick access
 # alias q.=''
