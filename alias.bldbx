@@ -1,0 +1,43 @@
+
+# Commands for nbsu
+alias cmd.get-token='python git-credential-veritas-stash.pex -p https -H $GIT_SERVER -u $GIT_USER get-token'
+alias cmd.epr='eprint'
+alias cmd.eprnocmt='eprint -v -l -A -f -s -u'
+alias cmd.eprall='eprint  -v -l -A -f -c -s -u'
+alias cmd.eprsuper='function af.eprint_super() { eprint -vdK $1 | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -i eprint -vdK  {}; }; af.eprint_super'
+alias cmd.eqls='equery'
+alias cmd.eq='function af.equery_runner() { COLS="cols=*"; EQ_EXTRA_ARGS=""; if [[ $2 == cols* ]] ; then COLS="$2"; fi; if [ "$2" == "-u" ] ; then EQ_EXTRA_ARGS="$2 $3"; fi; equery $EQ_EXTRA_ARGS $1 | egrep "^INCIDENT|^[0-9]" |  awk -F"\t" -f ~/.vim/scripts/et_data_in_col.awk -v $COLS; }; af.equery_runner'
+alias cmd.geteebver='function af.geteebver () { for f in `find $1  -iname $2 -o -iname $2.exe -o -iname $2.dll -o -iname $2.so`; do echo $f; strings -a $f | grep EEB;done; }; af.geteebver'
+
+alias e.cmtmsg='for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; do et=`echo $a | sed -e'"'"'s/feature\/et//gi'"'"'| sed -e'"'"'s/eeb\/et//gi'"'"'| sed -e'"'"'s/bugfix\/et//gi'"'"'`; gbase_path=`git rev-parse --show-toplevel`; cmtmsg_file=$gbase_path/../cmtmsg/$et.cmtmsg; echo $cmtmsg_file; if [ ! -f $cmtmsg_file ]; then echo>>$cmtmsg_file; echo>>$cmtmsg_file; echo "Incident:$et">>$cmtmsg_file; fi; $CFG_EDITOR $cmtmsg_file;done'
+alias g.cmtmsg='for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; do et=`echo $a | sed -e'"'"'s/feature\/et//gi'"'"'| sed -e'"'"'s/eeb\/et//gi'"'"'| sed -e'"'"'s/bugfix\/et//gi'"'"'`; gbase_path=`git rev-parse --show-toplevel`; cmtmsg_file=$gbase_path/../cmtmsg/$et.cmtmsg; if [ -f $cmtmsg_file ]; then echo $cmtmsg_file; else echo $cmtmsg_file not exists; fi; done'
+
+alias gr.srtype='egrep "TYPE|SERVICE_REQUEST|---"'
+alias gr.deftype='egrep "TYPE|DEFECT|---"'
+alias g.et1linfo='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -a {}'
+alias g.etdet='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s {}'
+
+
+# change dir quickly
+alias cd.l.nbudata='af.mcd ~/nbudata'
+alias cd.l.custdata='af.mcd ~/custdata'
+
+export GIT_CREDS=$GIT_USER
+alias set.gcred.usr='export GIT_CREDS=$GIT_USER'
+alias set.gcred.usracctkn='export GIT_CREDS=$GIT_USER:$ACCESS_TOKEN'
+# Git commands for quick nbu
+alias g.nbcln.src='git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/src.git ./src'
+alias g.nbcln.src..br='git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/src.git ./src --single-branch --branch'
+
+alias g.nbcln..rp='function af.nbcln1() { git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/$1.git ./$1; }; af.nbcln1'
+alias g.nbcln..rp.br='function af.nbclnsb2() { git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/$1.git ./$1 --single-branch --branch $2; }; af.nbclnsb2'
+alias g.addtag='echo -n "EEB version : "; read EEB_VER;for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; do et=`echo $a | sed -e'"'"'s/eeb\/et//gi'"'"'`; git log -1;  echo git tag -a EEB_et${et}_v${EEB_VER} -m \"EEB Version ${EEB_VER}\" `git rev-parse HEAD`; echo git push origin EEB_et${et}_v${EEB_VER}; echo git log -1; done'
+
+#misc commands
+alias cmd.md.nb.serverplatfs..path='function af.md.nb.serverplatfs () { mkdir -p $1/AMD64 $1/solaris $1/solaris_x86 $1/linuxR_x86 $1/linuxS_x86; }; af.md.nb.serverplatfs'
+alias cmd.ln.nb.tomcateeb='function af.ln.nb.tomcateeb () { mkdir AMD64; mkdir Unix; for f in  linuxR_x86 linuxS_x86 solaris solaris_x86; do if [ -e $f ]; then echo $f is exists; else echo $f; ln -s Unix  $f ; fi; done ; }; af.ln.nb.tomcateeb'
+alias cmd.ln.nb.all='function af.ln.nb.all () { mkdir all; for f in  AMD64 linuxR_x86 linuxS_x86 solaris solaris_x86; do if [ -e $f ]; then echo $f is exists; else echo $f; ln -s all  $f ; fi; done ; }; af.ln.nb.all'
+alias cmd.ln.nb.srv2clnt='function af.ln.nb.srv2clnt() { [ -d linuxR_x86_2.6.18 ] && ln -s linuxR_x86_2.6.18 linuxR_x86; [ -d linuxR_x86_2.6.32 ] && ln -s linuxR_x86_2.6.32 linuxR_x86; [ -d linuxS_x86_3.0.76 ] && ln -s linuxS_x86_3.0.76 linuxS_x86; [ -d zlinuxR_2.6.18 ] && ln -s zlinuxR_2.6.18 zlinuxR; [ -d zlinuxR_2.6.32 ] && ln -s zlinuxR_2.6.32 zlinuxR; [ -d zlinuxS_3.0.76 ] && ln -s zlinuxS_3.0.76 zlinuxS; [ -d solaris10 ] && ln -s solaris10 solaris; [ -d solaris_x86_10_32 ] && ln -s solaris_x86_10_32 solaris_x86; [ -d solaris_x86_10_64 ] && ln -s solaris_x86_10_64 solaris_x86; [ -d rs6000_61 ] && echo ln -s rs6000_61 rs6000; [ -d hpia11.31 ] && echo ln -s hpia11.31 hpia64 }; af.ln.nb.srv2clnt'
+
+export nbudata='~/nbudata'
+export custdata='~/custdata'

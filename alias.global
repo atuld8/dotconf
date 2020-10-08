@@ -1,0 +1,220 @@
+source ~/.vim/alias.extra
+
+export MVP=~/.vim
+export mvp=~/.vim
+
+function af.esh { echo "Cmd: $@"; $@; echo "Rc: $?";}
+
+alias a='. ~/.alias'
+alias al='. ~/.alias.loc'
+alias b='. ~/.bashrc'
+alias h='history'
+alias d='vim -d'
+alias eb='exec bash'
+alias find.a='alias | grep'
+alias find.afile='af.ff() { grep $@ ~/.alias* ~/.vim/alias*;}; af.ff'
+alias find.afileall='function af.fafa() { grep $@ ~/.alias* ~/.vim/alias* ~/.vim/wincmds/alias*;}; af.fafa'
+alias find.aall='function af.faa() { alias | grep "alias \w*\.*$1\.*\w*="; }; af.faa'
+alias pra='function af.pra(){ cmd=`alias $1 | sed -e"s/alias .*='\''//g" | sed -e "s/'\''$//g"`; echo $cmd ${@:2}; $cmd ${@:2}; }; af.pra'
+alias find.git='git alias | grep'
+alias h.find='history | grep'
+alias v='vim'
+
+if [ -z $SCP_HOSTNAME ]; then export SCP_HOSTNAME=`hostname`; fi
+
+alias @vim='function af.atvim() { (cd ~/.vim && $@;); }; af.atvim'
+
+alias cmd.lh='ls -A | grep "^\."'
+alias cmd.filetree="ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/ /' -e 's/-/|/'"
+alias cmd.notes='vim -n -c ":vsp | bN" -c ":wincmd r" -c ":wincmd |" -c ":vertical resize -70" -c ":wincmd w" ~/.notes_flist /work/AtazNbuNotes/VI\ shortcuts\ info.txt'
+alias cmd.vimc='vim -c "Tlist" -c "NERDTree" -c "wincmd w"'
+alias cmd.vimpluginst='vim +PluginInstall +qall'
+alias cmd.vimplugupd='vim +PluginUpdate +qall'
+alias cmd.gencscope='find -L $PWD -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.java" -o -name "*.py" -o -name "*.pl" -o -name "*.pm"> cscope.files; cscope -q -R -b -v -C -i cscope.files'
+alias cmd.gencscopesort='find -L $PWD -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.java" -o -name "*.py" -o -name "*.pl" -o -name "*.pm"> cscope.files; awk '"'"'{ print "\""$0"\""; }'"'"' cscope.files > cscope.files.tmp; mv -f cscope.files.tmp cscope.files; sort -u -o cscope.files cscope.files; cscope -q -R -b -v -C -i cscope.files -f cscope.out'
+alias cmd.genctags='ctags -R -a -f tags --c++-kinds=+p --fields=+iaS --extra=+q .'
+alias cmd.cleantagfiles='rm -f tags cscope.files cscope.out cscope.out.in cscope.out.po'
+alias cmd.regencscopectags='rm -f tags cscope.files cscope.out cscope.out.in cscope.out.po; find -L $PWD -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.java" -o -name "*.py" -o -name "*.pl" -o -name "*.pm"> cscope.files; awk '"'"'{ print "\""$0"\""; }'"'"' cscope.files > cscope.files.tmp; mv -f cscope.files.tmp cscope.files; sort -u -o cscope.files cscope.files; cscope -q -R -b -v -C -i cscope.files -f cscope.out; ctags -R -a -f tags --c++-kinds=+p --fields=+iaS --extra=+q .'
+alias cmd.vimpull='(cd ~/.vim; git pull; cd - >/dev/null)'
+alias cmd.wget..ln.d='function af.wget() { wget -r -R "index.html*" -H -nc -np -nH --no-check-certificate --cut-dirs $2 $1 ${@:3}; }; af.wget'
+alias cmd.wget..ln.d.depth='function af.wgetDepthx() { wget -r -R "index.html*" -H -nc -np -nH --no-check-certificate -l $3 --cut-dirs $2 $1 ${@:4};}; af.wgetDepthx'
+alias cmd.wget.flist..ln.d='function af.wgetflist() { wget --spider -r -R "index.html*" -H -nc -np -nH --no-check-certificate --no-parent -l 0 --cut-dirs $2 $1 ${@:3} 2>&1 | grep "^Removing" | grep -v "index.html" | sed -e"s/^Removing //g" | sed -e "s/\.$//g"; }; af.wgetflist' 
+alias cmd.cols="stty size | awk '{print \$2}'"
+alias cmd.fpwdbin..f='function af.find_binary() { find  -L $PWD -type f -iname $1 -o -iname $1.exe -o -iname $1.so -o -iname $1.dll; }; af.find_binary'
+alias cmd.fpwd..p.='function af.find_pwd() { find  -L $1 ${@:2}; }; af.find_pwd'
+alias cmd.fscpbin..f='function af.find_binary() { find -L $PWD -type f -iname $1 -o -iname $1.exe -o -iname $1.so -o -iname $1.dll | xargs -i echo "scp $USER@$SCP_HOSTNAME:"{}; }; af.find_binary'
+alias cmd.fscpbin..p.f='function af.find_binarypath() { find -L `readlink -f $1` -type f -iname $2 -o -iname $2.exe -o -iname $2.so -o -iname $2.dll | xargs -i echo "scp $USER@$SCP_HOSTNAME:"{}; }; af.find_binarypath'
+alias cmd.fscp..p.='function af.find_scp() { find -L $1 ${@:2} | xargs -i echo "scp $USER@$SCP_HOSTNAME:"{}; }; af.find_scp'
+alias cmd.fscp.get.path='function af.find_scppath() { echo "scp $USER@$SCP_HOSTNAME:"`readlink -f ${1:-.}`; }; af.find_scppath'
+alias cmd.fscp.get.path.tmp='function af.find_scptmp() { echo "scp $USER@$SCP_HOSTNAME:~/tmp"; }; af.find_scptmp'
+alias cmd.fpwdbin..p.f='function af.find_pwd_binary() { find -L `readlink -f $1` -type f -iname $2 -o -iname $2.exe -o -iname $2.so -o -iname $2.dll ; }; af.find_pwd_binary'
+alias cmd.screensplit='function af.screensplit() { screen -X screen 1 $* && screen -X other && screen -X split -v && screen -X focus right && screen -X other; }; af.screensplit'
+alias cmd.bundleupdate='for f in `ls`; do (echo $f; cd $f; pwd; git reset --hard; git pull;)& done'
+alias cmd.iptohex='function af.iptohex() { echo $* | sed -e '"'"'s/\./ /g'"'"' | xargs printf "%0.2X"; }; af.iptohex'
+alias cmd.ftree='function af.ftree() {  find $* -print | sed -e '"'"'s;[^/]*/;|____;g;s;____|; |;g'"'"'; }; af.ftree'
+alias cmd.tmuxinfo='function af.tmuxinfo() { TMUXINFO="${HOSTNAME/.*/} $OSName ${OSVer}"; PROMPT_COMMAND='"'"'echo -ne "\033_${PWD/#$HOME/~}"; echo -ne "\033\\";printf "\033k$TMUXINFO\033\\"'"'"';}; af.tmuxinfo'
+alias cmd.mvln..s.d='function af.cmd_mv_ln () { if [ ! -e $2 ]; then if [ -e $1 ]; then mv -- "$1" "$2"; ln -s -- $2 $1; else print "$1 not exists"; fi; else echo "$2 already exists"; fi; }; af.cmd_mv_ln'
+alias cmd.mk.multi.ln..s.list='function af.mk.multi.link() { for f in "${@:2}"; do echo creating link for $f; if [ ! -e $f ]; then ln -s -- $1 $f; echo link created; else echo $f already exists; fi; done; }; af.mk.multi.link'
+alias cmd.unc2http='function af.unc2http() { echo "$@" | sed -e "s/^\\\\/http:\/\//g" | sed -e "s/\\\\/\//g" | sed -e "s/$/\//g"; }; af.unc2http'
+alias cmd.rmtcmd='function af.cmdrmt() { ssh -q -t $RMTCMD_HOST bash -ic '"\'"'$@'"\'"'; }; af.cmdrmt'
+
+# modify configs quickly
+alias e='$CFG_EDITOR'
+alias e.l.a='$CFG_EDITOR ~/.alias'
+alias e.l.al='$CFG_EDITOR ~/.alias.loc'
+alias e.l.at='$CFG_EDITOR ~/.alias.tmp'
+alias e.l.b='$CFG_EDITOR ~/.bashrc'
+alias e.l.scrarch='$CFG_EDITOR ~/.scratch.txt'
+alias e.l.tmux='$CFG_EDITOR ~/.tmux.conf'
+alias e.l.screenrc='$CFG_EDITOR ~/.screenrc'
+alias e.l.vimrc='$CFG_EDITOR ~/.vimrc'
+alias e.l.gc='$CFG_EDITOR ~/.gitconfig'
+alias e.rme='$CFG_EDITOR ~/.vim/README.md'
+alias e.knwhosts='$CFG_EDITOR ~/.ssh/known_hosts'
+alias e.key='$CFG_EDITOR ~/.keyfile'
+alias e.helpfile='$CFG_EDITOR ~/.helpfile'
+alias e.vimenc='vim --cmd "set key=$VIMPASS"'
+alias e.perlmodules='$MULTI_CFG_EDITOR -c "args *.pl" -c "args Build TODO" -c "args **/*.pm" -c "args */*/*.pm" -c "args */*/*/*.pm" '
+alias e.tmpn='function af.opentmpnfile() { $CFG_EDITOR /tmp/tmp$1.txt; }; af.opentmpnfile'
+
+# Display on terminal
+alias cat.rme='cat ~/.vim/README.md'
+alias cat.key='cat ~/.keyfile'
+alias cat.iprc='cat ~/.vim/inputrc'
+
+# custom directories
+function af.cd() { cd $1/$2; }
+function af.pushd() { pushd $1/$2; }
+function af.mcd() { cd $1/$2 2>/dev/null || mkdir -p $1/$2 && cd $1/$2; }
+function af.mvToOrg() { mv $1 $1.org; }
+function af.mvFromOrg() { mv $1.org $1; }
+alias cd.l.data='af.mcd ~/data'
+alias cd.sb.stage='af.cd ~/stage || ( mkdir ~/stage && cd ~/stage )'
+alias cd.vim='af.cd ~/.vim'
+alias pd.vim='af.pushd ~/.vim'
+alias cd.vim.mintty='af.cd ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/'
+alias cd.gbase='af.cd `git rev-parse --show-toplevel`'
+alias cd.worknotes='echo Error. Define this in ~/.alias'
+alias .cdls..d.='function af.cdls() { cd $1/$2; ls; }; af.cdls'
+alias .mkcd..d.='af.mcd'
+alias .mv2org='af.mvToOrg'
+alias .mv4org='af.mvFromOrg'
+alias cd..1='af.cd ..'
+alias cd..2='af.cd ../..'
+alias cd..3='af.cd ../../..'
+alias cd..4='af.cd ../../../..'
+alias cd..5='af.cd ../../../../..'
+alias cd..6='af.cd ../../../../../..'
+alias cd..7='af.cd ../../../../../../..'
+
+export dt2='../..'
+export dt3='../../..'
+export dt4='../../../..'
+export dt5='../../../../..'
+export dt6='../../../../../..'
+export dt7='../../../../../../..'
+
+# git alias
+alias g='git'
+alias g.alias='git config --list | grep alias'
+alias g.askpass='unset SSH_ASKPASS'
+alias g.askpassno='export SSH_ASKPASS=/bin/echo'
+alias g.brLstCmt='for branch in `git branch -r | grep -v HEAD`;do echo -e `git show --format="%ai %ar by %an" $branch | head -n 1` \\t$branch; done | sort -r'
+alias g.brMrgd='git branch --merged master | grep -v "^[ *]*master$"'
+alias g.brRmtLnk='for f in `git ls-remote --head | awk "{print $2}"`; do for b in `git branch | sed -e"s/\* //g"`; do if [ "refs/heads/$b" == "$f" ]; then echo $f; fi; done;done'
+alias g.brCurRmtLink='for b in `git branch | awk '"'"' $1 =="*" { print $2 }'"'"'`; do git ls-remote --head | grep "$b"; done'
+alias g.brMeList="git for-each-ref --format='%(committerdate) %09 %(authorname) %09 %(refname)' | sort -k5n -k2M -k3n -k4n | grep 'Atul Das'"
+alias g.brMe="git for-each-ref --format=' %(authorname) %09 %(refname)' --sort=authorname  | grep 'Atul Das'  | sed -e 's/refs\/remotes\/origin\///'"
+alias g.syncrb='git remote -v update; git status -uno'
+alias g.syncmb='git remote -v update; git log HEAD..origin/master --oneline'
+alias g.etnum='git branch | grep "*" | awk -F'"'"'t'"'"' '"'"'{ print $2}'"'"''
+alias g.gh.user.email='git config --local user.email "atuld8@gmail.com"'
+alias g.gh.user.name='git config  --local user.name "atuld8"'
+
+# to get quick help docs
+alias h.doc='vim --cmd "set key=$VIMPASS" -c ":let g:nerdtreefindexec=1" -c ":NERDTree" ~/.vim/doc/*.txt'
+alias h.termhelp='vim --cmd "set key=$VIMPASS" ~/.vim/doc/Bash.KB.shrtcuts.txt'
+alias h.tags='function af.list_tags() { cut -d" " -f1  ~/.helpfile | sort -u; }; af.list_tags'
+alias h.prnttag..t='function af.find_tag() { egrep "^$1:" ~/.helpfile | cut -d" " -f2-; }; af.find_tag'
+
+# Misc commands
+alias .rc='echo $?'
+alias .py=python
+alias .py35=python3.5
+alias .ssh='function af.ssh() { if [ ! -z "$TMUX" ]; then tmux rename-window "${1##*@}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${1##*@}"; fi; ssh -X -Y -t -o  StrictHostKeyChecking=no  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $@; if [ ! -z "$TMUX" ]; then tmux rename-window "${TMUX_HOSTNAME}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${HOSTNAME}"; fi;}; af.ssh'
+alias .ssh.setpassless='function af.ssh.setpassless () { ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1 "mkdir ~/.ssh; echo `cat ~/.ssh/id_rsa.pub` >> ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 644 ~/.ssh/authorized_keys"; ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1; }; af.ssh.setpassless'
+alias .sshtmux='function af.sshtmux() { if [ ! -z "$TMUX" ]; then tmux rename-window "${1##*@}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${1##*@}"; fi; ssh -X -Y -t -o  StrictHostKeyChecking=no  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1 -t "tmux attach -d -t main || tmux new -s main";if [ ! -z "$TMUX" ]; then tmux rename-window "${TMUX_HOSTNAME}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${HOSTNAME}"; fi;}; af.sshtmux'
+alias .pushd='IFS=$'"'"'\n'"'"'; for f in `alias  | grep '"'"' cd\..*='"'"' | grep "^alias" | sed -e'"'"'s/cd\./pd\./g'"'"' | sed -e'"'"'s/cd /pushd /g'"'"'`; do echo $f ; done > /tmp/1.sh; . /tmp/1.sh'
+alias .tmux=' tmux attach -d -t main; if [ $? -ne 0 ]; then tmux new -s main; fi;'
+# addhock alias
+alias .dfl='df --type btrfs --type ext4 --type ext3 --type ext2 --type vfat --type iso9660 --type xfs'
+alias .ascii='man ascii'
+alias .signals='kill -l'
+
+# frequeently used alias, hence quick access
+# alias q.=''
+
+# SET ENV VARIABLE
+alias set.gst.skip='export GIT_STATUS_LEVEL=0'
+alias set.gst.br='export GIT_STATUS_LEVEL=1'
+alias set.gst.brst='export GIT_STATUS_LEVEL=2'
+alias set.gst.full='export GIT_STATUS_LEVEL=3'
+
+alias set.gbase='export gbase=`git rev-parse --show-toplevel`'
+alias set.histrydata='export HISTTIMEFORMAT="%d/%m/%y %T "'
+alias set.es='export es='"'"'echo -e \n-------------------------------------- -------------------------------------- --------------------------------------\n '"'"''
+
+export CFG_EDITOR=vim
+export MULTI_CFG_EDITOR=vim
+alias set.e.vimsrv='CFG_EDITOR="vim --servername CFG_EDITOR --remote-silent"'
+alias set.e.vimsrvtab='CFG_EDITOR="vim --servername CFG_EDITOR --remote-tab-silent"'
+alias set.e.gvimsrv='CFG_EDITOR="gvim --servername CFG_EDITOR --remote-silent"'
+alias set.e.gvimsrvtab='CFG_EDITOR="gvim --servername CFG_EDITOR --remote-tab-silent"'
+alias set.e.emacs='CFG_EDITOR=emacs -nw'
+alias set.e='function af.set.e () { export CFG_EDITOR=$1; }; af.set.e'
+alias set.e.multiCfgEditor='MULTI_CFG_EDITOR=$CFG_EDITOR'
+
+alias set.a.dc='. ~/.vim/alias.dotconf'
+alias set.a.nb='. ~/.vim/alias.nbu'
+alias set.a.nbpmtest='. ~/.vim/alias.nbpm.test'
+alias set.a.oc='. ~/.vim/alias.oc'
+alias set.a.bld='. ~/.vim/alias.bldbx'
+alias set.a.gbl='. ~/.vim/alias.global'
+alias set.a.sf='. ~/.vim/alias.sf'
+alias set.a.tmp='. ~/.alias.tmp'
+alias set.a.loc='. ~/.alias.loc'
+alias set.a.inst='. ~/.vim/scripts/definstallpathsaliases.sh'
+
+alias set.p..p='function af.set.p() { export PATH=$PATH:$@; }; af.set.p'
+alias set.p.list='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' '
+alias set.p.list.sort='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' | sort -u'
+
+alias cmd.gendotconf='( cd  ~/.vim && /usr/bin/git pull && cd .. && tar -cf vim.tar .vim && mv -f vim.tar dotconf.tar)'
+alias cmd.dotconf='cd ~; scp root@${DOTCONF_HOSTNAME}:~/dotconf.tar ~; tar -xf dotconf.tar; rm -f dotconf.tar'
+alias cp.dotconf='echo "cd ~; scp root@${DOTCONF_HOSTNAME}:~/dotconf.tar ~; tar -xf dotconf.tar; rm -f dotconf.tar"'
+
+# list of alias
+alias a.als="alias   | grep ' a\..*='"
+alias a.cat="alias | grep ' cat\..*='"
+alias a.cd="alias  | grep ' cd\..*='"
+alias a.cmd="alias  | grep ' cmd\..*='"
+alias a.cp="alias  | grep ' cp\..*='"
+alias a.dff="alias   | grep ' d\..*='"
+alias a.edt="alias   | grep ' e\..*='"
+alias a.func="declare -F | cut -d ' ' -f 3 |  column"
+alias a.func.af="declare -F | grep "af\." | cut -d ' ' -f 3 |  column"
+alias a.gbl="alias   | grep ' g\..*='"
+alias a.help="alias   | grep ' h\..*='"
+alias a.loc="alias   | grep '.*\.l\..*='"
+alias a.misc="alias   | grep ' m\..*='"
+alias a.othr="alias   | grep -v 'alias .*\..*='"
+alias a.pd="alias  | grep ' pd\..*='"
+alias a.qk="alias   | grep ' q\..*='"
+alias a.set="alias  | grep ' set\..*='"
+alias a.tmp="alias   | grep ' t\..*='"
+alias a..="alias   | grep '\..*\..*='"
+alias a..1.2='function af.a12() { alias | grep "$1\.$2\..*="; }; af.a12'
+alias a..1='function af.a1() { alias | grep "$1\..*="; }; af.a1'
+alias a.="alias   | grep '^alias \..*='"
+alias a.x="alias | grep '^alias [a-z]='"
+

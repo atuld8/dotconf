@@ -1,0 +1,33 @@
+if [ -f /etc/redhat-release ]; then
+export NBPM_OS=linuxR_x86_2.6.32
+fi
+
+if [ -f /etc/SuSE-release ]; then
+export NBPM_OS=linuxS_x86_4.4.73
+fi
+
+export nbperflog='/usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
+
+alias t.nbpm.killnbperfmon='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -9 $p; done'
+alias t.nbpm.runnbperfmon='/usr/openv/netbackup/bin/nbperfmon'
+alias t.nbpm.stopnbperfmon='/usr/openv/netbackup/bin/nbperfmon -terminate'
+
+alias t.nbpm.scp.nbperfmon.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/debug/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin'
+alias t.nbpm.scp.nbperfmon.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/release/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin/'
+
+alias t.nbpm.syslognbperfmon='grep nbperfmon  /var/log/*.log'
+alias t.nbpm.trunklog='echo > /usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
+alias t.nbpm.trunksyslog='echo > /var/log/debug.log'
+
+alias t.nbpm.listnbperfmon='ps -elf | grep nbperfmon | grep -v grep'
+alias t.nbpm.termnbperfmon='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -TERM $p; done'
+alias t.nbpm.catuuid='cat /usr/openv/tmp/41938320-72B9-4818-A4F2-16EBF79F40F0.CHILD  /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN'
+
+alias t.nbpm.watchfolder='watch ls -lhR /usr/openv/netbackup/logs/nbperfmon'
+alias t.nbpm.watchfind='watch  "find /usr/openv/netbackup/logs/nbperfmon -type f -exec ls -l {} \;"'
+
+export NBPERF_LIST="nbperfmon|nbcputest"
+alias t.nbpm.top='TOP_ARG=; for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -p `echo $TOP_ARG | cut -c2-`'
+
+alias t.nbpm.rerun="t.nbpm.trunklog;t.nbpm.termnbperfmon;sleep 2; t.nbpm.runnbperfmon"
+alias t.nbpm.scprun="t.nbpm.trunklog;t.nbpm.termnbperfmon;t.nbpm.scp.nbperfmon.r ;t.nbpm.runnbperfmon"

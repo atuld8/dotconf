@@ -1,0 +1,26 @@
+# export GIT_USER=
+# export GIT_SERVER=
+# export VIMPASS=
+# export CFG_EDITOR=vim/gvim/cat
+# export GIT_STATUS_LEVEL=0/1/2/3
+# export SCP_HOSTNAME=`hostname`.`domainname`
+# export DOTCONF_HOSTNAME=
+# export RMTCMD_HOST=
+
+source ~/.vim/alias.global
+#source ~/.vim/alias.nbu
+#source ~/.vim/alias.bldbx
+#source ~/.vim/alias.dotconf
+#source ~/.vim/scripts/definstallpathsaliases.sh
+#source ~/.vim/alias.sf
+#source ~/.vim/wincmds/alias_cygwin
+#source ~/.vim/wincmds/alias_nbu_cygwin
+
+if [ -f ~/.alias.tmp ]; then
+    source ~/.alias.tmp
+fi
+
+if [ -f ~/.alias.loc ]; then
+    source ~/.alias.loc
+fi
+

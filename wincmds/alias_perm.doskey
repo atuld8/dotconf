@@ -1,0 +1,27 @@
+alias=DOSKEY /MACROS $*
+cd.~.win=cd /d %userprofile%
+set.alias=%userprofile%\alias.cmd $*
+set.qalias=%userprofile%\alias.cmd QUICK_ACCESS $*
+
+.mini=start "cmd" /I /D %USERPROFILE% cmd "/k mini.cmd"
+
+g=git $*
+e=gvim $*
+e.clink=notepad "%SYSTEMDRIVE%\Program Files (x86)\clink\0.4.9\clink.bat"
+r.clink=reg query "HKCU\Software\Microsoft\Command Processor" /v Autorun
+.rc=echo %ERRORLEVEL% $*
+.xp=%WINDIR%\explorer.exe $*
+.shell=%WINDIR%\explorer.exe shell:$*
+.chrome="%SYSTEMDRIVE%\Program Files (x86)\Google\Chrome\Application\chrome.exe" $*
+.firefox="%SYSTEMDRIVE%\Program Files (x86)\Mozilla Firefox\firefox.exe" $*
+.fs=findstr /I $*
+.np++="%SYSTEMDRIVE%\Program Files (x86)\Notepad++\notepad++.exe" $*
+.np=notepad $*
+.bc2="%SYSTEMDRIVE%\Program Files (x86)\Beyond Compare 2\BC2.exe" $*
+.bc4="%SYSTEMDRIVE%\Program Files\Beyond Compare 4\BComp.exe" $*
+.mv2org=rename $* $*.org
+.mv4org=rename $*.org $*
+.7z="%SYSTEMDRIVE%\Program Files\7-Zip\7z.exe" $*
+.st3="%SYSTEMDRIVE%\Program Files\Sublime Text 3\sublime_text.exe" $*
+.tp="%SYSTEMDRIVE%\Program Files (x86)\TextPad 4\TextPad.exe" $*
+.ff=FORFILES /S /C "cmd /c echo @path" $*

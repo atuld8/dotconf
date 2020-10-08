@@ -1,0 +1,65 @@
+{
+    "added_words":
+        [
+        "Atul",
+        "Das"
+        ],
+        "color_scheme": "Packages/User/SublimeLinter/Monokai (SL).tmTheme",
+        "draw_white_space": "none",
+        "find_selected_text": true,
+        "font_face": "Fixed-6x13",
+        "font_options":
+            [
+            "antialias"
+            ],
+        "font_size": 13,
+        "ignored_packages":
+            [
+            ""
+            ],
+        "show_full_path": true,
+        "spell_check": true,
+        "theme": "Adaptive.sublime-theme",
+        "vintage_start_in_command_mode": true
+}
+
+// Package control.sublime-settings
+{
+    "bootstrapped": true,
+        "in_process_packages":
+            [
+            ],
+            "installed_packages":
+                [
+                "1337 Color Scheme",
+            "AceJump",
+            "All Autocomplete",
+            "AutoSpell",
+            "BracketHighlighter",
+            "Clickable URLs",
+            "Color Highlighter",
+            "ColorPicker",
+            "Compare Side-By-Side",
+            "EasyMotion",
+            "Emmet",
+            "FileDiffs",
+            "Git",
+            "GitGutter",
+            "Local History",
+            "Open URL",
+            "Python 3",
+            "Quick File Open",
+            "RegReplace",
+            "SublimeCodeIntel",
+            "SublimeLinter",
+            "SummitLinter",
+            "SwapStrings",
+            "Terminal",
+            "TrailingSpaces",
+            "Trimmer",
+            "VIM Navigation",
+            "Vintage Surround",
+            "WordHighlight"
+                ]
+}
+

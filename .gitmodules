@@ -1,0 +1,6 @@
+[submodule "bundle/fugitive"]
+	path = bundle/fugitive
+	url = http://github.com/tpope/vim-fugitive.git
+[submodule "bundle/pydiction"]
+	path = bundle/pydiction
+	url = http://github.com/rkulla/pydiction.git
