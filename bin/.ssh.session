@@ -1,12 +1,12 @@
 #!/bin/bash
-#set -x
+set -x
 if [ "$1" == "" ]; then echo "`basename $0` user@hostname [type:tmux*/screen] [session:main*/<name>] [option:*/dup/new]"; exit 1; fi
 
 HOSTNAME=$1
 STYPE=${2:-tmux}
 SESSION=${3:-main}
 OPTION=$4
-COMMAND=tmux attach -d -t $SESSION
+COMMAND="tmux attach -d -t $SESSION"
 
 if [ ! -z "$TMUX" ]; then
     tmux rename-window "${1##*@}";
@@ -18,21 +18,21 @@ fi;
 
 if [ "$OPTION" == "dup" ]; then
     if [ "$STYPE" == "screen" ]; then
-        COMMAND=screen -xS $SESSION
+        COMMAND="screen -xS $SESSION"
     else
-        COMMAND=tmux attach -t $SESSION
+        COMMAND="tmux attach -t $SESSION"
     fi
 elif [ "$OPTION" == "new" ]; then
     if [ "$STYPE" == "screen" ]; then
-        COMMAND=screen -S $SESSION
+        COMMAND="screen -S $SESSION"
     else
-        COMMAND=tmux new -s $SESSION
+        COMMAND="tmux new -s $SESSION"
     fi
 else
     if [ "$STYPE" == "screen" ]; then
-        COMMAND=screen -d -r -S $SESSION
+        COMMAND="screen -d -r -S $SESSION"
     else
-        COMMAND=tmux attach -d -t $SESSION
+        COMMAND="tmux attach -d -t $SESSION"
     fi
 fi
 
