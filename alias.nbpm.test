@@ -8,19 +8,19 @@ fi
 
 export nbperflog='/usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
 
-alias t.nbpm.killnbperfmon='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -9 $p; done'
-alias t.nbpm.runnbperfmon='/usr/openv/netbackup/bin/nbperfmon'
-alias t.nbpm.stopnbperfmon='/usr/openv/netbackup/bin/nbperfmon -terminate'
+alias t.nbpm.kill='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -9 $p; done'
+alias t.nbpm.run='/usr/openv/netbackup/bin/nbperfmon'
+alias t.nbpm.stop='/usr/openv/netbackup/bin/nbperfmon -terminate'
 
-alias t.nbpm.scp.nbperfmon.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/debug/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin'
-alias t.nbpm.scp.nbperfmon.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/release/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin/'
+alias t.nbpm.scp.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/debug/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin'
+alias t.nbpm.scp.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/release/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin/'
 
-alias t.nbpm.syslognbperfmon='grep nbperfmon  /var/log/*.log'
+alias t.nbpm.syslog='grep nbperfmon  /var/log/*.log'
 alias t.nbpm.trunklog='echo > /usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
 alias t.nbpm.trunksyslog='echo > /var/log/debug.log'
 
-alias t.nbpm.listnbperfmon='ps -elf | grep nbperfmon | grep -v grep'
-alias t.nbpm.termnbperfmon='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -TERM $p; done'
+alias t.nbpm.list='ps -elf | grep nbperfmon | grep -v grep'
+alias t.nbpm.term='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -TERM $p; done'
 alias t.nbpm.catuuid='cat /usr/openv/tmp/41938320-72B9-4818-A4F2-16EBF79F40F0.CHILD  /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN'
 
 alias t.nbpm.watchfolder='watch ls -lhR /usr/openv/netbackup/logs/nbperfmon'
@@ -29,7 +29,7 @@ alias t.nbpm.watchfind='watch  "find /usr/openv/netbackup/logs/nbperfmon -type f
 export NBPERF_LIST="nbperfmon|nbcputest"
 alias t.nbpm.top='TOP_ARG=; for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -p `echo $TOP_ARG | cut -c2-`'
 
-alias t.nbpm.rerun="t.nbpm.trunklog;t.nbpm.termnbperfmon;sleep 2; t.nbpm.runnbperfmon"
-alias t.nbpm.scprun="t.nbpm.trunklog;t.nbpm.termnbperfmon;t.nbpm.scp.nbperfmon.r ;t.nbpm.runnbperfmon"
+alias t.nbpm.rerun="t.nbpm.trunklog;t.nbpm.term;sleep 2; t.nbpm.run"
+alias t.nbpm.scprun="t.nbpm.trunklog;t.nbpm.term;t.nbpm.scp.r ;t.nbpm.run"
 alias t.nbpm.genlkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbperfmon.json /usr/openv/netbackup/nbperfmon.json.lkgc$1; }; af.cplkgc'
 alias t.nbpm.rev2lkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbperfmon.json.lkgc$1 /usr/openv/netbackup/nbperfmon.json; }; af.cplkgc'
