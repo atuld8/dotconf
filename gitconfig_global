@@ -164,9 +164,10 @@
 
     lEebDet = log --simplify-by-decoration --decorate --graph
     lEebShrt = log --graph --simplify-by-decoration --oneline --decorate
-    lSummary = log -n 1 --pretty=format:'%s'
-    lcmtMsg = log -n 1 --pretty=format:'%s%n%n%b'
-    lcmtMsg1 = log --format=%B -n 1
+    ltopcmtmsg = log -n 1 --pretty=format:'%s'
+    ltopcmtMsg1 = log -n 1 --pretty=format:'%s%n%n%b'
+    ltopcmtMsg2 = log --format=%B -n 1
+    lcmtmsgonly = log --pretty=format:%s
 
     modTrkRltv= status -s -uno
     modTrk= status --porcelain -uno
