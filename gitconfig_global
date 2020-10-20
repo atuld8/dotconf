@@ -73,7 +73,7 @@
     co = checkout
     coeeb = "!f_coeeb() { git checkout -b eeb/et$1 origin/NB_$2; }; f_coeeb"
     cobfx = "!f_coeeb() { git checkout -b bugfix/et$1 ${2:-origin/master}; }; f_coeeb"
-    coMstr = !git fetch origin/master && git checkout master
+    coMstr = !git fetch origin -p && git chekcout master && git pull
 
     confLs = config --list
     confG = config --global
@@ -192,7 +192,7 @@
     rstAll = ! git fetch && git reset --hard origin && git pull
     rmt = ls-remote --head
     rPrune = remote update --prune
-    rbmaster=!git fetch origin && git rebase origin/master
+    rbmstr=!git fetch origin && git rebase origin/master
     rbsftmstr=!git diff --cached && git reset --soft `git merge-base HEAD origin/master` && git diff --cached --name-only
     rbsftrp= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/$1` && git diff --cached --name-only; }; f_rbsftrp"
 
