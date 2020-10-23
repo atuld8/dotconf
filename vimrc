@@ -61,6 +61,8 @@ endfunction
 ""if light color background
 
 " set background=light
+command! CurD call CursorLineD()
+command! CurL call CursorLineL()
 
 if &background == "dark"
    call CursorLineD()
