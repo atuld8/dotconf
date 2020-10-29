@@ -197,7 +197,8 @@
     rbsftrp= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/$1` && git diff --cached --name-only; }; f_rbsftrp"
 
     stSB = status --short --branch
-    stu = status -u
+    stuall = status -u
+    stunrm = status -unormal
     stuno = status -uno
     strp = status -s
     sti = status --ignored
