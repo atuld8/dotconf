@@ -74,6 +74,7 @@
     coeeb = "!f_coeeb() { git checkout -b eeb/et$1 origin/NB_$2; }; f_coeeb"
     cobfx = "!f_coeeb() { git checkout -b bugfix/et$1 ${2:-origin/master}; }; f_coeeb"
     coMstr = !git fetch origin -p && git chekcout master && git pull
+    crbr = "!f_coeeb() { git checkout -b $1 ${2:-origin/master}; }; f_coeeb"
 
     confLs = config --list
     confG = config --global
