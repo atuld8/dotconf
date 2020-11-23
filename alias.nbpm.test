@@ -29,6 +29,7 @@ alias t.nbpm.watchfind='watch  "find /usr/openv/netbackup/logs/nbperfmon -type f
 
 export NBPERF_LIST="nbperfmon|nbcputest"
 alias t.nbpm.top='TOP_ARG=; while [ 1 ]; do for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -b -n 1 -p `echo $TOP_ARG | cut -c2-` > /tmp/$$.output; sleep 2; clear; cat /tmp/$$.output;  done'
+alias t.nbpm.watchself='watch -d -n 10 "ps faxeo pid,command,pmem,rss,vsz,sz,size | egrep \"PID|\$(cat /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN)\""'
 
 alias t.nbpm.rerun="t.nbpm.trunklog;t.nbpm.delevd;t.nbpm.term;sleep 2; t.nbpm.run"
 alias t.nbpm.scprun="t.nbpm.trunklog;t.nbpm.delevd;t.nbpm.term;t.nbpm.scp.r ;t.nbpm.run"
