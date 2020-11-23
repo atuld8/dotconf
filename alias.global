@@ -88,7 +88,7 @@ function af.pushd() { pushd $1/$2; }
 function af.mcd() { cd $1/$2 2>/dev/null || mkdir -p $1/$2 && cd $1/$2; }
 function af.mvToOrg() { mv $1 $1.org; }
 function af.mvFromOrg() { mv $1.org $1; }
-alias cd.l.data='af.mcd ~/data'
+alias cd.data='af.mcd ~/data'
 alias cd.sb.stage='af.cd ~/stage || ( mkdir ~/stage && cd ~/stage )'
 alias cd.vim='af.cd ~/.vim'
 alias pd.vim='af.pushd ~/.vim'

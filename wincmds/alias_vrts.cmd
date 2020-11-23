@@ -10,9 +10,9 @@
 @DOSKEY cd.sym=%~dp0cd.cmd "C:\Program Files\Symantec\$*"
 @DOSKEY cd.vrts=%~dp0cd.cmd "C:\Program Files\Veritas\$*"
 
-@DOSKEY cd.l.nbudata=IF EXIST "%systemDrive%\nbudata\$*" ( %~dp0cd.cmd %systemDrive%\nbudata\$* ) ELSE ( mkdir "%systemDrive%\nbudata\$*" ^& %~dp0cd.cmd %systemDrive%\nbudata\$* 2^> NUL )
-@DOSKEY cd.l.qTE=%~dp0cd.cmd %systemDrive%\nbudata\quickTestEnv\$* 2^> NUL
-@DOSKEY cd.l.custdata=IF EXIST "%systemDrive%\custdata\$*" ( %~dp0cd.cmd %systemDrive%\custdata\$* ) ELSE ( mkdir "%systemDrive%\custdata\$*" ^& %~dp0cd.cmd %systemDrive%\custdata\$* 2^> NUL )
+@DOSKEY cd.nbudata=IF EXIST "%systemDrive%\nbudata\$*" ( %~dp0cd.cmd %systemDrive%\nbudata\$* ) ELSE ( mkdir "%systemDrive%\nbudata\$*" ^& %~dp0cd.cmd %systemDrive%\nbudata\$* 2^> NUL )
+@DOSKEY cd.qTE=%~dp0cd.cmd %systemDrive%\nbudata\quickTestEnv\$* 2^> NUL
+@DOSKEY cd.custdata=IF EXIST "%systemDrive%\custdata\$*" ( %~dp0cd.cmd %systemDrive%\custdata\$* ) ELSE ( mkdir "%systemDrive%\custdata\$*" ^& %~dp0cd.cmd %systemDrive%\custdata\$* 2^> NUL )
 
 :QA_ALIAS_VRTS
 

@@ -116,7 +116,7 @@
 @DOSKEY cd.temp=%~dp0cd.cmd %temp%
 @DOSKEY cd.tmp=%~dp0cd.cmd %SystemDrive%\temp
 @DOSKEY cd.wn= %~dp0cd.cmd "%userprofile%"\Dropbox\Worknotes\$*
-@DOSKEY cd.l.data=IF EXIST "%userprofile%\data\$*" ( %~dp0cd.cmd %userprofile%\data\$* ) ELSE ( mkdir "%userprofile%\data\$*" ^& %~dp0cd.cmd %userprofile%\data\$* 2^> NUL )
+@DOSKEY cd.data=IF EXIST "%userprofile%\data\$*" ( %~dp0cd.cmd %userprofile%\data\$* ) ELSE ( mkdir "%userprofile%\data\$*" ^& %~dp0cd.cmd %userprofile%\data\$* 2^> NUL )
 @DOSKEY cd.sb.stage=IF EXIST "%userprofile%\stage\$*" ( %~dp0cd.cmd %userprofile%\stage\$* ) ELSE ( mkdir "%userprofile%\stage\$*" ^& %~dp0cd.cmd %userprofile%\stage\$* 2^> NUL )
 
 @DOSKEY cd..1=%~dp0cd.cmd .. $*
