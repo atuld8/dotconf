@@ -134,6 +134,8 @@
 @DOSKEY nb.vxlvall=vxlogview -G . -p 51216 -d all $*
 @DOSKEY nb.x509=vxsslcmd x509 -text -noout -fingerprint -sha1 -in $*
 @DOSKEY nb.x509chn=vxsslcmd crl2pkcs7 -nocrl -certfile $* ^| vxsslcmd pkcs7 -print_certs -text -noout
+@DOSKEY nb.jver="%%NBU_INST_PATH%%NetBackup\jre\bin\java.exe" -version
+@DOSKEY nb.tcver="%%NBU_INST_PATH%%NetBackup\wmc\bin\setenv.bat" ^> NUL ^&^& pushd "%%NBU_INST_PATH%%NetBackup\wmc\webserver\bin" ^&^& version.bat ^&^& popd
 
 @DOSKEY nb.at.login=bpnbat -login ^&^& bpnbat -whoami
 @DOSKEY nb.at.login.auto=bpnbat -login -Info %userprofile%\atlogin$*.info ^&^& bpnbat -whoami
