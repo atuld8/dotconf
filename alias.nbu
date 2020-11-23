@@ -133,6 +133,8 @@ alias nb.mux='echo https://`hostname -f`:1556/webui/login'
 alias nb.logloc='function af.nb.logloc() { grep $@ /usr/openv/netbackup/nblog.conf /usr/openv/netbackup/logs/mklogdir; }; af.nb.logloc'
 alias nb.x509='vxsslcmd  x509 -text -noout -fingerprint -sha1 -in'
 alias nb.x509chn='function af.nb.x509chn() { vxsslcmd crl2pkcs7 -nocrl -certfile $1 | vxsslcmd pkcs7 -print_certs -text -noout ${@:2}; }; af.nb.x509chn'
+alias nb.jver='/usr/openv/java/jre/bin/java -version'
+alias nb.tcver='( . /usr/openv/wmc/bin/setenv && /usr/openv/wmc/webserver/bin/version.sh )'
 
 # NBU uninstall commands to remove native packaging
 alias nb.uninst.linux='function af.nb.uninst.lr() { bp.kill_all -v -f ; for f in `rpm -qa | egrep "SYMC|VRTSnbclt|VRTSnetbp|VRTSnbjre|VRTSnbcfg|VRTSnbpck|VRTSnbjava|VRTSpddes|VRTSpddea" | sort `; do echo "uninstall $f"; rpm -qi $f;rpm -e $f --nodeps; if [ $? -ne 0 ]; then echo "*** failed to uninstall $f"; fi; done; echo "Uninstall VRTSpbx if required"; cd /usr/openv; ls -l; }; af.nb.uninst.lr'

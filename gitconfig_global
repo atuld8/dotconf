@@ -197,6 +197,7 @@
     rbsftmstr=!git diff --cached && git reset --soft `git merge-base HEAD origin/master` && git diff --cached --name-only
     rbsftrp= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/$1` && git diff --cached --name-only; }; f_rbsftrp"
 
+    st = status
     stSB = status --short --branch
     stuall = status -u
     stunrm = status -unormal
