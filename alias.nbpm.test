@@ -28,7 +28,7 @@ alias t.nbpm.watchfolder='watch ls -lhR /usr/openv/netbackup/logs/nbperfmon'
 alias t.nbpm.watchfind='watch  "find /usr/openv/netbackup/logs/nbperfmon -type f -exec ls -l {} \;"'
 
 export NBPERF_LIST="nbperfmon|nbcputest"
-alias t.nbpm.top='TOP_ARG=; for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -p `echo $TOP_ARG | cut -c2-`'
+alias t.nbpm.top='TOP_ARG=; while [ 1 ]; do for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -b -n 1 -p `echo $TOP_ARG | cut -c2-` > /tmp/$$.output; sleep 2; clear; cat /tmp/$$.output;  done'
 
 alias t.nbpm.rerun="t.nbpm.trunklog;t.nbpm.delevd;t.nbpm.term;sleep 2; t.nbpm.run"
 alias t.nbpm.scprun="t.nbpm.trunklog;t.nbpm.delevd;t.nbpm.term;t.nbpm.scp.r ;t.nbpm.run"
