@@ -148,7 +148,7 @@
 @DOSKEY nb.nbwebUser1pass=net user nbwebsvc $* /add ^&^& net localgroup nbwebgrp /add ^&^& net localgroup nbwebgrp nbwebsvc /add
 @DOSKEY nb.sv.del.s1=wmic service where "displayname like '%%netbackup%%'" get name ^| findstr /V "^Name *$" $*
 @DOSKEY nb.sv.del.s2=for /f "tokens=*" %%s in (nbuservicelist.txt) do ( echo sc delete  "%%s" ) $*
-@DOSKEY nb.jreup=nbcomponentupdate -pro netbackup -comp jre $*
+@DOSKEY nb.jreup="%%NBU_INST_PATH%%NetBackup\bin\goodies\nbcomponentupdate.exe" -pro netbackup -comp jre $*
 
 @DOSKEY wmic.srvc=wmic service where "displayname like '%%netbackup%%'" get name
 @DOSKEY wmic.nb.list=wmic product where "name like '%%NetBackup%%'" list brief
