@@ -9,16 +9,16 @@ fi
 export nbperflog='/usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
 
 alias t.nbpm.kill='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -9 $p; done'
-alias t.nbpm.run='/usr/openv/netbackup/bin/nbperfmon'
-alias t.nbpm.stop='/usr/openv/netbackup/bin/nbperfmon -terminate'
+alias t.nbpm.run='/usr/openv/netbackup/bin/support/nbperfmon'
+alias t.nbpm.stop='/usr/openv/netbackup/bin/support/nbperfmon -terminate'
 
-alias t.nbpm.scp.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/debug/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin'
-alias t.nbpm.scp.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/release/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin/'
+alias t.nbpm.scp.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/debug/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin/support'
+alias t.nbpm.scp.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/release/$NBPM_OS/nbperfmon /usr/openv/netbackup/bin/support/'
 
 alias t.nbpm.syslog='grep nbperfmon  /var/log/*.log'
-alias t.nbpm.trunklog='echo > /usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
+alias t.nbpm.truncatelog='echo > /usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
 alias t.nbpm.delevd='for f in `ls -d /usr/openv/netbackup/logs/nbperfmon/*/ 2>/dev/null`; do echo deleting... $f; rm -fr $f; done'
-alias t.nbpm.trunksyslog='echo > /var/log/debug.log'
+alias t.nbpm.truncatesyslog='echo > /var/log/debug.log'
 
 alias t.nbpm.list='ps -elf | grep nbperfmon | grep -v grep'
 alias t.nbpm.term='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -TERM $p; done'
@@ -31,8 +31,8 @@ export NBPERF_LIST="nbperfmon|nbcputest"
 alias t.nbpm.top='TOP_ARG=; while [ 1 ]; do for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -b -n 1 -p `echo $TOP_ARG | cut -c2-` > /tmp/$$.output; sleep 2; clear; cat /tmp/$$.output;  done'
 alias t.nbpm.watchself='function af.watchself() { watch $@ "ps faxeo pid,command,pmem,rss,vsz,sz,size | egrep \"PID|\$(cat /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN)\""; }; af.watchself'
 
-alias t.nbpm.rerun="t.nbpm.trunklog;t.nbpm.delevd;t.nbpm.term;sleep 2; t.nbpm.run"
-alias t.nbpm.scprun="t.nbpm.trunklog;t.nbpm.delevd;t.nbpm.term;t.nbpm.scp.r ;t.nbpm.run"
+alias t.nbpm.rerun="t.nbpm.truncatelog;t.nbpm.delevd;t.nbpm.term;sleep 2; t.nbpm.run"
+alias t.nbpm.scprun="t.nbpm.truncatelog;t.nbpm.delevd;t.nbpm.term;t.nbpm.scp.r ;t.nbpm.run"
 alias t.nbpm.genlkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbperfmon.json /usr/openv/netbackup/nbperfmon.json.lkgc$1; }; af.cplkgc'
 alias t.nbpm.rev2lkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbperfmon.json.lkgc$1 /usr/openv/netbackup/nbperfmon.json; }; af.cplkgc'
 
