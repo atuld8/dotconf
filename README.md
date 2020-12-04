@@ -66,6 +66,9 @@ mkdir ~/bin
 cp ~/.vim/alias ~/.alias
 cp ~/.vim/gitconfig ~/.gitconfig
 cp ~/.vim/rootDiskUsage.sh ~/bin
+cp ~/.vim/export.var ~/.export.var
+cp ~/.vim/export.vrts ~/.export.vrts
+
 source ~/.alias
 # chmod 700 ~/.alias ~/.vimrc ~/.emacs ~/.vim ~/.ssh ~/.gitconfig ~/.tmux.conf ~/.screenrc
 echo "echo source ~/.vim/bashrc >>  ~/.bashrc for Unix "

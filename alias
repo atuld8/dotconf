@@ -1,12 +1,9 @@
-# export GIT_USER=
-# export GIT_SERVER=
-# export VIMPASS=
-# export CFG_EDITOR=vim/gvim/cat
-# export GIT_STATUS_LEVEL=0/1/2/3
-# export SCP_HOSTNAME=`hostname`.`domainname`
-# export DOTCONF_HOSTNAME=
-# export RMTCMD_HOST=
-
+if [ -f ~/.export.var ]; then
+    source ~/.export.var
+fi
+if [ -f ~/.export.vrts ]; then
+    source ~/.export.vrts
+fi
 source ~/.vim/alias.global
 #source ~/.vim/alias.nbu
 #source ~/.vim/alias.bldbx
