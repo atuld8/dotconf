@@ -1,11 +1,14 @@
 if [ -f ~/.export.var ]; then
     source ~/.export.var
 fi
+
 if [ -f ~/.export.vrts ]; then
     source ~/.export.vrts
 fi
+
 source ~/.vim/alias.global
 #source ~/.vim/alias.nbu
+#source ~/.vim/alias.nbpm.test
 #source ~/.vim/alias.bldbx
 #source ~/.vim/alias.dotconf
 #source ~/.vim/scripts/definstallpathsaliases.sh
