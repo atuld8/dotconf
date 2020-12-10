@@ -1,5 +1,5 @@
-@IF EXIST %userprofile%\set.var call %userprofile%\set.var.cmd %*
-@IF EXIST %userprofile%\set.vrts call %userprofile%\set.vrts.cmd %*
+@IF EXIST %userprofile%\set.var.cmd call %userprofile%\set.var.cmd %*
+@IF EXIST %userprofile%\set.vrts.cmd call %userprofile%\set.vrts.cmd %*
 
 @REM @echo Initializing... This may take some time...
 @echo off && call %userprofile%\.vim\wincmds\alias_global.cmd %*
