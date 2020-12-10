@@ -2,7 +2,9 @@
 # export NIS_SERVER=
 
 # export RMTCMD_HOST=
+
 # export RSVDEV=
+# export rsvdev=$RSVDEV
 
 # export VXI=
 # export vxi=$VXI
