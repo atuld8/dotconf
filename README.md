@@ -104,8 +104,8 @@ copy /y .vim\wincmds\cygcmd.cmd %windir%\cygcmd.cmd
 copy /y .vim\wincmds\acmd.cmd %windir%\acmd.cmd
 copy /y .vim\wincmds\qcmd.cmd %windir%\qcmd.cmd
 copy /y .vim\wincmds\mini.cmd %windir%\mini.cmd
-copy /y .vim\wincmds\set.var %userprofile%\set.var
-copy /y .vim\wincmds\set.vrts %userprofile%\set.vrts
+copy /y .vim\wincmds\set.var.cmd %userprofile%\set.var.cmd
+copy /y .vim\wincmds\set.vrts.cmd %userprofile%\set.vrts.cmd
 echo source %userprofile%\.vim\vimrc >> %userprofile%\_vimrc
 gvim -c ":PluginInstall"
 copy /y .vim\emacs %APPDATA%\.emacs
