@@ -145,7 +145,7 @@
 @DOSKEY nb.uninstmstr=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup" /v UninstallString^^^|findstr "UninstallString"') do %%b
 @DOSKEY nb.uninstclnt=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup client" /v UninstallString^^^|findstr "UninstallString"') do %%b
 
-@DOSKEY nb.nbwebUser1pass=net user nbwebsvc $* /add ^&^& net localgroup nbwebgrp /add ^&^& net localgroup nbwebgrp nbwebsvc /add
+@DOSKEY nb.nbwebuser..p=net user nbwebsvc $* /add ^&^& net localgroup nbwebgrp /add ^&^& net localgroup nbwebgrp nbwebsvc /add
 @DOSKEY nb.sv.del.s1=wmic service where "displayname like '%%netbackup%%'" get name ^| findstr /V "^Name *$" $*
 @DOSKEY nb.sv.del.s2=for /f "tokens=*" %%s in (nbuservicelist.txt) do ( echo sc delete  "%%s" ) $*
 @DOSKEY nb.jreup="%%NBU_INST_PATH%%NetBackup\bin\goodies\nbcomponentupdate.exe" -pro netbackup -comp jre $*
