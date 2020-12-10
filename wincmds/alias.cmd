@@ -1,13 +1,5 @@
-@REM @SET CYGPATH=C:\cygwin64
-@REM @SET PERLPATH=C:\Strawberry\perl\bin
-@REM @SET VIMPASS=
-@REM @SET GIT_USER=
-@REM @SET GIT_SERVER=
-@REM @SET CFG_EDITOR=vim/gvim/type/notepad
-@REM @SET GIT_STATUS_LEVEL=0/1/2/3
-@REM @SET GIT_CMD_USED=
-@REM @SET OPEN_CMD=explorer/start
-@REM @SET ETRACK_CLI_PATH=
+@IF EXIST %userprofile%\set.var call %userprofile%\set.var.cmd %*
+@IF EXIST %userprofile%\set.vrts call %userprofile%\set.vrts.cmd %*
 
 @REM @echo Initializing... This may take some time...
 @echo off && call %userprofile%\.vim\wincmds\alias_global.cmd %*
