@@ -165,8 +165,9 @@ alias set.gbase='export gbase=`git rev-parse --show-toplevel`'
 alias set.histrydata='export HISTTIMEFORMAT="%d/%m/%y %T "'
 alias set.es='export es='"'"'echo -e \n-------------------------------------- -------------------------------------- --------------------------------------\n '"'"''
 
-if [ -z $CFG_EDITOR ]; then export CFG_EDITOR=vim; fi
-if [ -z $MULTI_CFG_EDITOR ]; then export MULTI_CFG_EDITOR=vim; fi
+if [ -z "$CFG_EDITOR" ]; then export CFG_EDITOR=vim; fi;
+
+if [ -z "$MULTI_CFG_EDITOR" ]; then export MULTI_CFG_EDITOR=vim; fi;
 
 alias set.e.vimsrv='CFG_EDITOR="vim --servername CFG_EDITOR --remote-silent"'
 alias set.e.vimsrvtab='CFG_EDITOR="vim --servername CFG_EDITOR --remote-tab-silent"'
