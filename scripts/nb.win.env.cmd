@@ -8,12 +8,9 @@
 @DOSKEY cd.symc=cd /d "C:\Program Files\Symantec\$*" &
 @DOSKEY cd.vrts=cd /d "C:\Program Files\Veritas\$*" &
 @DOSKEY cd.nb=cd /d "%NBU_INST_PATH%NetBackup\$*" &
-@DOSKEY cd.nb.bin=cd /d "%NBU_INST_PATH%NetBackup\bin\$*" &
-@DOSKEY cd.nb.log=cd /d "%NBU_INST_PATH%NetBackup\Logs\$*" &
 @DOSKEY cd.nb.adm=cd /d "%NBU_INST_PATH%NetBackup\bin\admincmd" &
 @DOSKEY cd.nb.gd=cd /d "%NBU_INST_PATH%NetBackup\bin\goodies" &
 @DOSKEY cd.nb.at=cd /d "%NBU_INST_PATH%NetBackup\sec\at\bin" &
-@DOSKEY cd.nb.var=cd /d "%NBU_INST_PATH%NetBackup\var\$*" &
 @DOSKEY cd.nb.vgbl=cd /d "%NBU_INST_PATH%NetBackup\var\global\$*" &
 @DOSKEY cd.oc=cd /d "%OC_INST_PATH%\OpsCenter\$*" &
 @DOSKEY cd.nb.volmgr=cd /d "%NBU_INST_PATH%\volmgr\bin\$*" &
@@ -22,7 +19,7 @@
 @DOSKEY cd.nb.dblog=cd /d "%NBU_INST_PATH%NetBackupDB\log\$*" &
 @DOSKEY cd.nb.dbdata=cd /d "%NBU_INST_PATH%NetBackupDB\data\$*" &
 @DOSKEY cd.nb.wmcinstall=cd /d "%NBU_INST_PATH%NetBackup\wmc\bin\install" &
-@DOSKEY cd.nb.tomcat=cd /d "%NBU_INST_PATH%NetBackup\wmc\webserver\$*" &
+@DOSKEY cd.nb.tc=cd /d "%NBU_INST_PATH%NetBackup\wmc\webserver\$*" &
 @DOSKEY cd.nb.java=cd /d "%NBU_INST_PATH%NetBackup\java\$*" &
 @DOSKEY cd.nb.bmrsd=cd /d "%NBU_INST_PATH%NetBackup\BareMetal\server\data" &
 @DOSKEY cd.nb.bmrcd=cd /d "%NBU_INST_PATH%NetBackup\BareMetal\client\data" &
