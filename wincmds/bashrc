@@ -34,7 +34,7 @@ YELLOWCOLOR="\e[0;33m"
 PROPNAMECOLOR=${BROWN}
 PROPCOLOR=${LIGHTPURPLE}
 
-PATH=$PATH:~/scripts:~/.vim/bin
+PATH=$PATH:~/scripts:~/.vim/bin:~/.vim/scripts
 export PATH
 
 # Define this before calling current file into bash

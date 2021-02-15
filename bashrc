@@ -29,7 +29,7 @@ MANPATH=$MANPATH:/usr/dt/man:/usr/man:/usr/openwin/share/man:/usr/openv/man/shar
 export MANPATH
 
 
-PATH=$PATH:~/scripts:~/.vim/bin
+PATH=$PATH:~/scripts:~/.vim/bin:~/.vim/scripts
 export PATH
 
 # Define this before calling current file into bash
@@ -72,7 +72,7 @@ if [ "$OSName" = "Linux" -a -f /etc/redhat-release -a -f /etc/oracle-release ]; 
 if [ "$OSName" = "Linux" -a -f /etc/redhat-release -a -f /etc/centos-release ]; then lsb_release > /dev/null 2>/dev/null; if [ $? -eq 0 ]; then OSVer="CentOS_"`lsb_release -r | cut -f2`; else OSVer="CentOS_"`awk '{print $(NF-1)}' /etc/redhat-release`; fi; PROCName=`uname -p`; fi
 if [ "$OSName" = "Linux" -a -f /etc/SuSE-release ]; then OSVer="SuSE_"`lsb_release -r | cut -f2`; PROCName=`uname -p`; fi
 if [ "$OSName" = "HP-UX" ]; then OSVer=`uname -r | sed -e's/B.//g'`; PROCName=`uname -m`; USER=$LOGNAME;fi
-if [ "$OSName" = "FreeBSD" -o "$OSName" = "AIX"]; then OSVer=`uname -r | sed -e's/-RELEASE//g'`; PROCName=`uname -m`; fi
+if [ "$OSName" = "FreeBSD" ]; then OSVer=`uname -r | sed -e's/-RELEASE//g'`; PROCName=`uname -m`; fi
 
 # cygwin
 # OSName=`uname -o`
