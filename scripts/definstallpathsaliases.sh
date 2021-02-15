@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 function af.bld.request_handler() {
     if [ "$1" == "LAUNCH" -o "$1" == "ECHO" ]; then
 
@@ -36,38 +36,47 @@ if [ "$OSName" == "Darwin" ]; then
     CLIP_CMD='^|pbcopy';
 fi
 
-alias m.bld.ls..rf='function af.bld.ls() { ls -x /newbuilds/NB/$1/; }; af.bld.ls'
+OSName=`uname -s`
 
-alias m.bld.srv.lr..rs="function af.bld.srv.lr()   { af.bld.request_handler LAUNCH \$1 LinuxR_x86_64/install; }; af.bld.srv.lr"
-alias m.bld.clnt.lr..rs="function af.bld.clnt.lr() { af.bld.request_handler LAUNCH \$1 CLIENTS2/install; }; af.bld.clnt.lr"
-alias m.bld.srv.ls..rs="function af.bld.srv.ls()   { af.bld.request_handler LAUNCH \$1 LinuxS_x86_64/install; }; af.bld.srv.ls"
-alias m.bld.clnt.ls..rs="function af.bld.clnt.ls() { af.bld.request_handler LAUNCH \$1 CLIENTS2/install; }; af.bld.clnt.ls"
-alias m.bld.srv.sx86..rs="function af.bld.srv.sx86()   { af.bld.request_handler LAUNCH \$1 Solaris_x86/install; }; af.bld.srv.sx86"
-alias m.bld.clnt.sx86..rs="function af.bld.clnt.sx86() { af.bld.request_handler LAUNCH \$1 CLIENTS1/install; }; af.bld.clnt.sx86"
-alias m.bld.clnt.othr..rs="function af.bld.clnt.othr() { af.bld.request_handler LAUNCH \$1 CLIENTS1/install; }; af.bld.clnt.othr"
+alias m.bld.lst..rf='function af.bld.ls() { ls -x /newbuilds/NB/$1/; }; af.bld.ls'
 
-alias cp.bld.srv.lr..rs="function af.bld.srv.lr()   { af.bld.request_handler ECHO \$1 LinuxR_x86_64 $CLIP_CMD; }; af.bld.srv.lr"
-alias cp.bld.clnt.lr..rs="function af.bld.clnt.lr() { af.bld.request_handler ECHO \$1 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.lr"
-alias cp.bld.srv.ls..rs="function af.bld.srv.ls()   { af.bld.request_handler ECHO \$1 LinuxS_x86_64 $CLIP_CMD; }; af.bld.srv.ls"
-alias cp.bld.clnt.ls..rs="function af.bld.clnt.ls() { af.bld.request_handler ECHO \$1 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.ls"
-alias cp.bld.srv.sx86..rs="function af.bld.srv.sx86()   { af.bld.request_handler ECHO \$1 Solaris_x86 $CLIP_CMD; }; af.bld.srv.sx86"
-alias cp.bld.clnt.sx86..rs="function af.bld.clnt.sx86() { af.bld.request_handler ECHO \$1 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.sx86"
-alias cp.bld.clnt.othr..rs="function af.bld.clnt.othr() { af.bld.request_handler ECHO \$1 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.othr"
+if [[ "$OSName" = "Linux" ]] && [[ -f /etc/redhat-release ]] || [ "$1" = "ALL" ]; then
+    alias m.bld.srv.lr..rs="function af.bld.srv.lr()   { af.bld.request_handler LAUNCH \$1 LinuxR_x86_64/install; }; af.bld.srv.lr"
+    alias m.bld.clnt.lr..rs="function af.bld.clnt.lr() { af.bld.request_handler LAUNCH \$1 CLIENTS2/install; }; af.bld.clnt.lr"
+    alias cp.bld.srv.lr..rs="function af.bld.srv.lr()   { af.bld.request_handler ECHO \$1 LinuxR_x86_64 $CLIP_CMD; }; af.bld.srv.lr"
+    alias cp.bld.clnt.lr..rs="function af.bld.clnt.lr() { af.bld.request_handler ECHO \$1 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.lr"
+    alias m.bld.srv.lr..rf.b="function af.bld.srv.lr()   { af.bld.request_handler LAUNCH \$1 \$2 LinuxR_x86_64/install; }; af.bld.srv.lr"
+    alias m.bld.clnt.lr..rf.b="function af.bld.clnt.lr() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS2/install; }; af.bld.clnt.lr"
+    alias cp.bld.srv.lr..rf.b="function af.bld.srv.lr()   { af.bld.request_handler ECHO \$1 \$2 LinuxR_x86_64 $CLIP_CMD; }; af.bld.srv.lr"
+    alias cp.bld.clnt.lr..rf.b="function af.bld.clnt.lr() { af.bld.request_handler ECHO \$1 \$2 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.lr"
+fi
 
+if [[ "$OSName" = "Linux" ]] && [[ -f /etc/SuSE-release ]] || [ "$1" = "ALL" ]; then
+    alias m.bld.srv.ls..rs="function af.bld.srv.ls()   { af.bld.request_handler LAUNCH \$1 LinuxS_x86_64/install; }; af.bld.srv.ls"
+    alias m.bld.clnt.ls..rs="function af.bld.clnt.ls() { af.bld.request_handler LAUNCH \$1 CLIENTS2/install; }; af.bld.clnt.ls"
+    alias cp.bld.srv.ls..rs="function af.bld.srv.ls()   { af.bld.request_handler ECHO \$1 LinuxS_x86_64 $CLIP_CMD; }; af.bld.srv.ls"
+    alias cp.bld.clnt.ls..rs="function af.bld.clnt.ls() { af.bld.request_handler ECHO \$1 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.ls"
+    alias m.bld.srv.ls..rf.b="function af.bld.srv.ls()   { af.bld.request_handler LAUNCH \$1 \$2 LinuxS_x86_64/install; }; af.bld.srv.ls"
+    alias m.bld.clnt.ls..rf.b="function af.bld.clnt.ls() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS2/install; }; af.bld.clnt.ls"
+    alias cp.bld.srv.ls..rf.b="function af.bld.srv.ls()   { af.bld.request_handler ECHO \$1 \$2 LinuxS_x86_64 $CLIP_CMD; }; af.bld.srv.ls"
+    alias cp.bld.clnt.ls..rf.b="function af.bld.clnt.ls() { af.bld.request_handler ECHO \$1 \$2 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.ls"
+fi
 
+if [ "$OSName" = "SunOS" ] || [ "$1" = "ALL" ]; then
+    alias m.bld.srv.sx86..rs="function af.bld.srv.sx86()   { af.bld.request_handler LAUNCH \$1 Solaris_x86/install; }; af.bld.srv.sx86"
+    alias m.bld.clnt.sx86..rs="function af.bld.clnt.sx86() { af.bld.request_handler LAUNCH \$1 CLIENTS1/install; }; af.bld.clnt.sx86"
+    alias cp.bld.srv.sx86..rs="function af.bld.srv.sx86()   { af.bld.request_handler ECHO \$1 Solaris_x86 $CLIP_CMD; }; af.bld.srv.sx86"
+    alias cp.bld.clnt.sx86..rs="function af.bld.clnt.sx86() { af.bld.request_handler ECHO \$1 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.sx86"
+    alias m.bld.srv.sx86..rf.b="function af.bld.srv.sx86()   { af.bld.request_handler LAUNCH \$1 \$2 Solaris_x86/install; }; af.bld.srv.sx86"
+    alias m.bld.clnt.sx86..rf.b="function af.bld.clnt.sx86() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS1/install; }; af.bld.clnt.sx86"
+    alias cp.bld.srv.sx86..rf.b="function af.bld.srv.sx86()   { af.bld.request_handler ECHO \$1 \$2 Solaris_x86 $CLIP_CMD; }; af.bld.srv.sx86"
+    alias cp.bld.clnt.sx86..rf.b="function af.bld.clnt.sx86() { af.bld.request_handler ECHO \$1 \$2 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.sx86"
+fi
 
-alias m.bld.srv.lr..rf.b="function af.bld.srv.lr()   { af.bld.request_handler LAUNCH \$1 \$2 LinuxR_x86_64/install; }; af.bld.srv.lr"
-alias m.bld.clnt.lr..rf.b="function af.bld.clnt.lr() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS2/install; }; af.bld.clnt.lr"
-alias m.bld.srv.ls..rf.b="function af.bld.srv.ls()   { af.bld.request_handler LAUNCH \$1 \$2 LinuxS_x86_64/install; }; af.bld.srv.ls"
-alias m.bld.clnt.ls..rf.b="function af.bld.clnt.ls() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS2/install; }; af.bld.clnt.ls"
-alias m.bld.srv.sx86..rf.b="function af.bld.srv.sx86()   { af.bld.request_handler LAUNCH \$1 \$2 Solaris_x86/install; }; af.bld.srv.sx86"
-alias m.bld.clnt.sx86..rf.b="function af.bld.clnt.sx86() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS1/install; }; af.bld.clnt.sx86"
-alias m.bld.clnt.othr..rf.b="function af.bld.clnt.othr() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS1/install; }; af.bld.clnt.othr"
+if [ "$OSName" = "HP-UX" ] || [ "$OSName" = "AIX" ] || [ "$1" == "ALL" ]; then
+    alias m.bld.clnt.othr..rs="function af.bld.clnt.othr() { af.bld.request_handler LAUNCH \$1 CLIENTS1/install; }; af.bld.clnt.othr"
+    alias cp.bld.clnt.othr..rs="function af.bld.clnt.othr() { af.bld.request_handler ECHO \$1 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.othr"
+    alias m.bld.clnt.othr..rf.b="function af.bld.clnt.othr() { af.bld.request_handler LAUNCH \$1 \$2 CLIENTS1/install; }; af.bld.clnt.othr"
+    alias cp.bld.clnt.othr..rf.b="function af.bld.clnt.othr() { af.bld.request_handler ECHO \$1 \$2 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.othr"
+fi
 
-alias cp.bld.srv.lr..rf.b="function af.bld.srv.lr()   { af.bld.request_handler ECHO \$1 \$2 LinuxR_x86_64 $CLIP_CMD; }; af.bld.srv.lr"
-alias cp.bld.clnt.lr..rf.b="function af.bld.clnt.lr() { af.bld.request_handler ECHO \$1 \$2 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.lr"
-alias cp.bld.srv.ls..rf.b="function af.bld.srv.ls()   { af.bld.request_handler ECHO \$1 \$2 LinuxS_x86_64 $CLIP_CMD; }; af.bld.srv.ls"
-alias cp.bld.clnt.ls..rf.b="function af.bld.clnt.ls() { af.bld.request_handler ECHO \$1 \$2 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.ls"
-alias cp.bld.srv.sx86..rf.b="function af.bld.srv.sx86()   { af.bld.request_handler ECHO \$1 \$2 Solaris_x86 $CLIP_CMD; }; af.bld.srv.sx86"
-alias cp.bld.clnt.sx86..rf.b="function af.bld.clnt.sx86() { af.bld.request_handler ECHO \$1 \$2 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.sx86"
-alias cp.bld.clnt.othr..rf.b="function af.bld.clnt.othr() { af.bld.request_handler ECHO \$1 \$2 CLIENTS1 $CLIP_CMD; }; af.bld.clnt.othr"
