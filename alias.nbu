@@ -2,7 +2,7 @@
 alias cmd.nb.vxdbms='. /usr/openv/db/vxdbms_env.sh'
 alias cmd.nb.nbsucmds.old='grep -A1 " Command Used " *.txt | grep -v " Command Used " | grep -v "\-\-" | sed -e "s/-#/ -#/" | vim -'
 alias cmd.nb.nbsucmdssubdirs.old='grep -R -A1 " Command Used " */*.txt | grep -v " Command Used " | grep -v "\-\-" | sed -e "s/-#/ -#/" | vim -'
-alias cmd.nb.ff='find /usr/openv -name'
+alias cmd.nb.ff='find /usr/openv/ -name'
 alias cmd.nb.localdata='function af.localdata() { mkdir $1/nbudata; mkdir $1/custdata; ln -s -- $1/nbudata ~; ln -s -- $1/custdata ~; }; af.localdata'
 
 # Edit commands NBU config
