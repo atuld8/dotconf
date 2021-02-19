@@ -2,7 +2,7 @@
 alias cmd.nb.vxdbms='. /usr/openv/db/vxdbms_env.sh'
 alias cmd.nb.nbsucmds.old='grep -A1 " Command Used " *.txt | grep -v " Command Used " | grep -v "\-\-" | sed -e "s/-#/ -#/" | vim -'
 alias cmd.nb.nbsucmdssubdirs.old='grep -R -A1 " Command Used " */*.txt | grep -v " Command Used " | grep -v "\-\-" | sed -e "s/-#/ -#/" | vim -'
-alias cmd.nb.ff='find /usr/openv -name'
+alias cmd.nb.ff='find /usr/openv/ -name'
 alias cmd.nb.localdata='function af.localdata() { mkdir $1/nbudata; mkdir $1/custdata; ln -s -- $1/nbudata ~; ln -s -- $1/custdata ~; }; af.localdata'
 
 # Edit commands NBU config
@@ -37,9 +37,9 @@ alias cat.nb.db.op='cat dbisqlc.output.txt'
 
 
 # change dir quickly
-alias cd.nbudata='af.mcd ~/nbudata'
-alias cd.qte='af.mcd ~/nbudata/quickTestEnv'
-alias cd.custdata='af.mcd ~/custdata'
+alias cd.nbudata='af.cd ~/nbudata'
+alias cd.qte='af.cd ~/nbudata/quickTestEnv'
+alias cd.custdata='af.cd ~/custdata'
 alias cd.nb='af.cd /usr/openv/netbackup'
 alias cd.nb.adm='af.cd /usr/openv/netbackup/bin/admincmd'
 alias cd.nb.gd='af.cd /usr/openv/netbackup/bin/goodies'

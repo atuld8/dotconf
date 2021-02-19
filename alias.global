@@ -43,6 +43,7 @@ alias cmd.cols="stty size | awk '{print \$2}'"
 alias cmd.fpwdbin..f='function af.find_binary() { find  -L $PWD -type f -iname $1 -o -iname $1.exe -o -iname $1.so -o -iname $1.dll; }; af.find_binary'
 alias cmd.fpwd..p.='function af.find_pwd() { find  -L $1 ${@:2}; }; af.find_pwd'
 alias cmd.fscpbin..f='function af.find_binary() { find -L $PWD -type f -iname $1 -o -iname $1.exe -o -iname $1.so -o -iname $1.dll | xargs -i echo "scp $USER@$SCP_HOSTNAME:"{}; }; af.find_binary'
+alias cmd.fscp..f='function af.find_binary() { find -L $PWD -type f -iname $1 | xargs -i echo "scp $USER@$SCP_HOSTNAME:"{}; }; af.find_binary'
 alias cmd.fscpbin..p.f='function af.find_binarypath() { find -L `readlink -f $1` -type f -iname $2 -o -iname $2.exe -o -iname $2.so -o -iname $2.dll | xargs -i echo "scp $USER@$SCP_HOSTNAME:"{}; }; af.find_binarypath'
 alias cmd.fscp..p.='function af.find_scp() { find -L $1 ${@:2} | xargs -i echo "scp $USER@$SCP_HOSTNAME:"{}; }; af.find_scp'
 alias cmd.fscp.get.path='function af.find_scppath() { echo "scp $USER@$SCP_HOSTNAME:"`readlink -f ${1:-.}`; }; af.find_scppath'
