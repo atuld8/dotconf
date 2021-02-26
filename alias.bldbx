@@ -2,6 +2,8 @@
 # Commands for nbsu
 alias cmd.get-token='python git-credential-veritas-stash.pex -p https -H $GIT_SERVER -u $GIT_USER get-token'
 alias cmd.epr='eprint'
+alias cmd.eprshrt='eprint -v'
+alias cmd.eprsbsrb='eprint -u'
 alias cmd.eprnocmt='eprint -v -l -A -f -s -u'
 alias cmd.eprall='eprint  -v -l -A -f -c -s -u'
 alias cmd.eprsuper='function af.eprint_super() { eprint -vdK $1 | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -i eprint -vdK  {}; }; af.eprint_super'
