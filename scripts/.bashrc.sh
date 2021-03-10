@@ -183,7 +183,7 @@ GetOpsData () {
     fi
 }
 
-export TMUX_HOSTNAME=`hostname`
+export TMUX_HOSTNAME=`hostname -s`
 changeTmuxWindowsEveryTime() {
    PROMPT_COMMAND='printf "\033k${TMUX_HOSTNAME}\033\\"'
 }
