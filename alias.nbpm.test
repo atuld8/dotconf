@@ -6,7 +6,7 @@ if [ -f /etc/SuSE-release ]; then
 export NBPM_OS=linuxS_x86_4.4.73
 fi
 
-export nbperflog='/usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
+export nbpmlog='/usr/openv/netbackup/logs/nbperfmon/nbperfmon.log'
 
 alias t.nbpm.kill9='for p in `ps -elf | grep nbperfmon | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -9 $p; done'
 alias t.nbpm.run='/usr/openv/netbackup/bin/support/nbperfmon'
@@ -27,8 +27,8 @@ alias t.nbpm.catuuid='cat /usr/openv/tmp/41938320-72B9-4818-A4F2-16EBF79F40F0.CH
 alias t.nbpm.watchfolder='watch ls -lhR /usr/openv/netbackup/logs/nbperfmon'
 alias t.nbpm.watchfind='watch  "find /usr/openv/netbackup/logs/nbperfmon -type f -exec ls -l {} \;"'
 
-export NBPERF_LIST="nbperfmon|nbcputest"
-alias t.nbpm.top='TOP_ARG=; while [ 1 ]; do for f in `ps -e| egrep "${NBPERF_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -b -n 1 -p `echo $TOP_ARG | cut -c2-` > /tmp/$$.output; sleep 2; clear; cat /tmp/$$.output;  done'
+export NBPM_PROC_LIST="nbperfmon|nbcputest"
+alias t.nbpm.top='TOP_ARG=; while [ 1 ]; do for f in `ps -e| egrep "${NBPM_PROC_LIST:-nbperfmon}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -b -n 1 -p `echo $TOP_ARG | cut -c2-` > /tmp/$$.output; sleep 2; clear; cat /tmp/$$.output;  done'
 alias t.nbpm.watchself='function af.watchself() { watch $@ "ps faxeo pid,command,pmem,rss,vsz,sz,size | egrep \"PID|\$(cat /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN)\""; }; af.watchself'
 
 alias t.nbpm.rerun="t.nbpm.truncatelog;t.nbpm.delevd;t.nbpm.killterm;sleep 2; t.nbpm.run"
