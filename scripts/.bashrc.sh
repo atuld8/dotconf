@@ -62,11 +62,11 @@ fi
 
 GetNBUData ()
 {
-    NBU_TYPE=
-    NBU_VER=
-    NBU_BUILDNUMBER=
-    NBU_MASTER=
-    NBU_CLIENT_NAME=
+    local NBU_TYPE=
+    local NBU_VER=
+    local NBU_BUILDNUMBER=
+    local NBU_MASTER=
+    local NBU_CLIENT_NAME=
     NBU_DATA=
     NBU_DATA_TERMINAL=
     if [ -f /usr/openv/netbackup/bp.conf ]; then
@@ -171,9 +171,9 @@ parse_git_branch() {
 }
 
 GetOpsData () {
-    OPS_VER=
-    OPS_BUILDNUMBER=
-    OPS_DATA=
+    local OPS_VER=
+    local OPS_BUILDNUMBER=
+    local OPS_DATA=
 
     if [ "OSName" = "Linux" ]; then
         rpm -qa 2>/dev/null | grep SYMCOpsCenterServer >/dev/null 2>/dev/null
@@ -255,16 +255,16 @@ SetShortTrap()
 
 SetBasicTrap()
 {
-    DOName=""
-    export PROMPT_DIRTRIM=3
-    export TMUX_WINIDX=""
-    if [ ! -z "$TMUX" ]; then
-        export TMUX_WINIDX="["$(tmux display-message -p '#I')"."$(tmux display-message -p '#P')"] "
-    fi
-    if [ ! -z "$WINDOW" ]; then
-        export TMUX_WINIDX="[$WINDOW] "
-    fi
-    trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1 )) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USERNAME}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ "' DEBUG
+   local DOName=""
+   export PROMPT_DIRTRIM=3
+   export TMUX_WINIDX=""
+   if [ ! -z "$TMUX" ]; then
+       export TMUX_WINIDX="["$(tmux display-message -p '#I')"."$(tmux display-message -p '#P')"] "
+   fi
+   if [ ! -z "$WINDOW" ]; then
+       export TMUX_WINIDX="[$WINDOW] "
+   fi
+   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1 )) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USERNAME}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ "' DEBUG
 }
 
 SetBasicTrap

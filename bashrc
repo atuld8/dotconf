@@ -97,11 +97,11 @@ fi
 
 GetNBUData ()
 {
-    NBU_TYPE=
-    NBU_VER=
-    NBU_BUILDNUMBER=
-    NBU_MASTER=
-    NBU_CLIENT_NAME=
+    local NBU_TYPE=
+    local NBU_VER=
+    local NBU_BUILDNUMBER=
+    local NBU_MASTER=
+    local NBU_CLIENT_NAME=
     NBU_DATA=
     NBU_DATA_TERMINAL=
     if [ -f /usr/openv/netbackup/bp.conf ]; then
@@ -209,9 +209,9 @@ parse_git_branch() {
 }
 
 GetOpsData () {
-    OPS_VER=
-    OPS_BUILDNUMBER=
-    OPS_DATA=
+    local OPS_VER=
+    local OPS_BUILDNUMBER=
+    local OPS_DATA=
 
     if [ "OSName" = "Linux" ]; then
         rpm -qa 2>/dev/null | grep SYMCOpsCenterServer >/dev/null 2>/dev/null
@@ -279,7 +279,7 @@ UpdateTmuxWinIdx () {
 # \W basename of current directory
 SetShortTrap()
 {
-   DOName=""
+   local DOName=""
    export PROMPT_DIRTRIM=3
    export TMUX_WINIDX=""
    if [ ! -z "$TMUX" ]; then
@@ -293,7 +293,7 @@ SetShortTrap()
 
 SetBasicTrap()
 {
-   DOName=""
+   local DOName=""
    export PROMPT_DIRTRIM=3
    export TMUX_WINIDX=""
    if [ ! -z "$TMUX" ]; then
