@@ -12,8 +12,8 @@ alias t.nbsd.kill9='for p in `ps -elf | grep nbsmartdiag | grep -v grep | awk '"
 alias t.nbsd.run='/usr/openv/netbackup/bin/support/nbsmartdiag'
 alias t.nbsd.term='/usr/openv/netbackup/bin/support/nbsmartdiag -terminate'
 
-alias t.nbsd.scp.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbsmartdiag/debug/$NBSD_OS/nbsmartdiag /usr/openv/netbackup/bin/support'
-alias t.nbsd.scp.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbsmartdiag/release/$NBSD_OS/nbsmartdiag /usr/openv/netbackup/bin/support/'
+alias t.nbsd.scp.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/debug/$NBSD_OS/nbsmartdiag /usr/openv/netbackup/bin/support'
+alias t.nbsd.scp.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbperfmon/release/$NBSD_OS/nbsmartdiag /usr/openv/netbackup/bin/support/'
 
 alias t.nbsd.syslog='grep nbsmartdiag  /var/log/*.log'
 alias t.nbsd.truncatelog='echo > /usr/openv/netbackup/logs/nbsmartdiag/nbsmartdiag.log'
