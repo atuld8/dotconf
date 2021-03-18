@@ -1,0 +1,40 @@
+if [ -f /etc/redhat-release ]; then
+export NBSD_OS=linuxR_x86_2.6.32
+fi
+
+if [ -f /etc/SuSE-release ]; then
+export NBSD_OS=linuxS_x86_4.4.73
+fi
+
+export nbsdlog='/usr/openv/netbackup/logs/nbsmartdiag/nbsmartdiag.log'
+
+alias t.nbsd.kill9='for p in `ps -elf | grep nbsmartdiag | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -9 $p; done'
+alias t.nbsd.run='/usr/openv/netbackup/bin/support/nbsmartdiag'
+alias t.nbsd.term='/usr/openv/netbackup/bin/support/nbsmartdiag -terminate'
+
+alias t.nbsd.scp.d='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbsmartdiag/debug/$NBSD_OS/nbsmartdiag /usr/openv/netbackup/bin/support'
+alias t.nbsd.scp.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git/nbsmartdiag/release/$NBSD_OS/nbsmartdiag /usr/openv/netbackup/bin/support/'
+
+alias t.nbsd.syslog='grep nbsmartdiag  /var/log/*.log'
+alias t.nbsd.truncatelog='echo > /usr/openv/netbackup/logs/nbsmartdiag/nbsmartdiag.log'
+alias t.nbsd.delevd='for f in `ls -d /usr/openv/netbackup/logs/nbsmartdiag/*/ 2>/dev/null`; do echo deleting... $f; rm -fr $f; done'
+alias t.nbsd.truncatesyslog='echo > /var/log/debug.log'
+
+alias t.nbsd.list='ps -elf | grep nbsmartdiag | grep -v grep'
+alias t.nbsd.killterm='for p in `ps -elf | grep nbsmartdiag | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -TERM $p; done'
+alias t.nbsd.catuuid='cat /usr/openv/tmp/41938320-72B9-4818-A4F2-16EBF79F40F0.CHILD  /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN'
+
+alias t.nbsd.watchfolder='watch ls -lhR /usr/openv/netbackup/logs/nbsmartdiag'
+alias t.nbsd.watchfind='watch  "find /usr/openv/netbackup/logs/nbsmartdiag -type f -exec ls -l {} \;"'
+
+export NBSD_PROC_LIST="nbsmartdiag|nbcputest"
+alias t.nbsd.top='TOP_ARG=; while [ 1 ]; do for f in `ps -e| egrep "${NBSD_PROC_LIST:-nbsmartdiag}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -b -n 1 -p `echo $TOP_ARG | cut -c2-` > /tmp/$$.output; sleep 2; clear; cat /tmp/$$.output;  done'
+alias t.nbsd.watchself='function af.watchself() { watch $@ "ps faxeo pid,command,pmem,rss,vsz,sz,size | egrep \"PID|\$(cat /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN)\""; }; af.watchself'
+
+alias t.nbsd.rerun="t.nbsd.truncatelog;t.nbsd.delevd;t.nbsd.killterm;sleep 2; t.nbsd.run"
+alias t.nbsd.scprun="t.nbsd.truncatelog;t.nbsd.delevd;t.nbsd.killterm;t.nbsd.scp.r ;t.nbsd.run"
+alias t.nbsd.genlkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbsmartdiag.json /usr/openv/netbackup/nbsmartdiag.json.lkgc$1; }; af.cplkgc'
+alias t.nbsd.rev2lkgc='function af.cplkgc() { cp /usr/openv/netbackup/nbsmartdiag.json.lkgc$1 /usr/openv/netbackup/nbsmartdiag.json; }; af.cplkgc'
+
+
+alias t.nbsd.valgrind='valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=valgrind.log nbsmartdiag'

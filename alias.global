@@ -180,7 +180,7 @@ alias set.e.multiCfgEditor='MULTI_CFG_EDITOR=$CFG_EDITOR'
 
 alias set.a.dc='. ~/.vim/alias.dotconf'
 alias set.a.nb='. ~/.vim/alias.nbu'
-alias set.a.nbpmtest='. ~/.vim/alias.nbpm.test'
+alias set.a.nbsdtest='. ~/.vim/alias.nbsd.test'
 alias set.a.oc='. ~/.vim/alias.oc'
 alias set.a.bld='. ~/.vim/alias.bldbx'
 alias set.a.gbl='. ~/.vim/alias.global'

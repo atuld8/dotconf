@@ -8,7 +8,7 @@ fi
 
 source ~/.vim/alias.global
 #source ~/.vim/alias.nbu
-#source ~/.vim/alias.nbpm.test
+#source ~/.vim/alias.nbsd.test
 #source ~/.vim/alias.bldbx
 #source ~/.vim/alias.dotconf
 #source ~/.vim/scripts/definstallpathsaliases.sh
