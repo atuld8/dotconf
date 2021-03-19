@@ -12,6 +12,7 @@
 
 @DOSKEY e.nb.ver=%%CFG_EDITOR%% "%%NBU_INST_PATH%%NetBackup\version.txt" $*
 @DOSKEY e.nb.logconf=%%CFG_EDITOR%% "%%NBU_INST_PATH%%NetBackup\nblog.conf" $*
+@DOSKEY e.nb.nbsdj=%%CFG_EDITOR%% "%%NBU_INST_PATH%%NetBackup\nbsmartdiag.json" $*
 @DOSKEY e.nb.srvconf=%%CFG_EDITOR%% "%%NBU_CONF_PATH%%NetBackupDB\CONF\server.conf" $*
 @DOSKEY e.nb.vxdbmsconf=%%CFG_EDITOR%% "%%NBU_CONF_PATH%%NetBackupDB\data\vxdbms.conf" $*
 @DOSKEY e.nb.usercert=%%CFG_EDITOR%% "%userprofile%\AppData\Roaming\VxSS\credentials" $*

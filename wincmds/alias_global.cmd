@@ -237,7 +237,7 @@
 @DOSKEY set.a.gbl=@echo off ^&^& @call %~dp0alias_global.cmd $* ^& @echo on
 @DOSKEY set.a.inst=@echo off ^&^& @call %~dp0..\scripts\definstallpathsmacro.cmd $* ^& @echo on
 @DOSKEY set.a.tmp=@echo off ^&^& @call %userprofile%\alias.tmp.cmd $* ^& @echo on
-
+@DOSKEY set.a.nbsdtest=@echo off ^&^& @call %~dp0alias_nbsd_test.cmd $* ^& @echo on
 
 @REM REGISTRY KEY ACCESS
 @DOSKEY r.lk.svc=REG ADD HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit /v LastKey /t REG_SZ /d Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\services /f ^& regedit
