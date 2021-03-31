@@ -54,4 +54,9 @@ bind F eval "hardstatus alwayslastline"
 # Show hardstatus: HOT-KEY P
 bind P eval "caption always"
 
+# removing the binding of x to lock the screen
+bind x
 
+
+# reload the config change without exit
+bind r source ~/.screenrc
