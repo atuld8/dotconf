@@ -8,10 +8,10 @@ escape ^Oo
 
 # Look and feel
 #caption always "%{= bb}%{+b w}Screen: %n | %h %=%t %c"
-caption always "%{= bb}%?%F%{+bBu w}%:%{+b w}%?Screen: %n | %h %=%t %c"
+caption always "%{= bb}%?%F%{+bBu w}%:%{+b w}%?Screen: %n"
 hardstatus alwayslastline "%-Lw%{= BW}%50>%n%f* %t%{-}%+Lw%<"
 hardstatus alwayslastline
-hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %d/%m %{W}%c %{g}]'
+hardstatus string '%{= kG}[%{G}%H : %S%{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B}%d/%m %{W}%c%{g}]'
 
 
 # Our warning of activity
