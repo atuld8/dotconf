@@ -7,11 +7,12 @@
 escape ^Oo
 
 # Look and feel
+# https://www.kilobitspersecond.com/2014/02/10/understanding-gnu-screens-hardstatus-strings/
 #caption always "%{= bb}%{+b w}Screen: %n | %h %=%t %c"
 caption always "%{= bb}%?%F%{+bBu w}%:%{+b w}%?Screen: %n"
 hardstatus alwayslastline "%-Lw%{= BW}%50>%n%f* %t%{-}%+Lw%<"
 hardstatus alwayslastline
-hardstatus string '%{= kG}[%{G}%H : %S%{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B}%d/%m %{W}%c%{g}]'
+hardstatus string '%{= kG}[%{G}%H : %S%{g}][%= %{= kw}%?%-Lw%?%{r}(%{= bW}%n*%f %t%?(%u)%?%{-}%{r})%{w}%?%+Lw%?%?%= %{g}][%{B}%d/%m/%Y %{W}%c%{g}]'
 
 
 # Our warning of activity
@@ -56,7 +57,6 @@ bind P eval "caption always"
 
 # removing the binding of x to lock the screen
 bind x
-
 
 # reload the config change without exit
 bind r source ~/.screenrc
