@@ -191,8 +191,10 @@
     root = rev-parse --show-toplevel
     ; Git current directory wrt git base path
     rPath = rev-parse --show-prefix
-    rstHO = reset --hard origin
-    rstAll = ! git fetch && git reset --hard origin && git pull
+    rstHOmstr = reset --hard origin/master
+    rstHOcb = "!f_rsthocb() { git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\"; }; f_rsthocb"
+    rstAllmstr = ! git fetch && git reset --hard origin && git pull
+    rstAllcb = "!f_rstallcb() { git fetch && git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\" && git pull; }; f_rstallcb"
     rmt = ls-remote --head
     rPrune = remote update --prune
     rbmstr=!git fetch origin && git rebase origin/master
