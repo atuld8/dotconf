@@ -143,7 +143,8 @@ alias nb.uninst.aix='function af.nb.uninst.aix() { for p in `lslpp -L | egrep -i
 alias nb.uninst.hp='function af.nb.uninst.hp() { for p in `swlist | egrep "VRTSnbclt|VRTSnetbp|VRTSnbjre|VRTSnbcfg|VRTSnbpck|VRTSnbjava|VRTSpddes|VRTSpddea|VRTSpbx"  | awk '"'"'{ print $1 }'"'"'`; do echo $p; swremove $p; done; }; af.nb.uninst.hp'
 alias nb.uninst.sol='function af.nb.uninst.sol() { for f in `pkginfo | egrep "SYMC|VRTSnbclt|VRTSnetbp|VRTSnbjre|VRTSnbcfg|VRTSnbpck|VRTSnbjava|VRTSpddes|VRTSpddea" | awk '"'"'{ print $2; }'"'"'`; do echo $f; yes y | pkgrm $f; done; }; af.nb.uninst.sol'
 
-alias nb.nbwebUser='groupadd nbwebgrp; useradd -g nbwebgrp -c "NetBackup Web Services account" -d /usr/openv/wmc nbwebsvc'
+alias nb.nbUsers='groupadd nbwebgrp; useradd -g nbwebgrp -c "NetBackup Web Services account" -d /usr/openv/wmc nbwebsvc; useradd -g nbwebgrp -c "NetBackup Base Service account" -d /usr/openv nbsvc'
+
 # BMR specific commands
 alias bmr.cfg='bmrs -op list -res config'
 alias bmr.srt='bmrs -op list -res srt'
