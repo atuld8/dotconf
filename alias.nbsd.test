@@ -19,6 +19,7 @@ alias e.nbsd.truncatelog='echo > /usr/openv/netbackup/logs/nbsmartdiag/root.${1:
 alias e.nbsd.dellog='rm -f /usr/openv/netbackup/logs/nbsmartdiag/root.${1:-`date +"%m%d%y"`}_00001.log'
 alias t.nbsd.truncatesyslog='echo > /var/log/debug.log'
 alias t.nbsd.getevd='/usr/openv/netbackup/bin/nbgetconfig | grep NBSD_EVIDENCE_PATH | sed -e'"'"'s/\s*NBSD_EVIDENCE_PATH\s*=\s*//g'"'"''
+alias t.nbsd.setconf='nbsetconfig ~/.vim/nbsd.conf'
 
 alias t.nbsd.list='ps -elf | grep nbsmartdiag | grep -v grep'
 alias t.nbsd.killterm='for p in `ps -elf | grep nbsmartdiag | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -TERM $p; done'
