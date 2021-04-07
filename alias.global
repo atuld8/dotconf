@@ -176,7 +176,7 @@ alias set.e.emacs='CFG_EDITOR=emacs -nw'
 alias set.e='function af.set.e () { export CFG_EDITOR=$1; }; af.set.e'
 alias set.e.multiCfgEditor='MULTI_CFG_EDITOR=$CFG_EDITOR'
 
-alias set.a='. ~/alias'
+alias set.a='. ~/.alias'
 alias set.a.dc='. ~/.vim/alias.dotconf'
 alias set.a.nb='. ~/.vim/alias.nbu'
 alias set.a.nbsdtest='. ~/.vim/alias.nbsd.test'
