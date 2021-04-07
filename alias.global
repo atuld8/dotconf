@@ -5,9 +5,7 @@ export mvp=~/.vim
 
 function af.esh { echo "Cmd: $@"; $@; echo "Rc: $?";}
 
-alias a='. ~/.alias'
-alias al='. ~/.alias.loc'
-alias b='. ~/.bashrc'
+alias set.b='. ~/.bashrc'
 alias h='history'
 alias d='vim -d'
 alias eb='exec bash'
@@ -178,6 +176,7 @@ alias set.e.emacs='CFG_EDITOR=emacs -nw'
 alias set.e='function af.set.e () { export CFG_EDITOR=$1; }; af.set.e'
 alias set.e.multiCfgEditor='MULTI_CFG_EDITOR=$CFG_EDITOR'
 
+alias set.a='. ~/alias'
 alias set.a.dc='. ~/.vim/alias.dotconf'
 alias set.a.nb='. ~/.vim/alias.nbu'
 alias set.a.nbsdtest='. ~/.vim/alias.nbsd.test'

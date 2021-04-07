@@ -25,9 +25,6 @@
 @DOSKEY v=gvim $*
 
 @DOSKEY macros=%DOSKEY_ALL_MACROS% $*
-@DOSKEY a=%userprofile%\alias.cmd
-@DOSKEY al=%userprofile%\alias.loc.cmd
-@DOSKEY aq=%userprofile%\alias.cmd QUICK_ACCESS
 @DOSKEY d=gvim -d $*
 @DOSKEY a.cd=%DOSKEY_ALL_MACROS% ^| findstr "cd\..*=" $*
 @DOSKEY a.cmd=%DOSKEY_ALL_MACROS% ^| findstr "cmd\..*=" $*
@@ -223,6 +220,8 @@
 @DOSKEY set.p.list=cmd /v:on /c "SET PATHWithoutDQ=%%PATH:""=%% & for %%p in ("!PATHWithoutDQ:;=" "!") do @IF NOT ""%%~p"" == "" "" (@IF NOT ""%%~p"" == """" @echo %%~p)"
 @DOSKEY set.p.listdq=cmd /v:on /c "SET PATHWithoutDQ=%%PATH:""=%% & for %%p in ("!PATHWithoutDQ:;=" "!") do @IF NOT ""%%~p"" == "" "" (@IF NOT ""%%~p"" == """" @echo "%%~p")"
 
+@DOSKEY set.a=@echo off ^&^& @call %userprofile%\alias.cmd $* ^& @echo on
+@DOSKEY set.aqa=@echo off ^&^& @call %userprofile%\alias.cmd QUICK_ACCESS $* ^& @echo on
 @DOSKEY set.a.dc=@echo off ^&^& @call %~dp0alias_dotconf.cmd $* ^& @echo on
 @DOSKEY set.a.doskey=@DOSKEY /MACROFILE=%userprofile%\alias.doskey
 @DOSKEY set.a.odd=@echo off ^&^& @call %~dp0alias_odd.cmd $* ^& @echo on
