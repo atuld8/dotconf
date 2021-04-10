@@ -2,9 +2,9 @@
 
 @IF "%1" == "QUICK_ACCESS" GOTO QA_ALIAS_DEFINE_INSTALLPATH_MACRO
 
-@IF "%1" == "" GOTO DEFINE_MACROS
-
 @IF NOT DEFINED PSTN_MOUNT_DRIVE @SET PSTN_MOUNT_DRIVE=N:
+
+@IF "%1" == "" GOTO DEFINE_MACROS
 
 @SETLOCAL enabledelayedexpansion
 
@@ -60,7 +60,7 @@ GOTO MAIN_LOOP
 START %BUILD_PATH%\%ARGUMENT%
 
 :DEFINE_MACROS
-@DOSKEY m.bld.ls..rf=dir /O /b %PSTN_MOUNT_DRIVE%\NB\$*\NB_*
+@DOSKEY m.bld.ls..rf=for /F "tokens=*" %%A in ('dir /O /b %PSTN_MOUNT_DRIVE%\NB\$1') do @ECHO %PSTN_MOUNT_DRIVE%\NB\$1\%%A
 
 @DOSKEY m.bld..rs.t=%~dpnx0 LAUNCH $*
 @DOSKEY m.bld..rf.b.t=%~dpnx0 LAUNCH $*

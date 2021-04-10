@@ -548,6 +548,14 @@ Plugin 'prettier/vim-prettier'
 " see :h vundle for more details or wiki for FAQ
 " Put your non-Plugin stuff after this line
 
+" This plugin will help to replace string with keeping case as it is
+" ABC => AXY
+" Abc => Xyz
+" abc => xyz
+" aBc X  xYz
+" Ex :%S/abc/xyz/gi
+Plugin 'tpope/vim-abolish'
+
 "On Windows Cygwin platform use below command to install all plugins under
 "~/.vim/bundle folder
 "for p in `egrep "^Plugin" ~/.vim/vundle.vimrc  | sed -e"s/Plugin //" | awk

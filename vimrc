@@ -370,7 +370,7 @@ let @w='0v$"zy:wincmd w:sp zkb'
 let @x='0v$"zy:wincmd w:vsp zkb:wincmd p'
 
 " Insert the new uuid in insert mode
-imap <c-j>u <c-r>=substitute(system('uuidgen'),'\n','','g')<cr>
+imap <c-j>u <c-r>=toupper(substitute(system('uuidgen'),'\n','','g'))<cr>
 
 "Better copy and paste
 set pastetoggle=<F2>
