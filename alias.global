@@ -192,6 +192,8 @@ alias set.p..p='function af.set.p() { export PATH=$PATH:$@; }; af.set.p'
 alias set.p.list='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' '
 alias set.p.list.sort='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' | sort -u'
 
+alias set.ps1='trap DEBUG; function af.set.ps1() { trap DEBUG; export PS1=$@ ; }; af.set.ps1'
+
 alias cmd.gendotconf='( cd  ~/.vim && /usr/bin/git pull && cd .. && tar -cf vim.tar .vim && mv -f vim.tar dotconf.tar)'
 alias cmd.dotconf='cd ~; scp root@${DOTCONF_HOSTNAME}:~/dotconf.tar ~; tar -xf dotconf.tar; rm -f dotconf.tar'
 alias cp.dotconf='echo "cd ~; scp root@${DOTCONF_HOSTNAME}:~/dotconf.tar ~; tar -xf dotconf.tar; rm -f dotconf.tar"'
