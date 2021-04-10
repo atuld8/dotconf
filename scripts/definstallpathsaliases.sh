@@ -38,7 +38,7 @@ fi
 
 OSName=`uname -s`
 
-alias m.bld.lst..rf='function af.bld.ls() { ls -x /newbuilds/NB/$1/; }; af.bld.ls'
+alias m.bld.lst..rf='function af.bld.ls() { ls -dl /newbuilds/NB/$1/* | awk '"'"'{ printf $NF "\n" }'"'"'; }; af.bld.ls'
 
 if [[ "$OSName" = "Linux" ]] && [[ -f /etc/redhat-release ]] || [ "$1" = "ALL" ]; then
     alias m.bld.srv.lr..rs="function af.bld.srv.lr()   { af.bld.request_handler LAUNCH \$1 LinuxR_x86_64/install; }; af.bld.srv.lr"

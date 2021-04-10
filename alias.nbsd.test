@@ -17,7 +17,7 @@ alias t.nbsd.scp.r='scp $NIS_USER@$NIS_SERVER:/home/$NIS_USER/sandbox/etrack/git
 
 alias t.nbsd.syslog='grep nbsmartdiag  /var/log/*.log'
 alias t.nbsd.truncatelog='echo > /usr/openv/netbackup/logs/nbsmartdiag/nbsmartdiag.log'
-alias t.nbsd.delevd='for f in `ls -d /usr/openv/netbackup/logs/nbsmartdiag/*/ 2>/dev/null`; do echo deleting... $f; rm -fr $f; done'
+alias t.nbsd.delevd='for f in `ls -d /usr/openv/netbackup/logs/nbsmartdiag/*/ 2>/dev/null`; do echo deleting... $f; rm -fr $f; done; for f in `ls -d ${NBSD_EVD_PATH:-/usr/openv/netbackup/logs/}/*/ 2>/dev/null`; do echo deleting... $f/nbsmartdiag; rm -fr $f/nbsmartdiag; done;'
 alias t.nbsd.truncatesyslog='echo > /var/log/debug.log'
 
 alias t.nbsd.list='ps -elf | grep nbsmartdiag | grep -v grep'
