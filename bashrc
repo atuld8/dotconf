@@ -102,6 +102,7 @@ GetNBUData ()
     local NBU_BUILDNUMBER=
     local NBU_MASTER=
     local NBU_CLIENT_NAME=
+    local NBU_RELEASEDATE=
     NBU_DATA=
     NBU_DATA_TERMINAL=
     if [ -f /usr/openv/netbackup/bp.conf ]; then
@@ -118,11 +119,12 @@ GetNBUData ()
            NBU_VER=`grep "VERSION" /usr/openv/netbackup/version | awk '{ print $3 }'`;
            NBU_BUILDNUMBER="${BROWN}${BG}BuildDate:${blue}${BG}`grep "BUILDNUMBER" /usr/openv/netbackup/version | awk '{ print $2 }'`${BROWN}${BG} ";
            NBU_BUILDNUMBER_TERMINAL="BuildDate: `grep "BUILDNUMBER" /usr/openv/netbackup/version | awk '{ print $2 }'` ";
+           NBU_RELEASEDATE="ReleaseDate: `grep "RELEASEDATE" /usr/openv/netbackup/version | awk '{ print $3" "$4" "$7 }'` ";
         else
             if [ -f /usr/openv/netbackup/bin/version ]; then NBU_VER=`awk '{ print $2 }' /usr/openv/netbackup/bin/version`; fi
         fi
         export NBU_DATA="${BROWN}${BG}[NBU Type:${blue}${BG}${NBU_TYPE} ${BROWN}${BG}Ver:${blue}${BG}${NBU_VER}${BROWN}${BG} ${NBU_BUILDNUMBER}${BROWN}${BG}Master:${blue}${BG}${NBU_MASTER}${BROWN}${BG}]"
-        export NBU_DATA_TERMINAL="NBU Type: ${NBU_TYPE} \nVer: ${NBU_VER} \n${NBU_BUILDNUMBER_TERMINAL} \nMaster: ${NBU_MASTER} \nClient: ${NBU_CLIENT_NAME}"
+        export NBU_DATA_TERMINAL="NBU Type: ${NBU_TYPE} \nVer: ${NBU_VER} \n${NBU_BUILDNUMBER_TERMINAL} \nMaster: ${NBU_MASTER} \nClient: ${NBU_CLIENT_NAME} \n${NBU_RELEASEDATE}"
     fi
 }
 

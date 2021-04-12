@@ -28,6 +28,10 @@ fi
 MANPATH=$MANPATH:/usr/dt/man:/usr/man:/usr/openwin/share/man:/usr/openv/man/share/man
 export MANPATH
 
+# User specific aliases and functions
+#required by screen and tmux
+export DOName=''
+
 OSName=`uname -s`
 
 if [ "$OSName" = "SunOS" ]; then PATCHNO=`cat /etc/release | grep "Solaris" | sed -e's/.*_u//' | cut -c1-2 | grep "[0-9]"`; if [ $? -ne 0 ]; then OSVer="SunOS_"`uname -r`; else OSVer="SunOS_"`uname -r`"U"${PATCHNO/\w/}; fi; PROCName=`uname -p`; fi
@@ -52,7 +56,9 @@ if [ "$OSName" = "Darwin" ]; then
     ProductVersion=`sw_vers | grep ProductVersion | cut -f2`;
     export DARWIN_DATA=" ProductName:${PROPCOLOR}${BG}${ProductName}${PROPNAMECOLOR}${BG} ProductVer:${PROPCOLOR}${BG}${ProductVersion} "
 fi
-#DOName=`domainname | grep -v "none" | xargs -i echo "."{}`
+
+which domainname > /dev/null 2> /dev/null
+if [ $? -eq 0 ]; then DOName=`domainname | grep -v "none" | xargs -i echo "."{}`; fi
 TTYNAME=`tty | cut -b 6-`
 
 COLOR_USER=${GREEN}
@@ -67,6 +73,7 @@ GetNBUData ()
     local NBU_BUILDNUMBER=
     local NBU_MASTER=
     local NBU_CLIENT_NAME=
+    local NBU_RELEASEDATE=
     NBU_DATA=
     NBU_DATA_TERMINAL=
     if [ -f /usr/openv/netbackup/bp.conf ]; then
@@ -83,11 +90,12 @@ GetNBUData ()
            NBU_VER=`grep "VERSION" /usr/openv/netbackup/version | awk '{ print $3 }'`;
            NBU_BUILDNUMBER="${BROWN}${BG}BuildDate:${blue}${BG}`grep "BUILDNUMBER" /usr/openv/netbackup/version | awk '{ print $2 }'`${BROWN}${BG} ";
            NBU_BUILDNUMBER_TERMINAL="BuildDate: `grep "BUILDNUMBER" /usr/openv/netbackup/version | awk '{ print $2 }'` ";
+           NBU_RELEASEDATE="ReleaseDate: `grep "RELEASEDATE" /usr/openv/netbackup/version | awk '{ print $3" "$4" "$7 }'` ";
         else
             if [ -f /usr/openv/netbackup/bin/version ]; then NBU_VER=`awk '{ print $2 }' /usr/openv/netbackup/bin/version`; fi
         fi
         export NBU_DATA="${BROWN}${BG}[NBU Type:${blue}${BG}${NBU_TYPE} ${BROWN}${BG}Ver:${blue}${BG}${NBU_VER}${BROWN}${BG} ${NBU_BUILDNUMBER}${BROWN}${BG}Master:${blue}${BG}${NBU_MASTER}${BROWN}${BG}]"
-        export NBU_DATA_TERMINAL="NBU Type: ${NBU_TYPE} \nVer: ${NBU_VER} \n${NBU_BUILDNUMBER_TERMINAL} \nMaster: ${NBU_MASTER} \nClient: ${NBU_CLIENT_NAME}"
+        export NBU_DATA_TERMINAL="NBU Type: ${NBU_TYPE} \nVer: ${NBU_VER} \n${NBU_BUILDNUMBER_TERMINAL} \nMaster: ${NBU_MASTER} \nClient: ${NBU_CLIENT_NAME} \n${NBU_RELEASEDATE}"
     fi
 }
 
@@ -96,8 +104,11 @@ GetNBUData
 nbuver ()
 {
     GetNBUData
-
-    printf "$NBU_DATA_TERMINAL\n" | column -s ':' -t
+    if [ "$OSName" = "SunOS" ]; then
+        printf "$NBU_DATA_TERMINAL\n" | col
+    else
+        printf "$NBU_DATA_TERMINAL\n" | column -s ':' -t
+    fi
 }
 
 ClearNBUData ()
@@ -221,7 +232,7 @@ SetLongTrap()
     if [ ! -z "$WINDOW" ]; then
         export TMUX_WINIDX="[$WINDOW] "
     fi
-    trap 'PS1="\n${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*} ${PURPLE}${BG}(\$((\! -1)):\#) ${PROPNAMECOLOR}${BG}[Date:${PROPCOLOR}${BG}\D{%e-%B-%G} ${PROPNAMECOLOR}${BG}Time:${PROPCOLOR}${BG}\t ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG}] ${PROPNAMECOLOR}${BG}[OS:${PROPCOLOR}${BG}${OSName} ${PROPNAMECOLOR}${BG}Ver:${PROPCOLOR}${BG}${OSVer}${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Proc:${PROPCOLOR}${BG}${PROCName}${PROPNAMECOLOR}${BG}${DARWIN_DATA}${PROPNAMECOLOR}${BG}TTY:${PROPCOLOR}${BG}${TTYNAME}${PROPNAMECOLOR}${BG}] [FileEntries:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HiddenEntries:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) ))${PROPNAMECOLOR}] ${NBU_DATA} \n${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\$PWD ${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$r(UpdateTmuxWinIdx)Cmd$ $(changeTmuxWindowsEveryTime)"' DEBUG
+    trap 'PS1="\n${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*} ${PURPLE}${BG}(\$((\! -1)):\#) ${PROPNAMECOLOR}${BG}[Date:${PROPCOLOR}${BG}\D{%e-%B-%G} ${PROPNAMECOLOR}${BG}Time:${PROPCOLOR}${BG}\t ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG}] ${PROPNAMECOLOR}${BG}[OS:${PROPCOLOR}${BG}${OSName} ${PROPNAMECOLOR}${BG}Ver:${PROPCOLOR}${BG}${OSVer}${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Proc:${PROPCOLOR}${BG}${PROCName}${PROPNAMECOLOR}${BG}${DARWIN_DATA}${PROPNAMECOLOR}${BG}TTY:${PROPCOLOR}${BG}${TTYNAME}${PROPNAMECOLOR}${BG}] [FileEntries:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HiddenEntries:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) ))${PROPNAMECOLOR}] ${NBU_DATA} \n${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\$PWD ${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 CurrDirDepth() {
@@ -241,7 +252,7 @@ UpdateTmuxWinIdx () {
 # \W basename of current directory
 SetShortTrap()
 {
-   DOName=""
+   local DOName=""
    export PROMPT_DIRTRIM=3
    export TMUX_WINIDX=""
    if [ ! -z "$TMUX" ]; then
@@ -250,7 +261,7 @@ SetShortTrap()
    if [ ! -z "$WINDOW" ]; then
        export TMUX_WINIDX="[$WINDOW] "
    fi
-   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} Files:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HdnFiles:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) )) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ $(changeTmuxWindowsEveryTime)"' DEBUG
+   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} Files:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HdnFiles:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) )) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 SetBasicTrap()
@@ -264,7 +275,7 @@ SetBasicTrap()
    if [ ! -z "$WINDOW" ]; then
        export TMUX_WINIDX="[$WINDOW] "
    fi
-   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1 )) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USERNAME}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ "' DEBUG
+   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 SetBasicTrap
@@ -332,7 +343,7 @@ alias ll='ls -l'
 alias ls='ls -hF --color'
 alias grep='grep --color'
 
-ls > /dev/null; if [ $? -ne 0 ]; then alias ls='ls -Fh --color'; fi
+ls > /dev/null; if [ $? -ne 0 ]; then alias ls='ls -hF --color'; fi
 
 if [ "$OSName" != "AIX" ]; then alias df='df -h'; alias du='du -h'; fi
 
