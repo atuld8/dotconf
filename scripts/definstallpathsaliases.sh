@@ -51,7 +51,16 @@ if [[ "$OSName" = "Linux" ]] && [[ -f /etc/redhat-release ]] || [ "$1" = "ALL" ]
     alias cp.bld.clnt.lr..rf.b="function af.bld.clnt.lr() { af.bld.request_handler ECHO \$1 \$2 CLIENTS2 $CLIP_CMD; }; af.bld.clnt.lr"
 fi
 
+IS_SUSE=0
 if [[ "$OSName" = "Linux" ]] && [[ -f /etc/SuSE-release ]] || [ "$1" = "ALL" ]; then
+    IS_SUSE=1
+fi
+
+if [[ "$OSName" = "Linux" ]] && [[ -f /etc/SUSE-brand ]] || [ "$1" = "ALL" ]; then
+    IS_SUSE=1
+fi
+
+if [[ "$IS_SUSE" = "1" ]]; then
     alias m.bld.srv.ls..rs="function af.bld.srv.ls()   { af.bld.request_handler LAUNCH \$1 LinuxS_x86_64/install; }; af.bld.srv.ls"
     alias m.bld.clnt.ls..rs="function af.bld.clnt.ls() { af.bld.request_handler LAUNCH \$1 CLIENTS2/install; }; af.bld.clnt.ls"
     alias cp.bld.srv.ls..rs="function af.bld.srv.ls()   { af.bld.request_handler ECHO \$1 LinuxS_x86_64 $CLIP_CMD; }; af.bld.srv.ls"
