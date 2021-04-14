@@ -6,6 +6,10 @@ if [ -f /etc/SuSE-release ]; then
 export NBSD_OS=linuxS_x86_4.4.73
 fi
 
+if [ -f /etc/SUSE-brand ]; then
+export NBSD_OS=linuxS_x86_4.4.73
+fi
+
 alias e.nbsd.log='vim /usr/openv/netbackup/logs/nbsmartdiag/root.${1:-`date +"%m%d%y"`}_00001.log'
 
 alias t.nbsd.kill9='for p in `ps -elf | grep nbsmartdiag | grep -v grep | awk '"'"' $5 == 1 { print $4 }'"'"'`; do echo $p; kill -9 $p; done'
