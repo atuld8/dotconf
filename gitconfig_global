@@ -134,31 +134,27 @@
     helpv = help -a
 
     l = log
-    ltop = log -1
     ; log stat of commit with short hash
     ; sh= short hash
-    ; top is top commit only
-    ; 1l one liner
+    ; 1 one liner
     lstatsh = log --stat --abbrev-commit
-    ltop1lsh = log --pretty=oneline --abbrev-commit -1
-    l1lsh = log --pretty=oneline --abbrev-commit
-    l1l = log --pretty=oneline
-    l1ldiff = log --pretty=oneline --abbrev-commit -p
+    l1sh = log --pretty=oneline --abbrev-commit
+    l1 = log --pretty=oneline
+    l1diff = log --pretty=oneline --abbrev-commit -p
     lfmt1 = log --pretty=tformat:'%h - %an,  %ar : %s'
-    lfmt2 = log --pretty=format:'%h %s'  --graph
     lstat = log --stat
     lnmo = log --name-only
-    lgrep = log --all --grep
-    lg0 = !"git lg1"
-    lg1 = !"git lg1-specific --all"
-    lg2 = !"git lg2-specific --all"
-    lg3 = !"git lg3-specific --all"
-    lg4 = !"git lg4-specific --all"
-    lg5 = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset' --abbrev-commit --date=relative
-    lg  = log --color --graph --pretty=format:'%C(bold white)%h%Creset -%C(bold green)%d%Creset %s %C(bold green)(%cr)%Creset %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative
+    lgrp = log --all --grep
+    lgrh0 = !"git lg1"
+    lgrh1 = !"git lg1-specific --all"
+    lgrh2 = !"git lg2-specific --all"
+    lgrh3 = !"git lg3-specific --all"
+    lgrh4 = !"git lg4-specific --all"
+    lgrh5 = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset' --abbrev-commit --date=relative
+    lgrh6 = log --pretty=format:'%h %s'  --graph
     llg = log --color --graph --pretty=format:'%C(bold white)%H %d%Creset%n%s%n%+b%C(bold blue)%an <%ae>%Creset %C(bold green)%cr (%ci)' --abbrev-commit
-    lnm = "!git log \"$(git rev-parse --abbrev-ref HEAD)\" -not master --stat"
-    lusr = !"git log --author=$GIT_USER"
+    lnomrgd = "!git log \"$(git rev-parse --abbrev-ref HEAD)\" -not master --stat"
+    lcmtbyme = !"git log --author=$GIT_USER"
 
     lg1-specific = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(bold yellow)%d%C(reset)'
     lg2-specific = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold cyan)%aD%C(reset) %C(bold green)(%ar)%C(reset)%C(bold yellow)%d%C(reset)%n''          %C(white)%s%C(reset) %C(dim white)- %an%C(reset)'
@@ -167,10 +163,11 @@
 
     lEebDet = log --simplify-by-decoration --decorate --graph
     lEebShrt = log --graph --simplify-by-decoration --oneline --decorate
-    ltopcmtmsg = log -n 1 --pretty=format:'%s'
-    ltopcmtMsg1 = log -n 1 --pretty=format:'%s%n%n%b'
-    ltopcmtMsg2 = log --format=%B -n 1
-    lcmtmsgonly = log --pretty=format:%s
+    lcmtmsg = log --pretty=format:'%s'
+    lcmtMsg1 = log --pretty=format:'%s%n%n%b'
+    lcmtMsg2 = log --format=%B
+
+    ltag = !"git -c color.decorate.tag='bold blue' log --pretty=format:'%C(auto)%h%d - %s %Cgreen(%cr) %Cblue<%an>%Creset'"
 
     modTrkRltv= status -s -uno
     modTrk= status --porcelain -uno
@@ -214,9 +211,13 @@
     shdiff = show --pretty=format:
     shnmols = show --name-only --pretty=oneline
     ; List of files commited in commitid
-    filesIncmt = show --name-only --pretty=""
-    filesInCmt1Id = diff-tree --no-commit-id --name-only -r
+    shFInCmt = show --name-only --pretty=""
+    shFInCmt1Id = diff-tree --no-commit-id --name-only -r
     serve = daemon --reuseaddr --base-path=. --export-all --verbose
+
+    ; list tag name in which this cmtid present
+    ; How to find the first tag that contains a git commit
+    cmtintag = name-rev --tags --name-only
 
     ; statistics of user and number of commits
     top-cmts = shortlog --summary --numbered --no-merges
