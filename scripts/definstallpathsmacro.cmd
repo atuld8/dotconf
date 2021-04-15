@@ -60,7 +60,7 @@ GOTO MAIN_LOOP
 START %BUILD_PATH%\%ARGUMENT%
 
 :DEFINE_MACROS
-@DOSKEY m.bld.ls..rf=for /F "tokens=*" %%A in ('dir /O /b %PSTN_MOUNT_DRIVE%\NB\$1') do @ECHO %PSTN_MOUNT_DRIVE%\NB\$1\%%A
+@DOSKEY m.bld.lst..rf=for /F "tokens=*" %%A in ('dir /O /b %PSTN_MOUNT_DRIVE%\NB\$1') do @ECHO %PSTN_MOUNT_DRIVE%\NB\$1\%%A
 
 @DOSKEY m.bld..rs.t=%~dpnx0 LAUNCH $*
 @DOSKEY m.bld..rf.b.t=%~dpnx0 LAUNCH $*
