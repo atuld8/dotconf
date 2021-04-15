@@ -38,7 +38,7 @@ export NBSD_PROC_LIST="nbsmartdiag|nbcputest"
 alias t.nbsd.top='TOP_ARG=; while [ 1 ]; do for f in `ps -e| egrep "${NBSD_PROC_LIST:-nbsmartdiag}"| awk '"'"'{print $1 }'"'"'`; do TOP_ARG=$TOP_ARG,$f; done; [ "$TOP_ARG" != "" ] && top -b -n 1 -p `echo $TOP_ARG | cut -c2-` > /tmp/$$.output; sleep 2; clear; cat /tmp/$$.output;  done'
 alias t.nbsd.watchself='function af.watchself() { watch $@ "ps faxeo pid,command,pmem,rss,vsz,sz,size | egrep \"PID|\$(cat /usr/openv/tmp/976AF287-9C13-4F28-AC99-AD456ABE5383.RUN)\""; }; af.watchself'
 
-alias t.nbsd.rerun="t.nbsd.term; t.nbsd.dellog; t.nbsd.killterm;sleep 2; t.nbsd.run"
-alias t.nbsd.scprun="t.nbsd.terml; t.nbsd.dellog; t.nbsd.killterm; t.nbsd.scp; t.nbsd.run"
+alias t.nbsd.rerun="t.nbsd.term; t.nbsd.dellog; sleep 5; t.nbsd.killterm;sleep 2; t.nbsd.run"
+alias t.nbsd.scprun="t.nbsd.term; t.nbsd.dellog; sleep 5; t.nbsd.killterm; t.nbsd.scp; t.nbsd.run"
 
 alias t.nbsd.valgrind='valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=valgrind.log nbsmartdiag'
