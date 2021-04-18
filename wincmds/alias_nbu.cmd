@@ -75,7 +75,7 @@
 @DOSKEY cd.nb.tmp=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\temp\$*
 @DOSKEY cd.nb.rjc=%~dp0cd.cmd "%%NBU_INST_PATH%%"Java\$*
 @DOSKEY cd.nb.tir=%~dp0cd.cmd  "%%NBU_CONF_PATH%%"NetBackup\tir_info\$*
-@DOSkEY cd.nb.testdata=%~dp0cd.cmd  "%SystemDrive%\NBTestData"\$*
+@DOSkEY cd.nb.testdata=%~dp0cd.cmd  "%SystemDrive%\nbtestdata"\$*
 @DOSKEY cd.bmr.sd=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\BareMetal\server\data\$*
 @DOSKEY cd.bmr.cd=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\BareMetal\client\data\$*
 

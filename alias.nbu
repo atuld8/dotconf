@@ -71,7 +71,7 @@ alias cd.nb.tmp='af.cd /usr/openv/tmp'
 alias cd.nb.jre='af.cd /usr/openv/java/jre/bin'
 alias cd.nb.java='af.cd /usr/openv/java'
 alias cd.nb.tir='af.cd /usr/openv/netbackup/tir_info'
-alias cd.nb.testdata='af.cd ~/NBTestData'
+alias cd.nb.testdata='af.cd ~/nbtestdata'
 
 # NBU Misc command for quick ref
 alias nb.con='function af.nbconsole() { if [ "$1" != "" ]; then export ENG_VM_NAME=$1; fi; if [ "$ENG_VM_NAME" == "" ]; then echo "SET ENG_VM_NAME"; else jnbSA -d $ENG_VM_NAME & disown; fi; }; af.nbconsole'

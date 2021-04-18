@@ -15,8 +15,8 @@ if [ ! -L ~/custdata ]; then
     ln -s `cygpath $SYSTEMDRIVE`/custdata ~/custdata
 fi
 
-if [ ! -L ~/NBTestData ]; then
-    ln -s `cygpath $SYSTEMDRIVE`/NBTestData ~/NBTestData
+if [ ! -L ~/nbtestdata ]; then
+    ln -s `cygpath $SYSTEMDRIVE`/nbtestdata ~/nbtestdata
 fi
 
 alias cmd.vxdbms='. /usr/openv/NetBackupDB/vxdbms_env.sh'
@@ -60,7 +60,7 @@ alias cd.nb.bkpcomp='af.cd /usr/openv/bkpcomp'
 alias cd.nb.java='af.cd /usr/openv/NetBackup/Java'
 alias cd.nb.jre='af.cd /usr/openv/NetBackup/jre/bin'
 alias cd.nb.report='af.cd /usr/openv/NetBackup/var/global/report'
-alias cd.nb.testdata='af.cd ~/NBTestData'
+alias cd.nb.testdata='af.cd ~/nbtestdata'
 alias cd.nb.tir='af.cd /usr/openv/NetBackup/tir_info'
 alias cd.nb.tmp='af.cd /usr/openv/NetBackup/Temp'
 alias cd.nb.trylogs='af.cd /usr/openv/NetBackup/db/jobs/trylogs/'
