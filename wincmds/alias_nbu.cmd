@@ -183,11 +183,11 @@ IF %ERRORLEVEL% EQU 0 CALL :SET_NBU_PATHS
 @SET nbin="%NBU_INST_PATH%NetBackup\bin"
 @SET nadm="%NBU_INST_PATH%NetBackup\bin\admincmd"
 @SET ngds="%NBU_INST_PATH%NetBackup\bin\goodies"
-@SET nlogs="%NBU_INST_PATH%NetBackup\logs"
+@SET nlgs="%NBU_INST_PATH%NetBackup\logs"
 @SET bmrcd="%NBU_INST_PATH%NetBackup\BareMetal\Client\data"
-@SET nbudata=%SystemDrive%\nbudata
-@SET custdata=%SystemDrive%\custdata
-@SET openv=%NBU_INST_PATH%
+@SET nbdt=%SystemDrive%\nbudata
+@SET cstdt=%SystemDrive%\custdata
+@SET nov=%NBU_INST_PATH%
 
 
 GOTO END_SCRIPT
