@@ -1,5 +1,6 @@
 [core]
 	editor = vim
+	pager = less -+$LESS -F -RSX
 [credential]
 	helper = cache --timeout=99999
 [http]
@@ -120,9 +121,8 @@
 
     ; find alias of git
     finda = "!fa() { git alias | grep $@; }; fa"
-    fcb = "!git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\""
-    ; command which will pull the new branch using fetch and checkout
-    plRmtBr = "!plnewbr() { git fetch origin $@; git checkout $@; }; plnewbr"
+    fo = "!git fetch origin"
+    focb = "!git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\""
     fus = fetch --unshallow
     fp  = fetch --prune
 
@@ -183,6 +183,8 @@
     ; push current branch which is not exists at remote server
     phUpCb = "!git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\""
     plph = !git pull && git push
+    ; command which will pull the new branch using fetch and checkout
+    plRmtBr = "!plnewbr() { git fetch origin $@; git checkout $@; }; plnewbr"
 
     ; Git repository path wrt OS path
     root = rev-parse --show-toplevel
