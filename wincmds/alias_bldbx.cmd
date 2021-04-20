@@ -17,9 +17,11 @@
 @DOSKEY e.cmtmsg=%~dp0alias_func.cmd OPEN_COMMIT_MSG_FILE o $*
 
 @DOSKEY g.nbcln.src=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/src.git ./src $*
-@DOSKEY g.nbcln.src..br=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/src.git ./src --single-branch --branch $*
+@DOSKEY g.nbcln.src..br=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/src.git ./src --branch $*
+@DOSKEY g.nbcln.src.sngl..br=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/src.git ./src --single-branch --branch $*
 @DOSKEY g.nbcln..rp=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/$1.git ./$1
-@DOSKEY g.nbcln..rp.br=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/$1.git ./$1 --single-branch --branch $2
+@DOSKEY g.nbcln..rp.br=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/$1.git ./$1 --branch $2
+@DOSKEY g.nbcln.sngl..rp.br=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/$1.git ./$1 --single-branch --branch $2
 @DOSKEY g.adcln..rp=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/~%%GIT_USER%%/$1.git ./$1
 
 @DOSKEY cp.gnburl=echo https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/$1.git^|clip
