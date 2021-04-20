@@ -140,7 +140,7 @@ alias h.prnttag..t='function af.find_tag() { egrep "^$1:" ~/.helpfile | cut -d" 
 alias .rc='echo $?'
 alias .py=python
 alias .py35=python3.5
-alias .ssh='function af.ssh() { if [ ! -z "$TMUX" ]; then tmux rename-window "${1%%.*}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${1%%.*}"; fi; ssh -X -Y -t -o  StrictHostKeyChecking=no  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $@; if [ ! -z "$TMUX" ]; then tmux rename-window "${TMUX_HOSTNAME}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${HOSTNAME}"; fi;}; af.ssh'
+alias .ssh='function af.ssh() { if [ ! -z "$TMUX" ]; then tmux rename-window "${1%%.*}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${1%%.*}"; fi; ssh -X -Y -t -o "StrictHostKeyChecking=no"  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $SSH_EXTRA_PARAM $@; if [ ! -z "$TMUX" ]; then tmux rename-window "${TMUX_HOSTNAME}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${HOSTNAME}"; fi;}; af.ssh'
 alias .ssh.setpassless='function af.ssh.setpassless () { .ssh $1 "mkdir ~/.ssh; echo `cat ~/.ssh/id_rsa.pub` >> ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 644 ~/.ssh/authorized_keys"; .ssh $1; }; af.ssh.setpassless'
 alias .sshtmux..session='function af.sshtmux() { if [ ! -z "$TMUX" ]; then tmux rename-window "${1%%.*}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${1%%.*}"; fi; ssh -X -Y -t -o  StrictHostKeyChecking=no  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1 -t "tmux attach -d -t ${2:-main} || tmux new -s ${2:-main}";if [ ! -z "$TMUX" ]; then tmux rename-window "${TMUX_HOSTNAME}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${HOSTNAME}"; fi;}; af.sshtmux'
 alias .pushd='IFS=$'"'"'\n'"'"'; for f in `alias  | grep '"'"' cd\..*='"'"' | grep "^alias" | sed -e'"'"'s/cd\./pd\./g'"'"' | sed -e'"'"'s/cd /pushd /g'"'"'`; do echo $f ; done > /tmp/1.sh; . /tmp/1.sh'
@@ -193,6 +193,8 @@ alias set.p.list='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' '
 alias set.p.list.sort='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' | sort -u'
 
 alias set.ps1='trap DEBUG; function af.set.ps1() { trap DEBUG; export PS1=$@ ; }; af.set.ps1'
+
+alias set.sshextra='export SSH_EXTRA_PARAM="-o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null"'
 
 alias cmd.gendotconf='( cd  ~/.vim && /usr/bin/git pull && cd .. && tar -cf vim.tar .vim && mv -f vim.tar dotconf.tar)'
 alias cmd.dotconf='cd ~; scp root@${DOTCONF_HOSTNAME}:~/dotconf.tar ~; tar -xf dotconf.tar; rm -f dotconf.tar'

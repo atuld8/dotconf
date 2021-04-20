@@ -155,7 +155,7 @@
 @DOSKEY .firefox="%SYSTEMDRIVE%\Program Files (x86)\Mozilla Firefox\firefox.exe" $*
 @DOSKEY .py=python $*
 @DOSKEY .orca="%SYSTEMDRIVE%\ProgramData\Microsoft\Windows\Start Menu\Programs\orca.lnk" $*
-@DOSKEY .ssh=ssh -X -Y -t -o  StrictHostKeyChecking=no  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $*
+@DOSKEY .ssh=ssh -X -Y -t -o  StrictHostKeyChecking=no  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" %%SSH_EXTRA_ARG%% $*
 @DOSKEY .noclink=start cmd /c $*
 @DOSKEY .mini=start "cmd" /I /D %userprofile% cmd "/k mini.cmd"
 @DOSKEY .pushd=%~dp0alias_func.cmd CD_TO_PUSHD_MACROS $*
