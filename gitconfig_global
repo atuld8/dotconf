@@ -190,15 +190,15 @@
     root = rev-parse --show-toplevel
     ; Git current directory wrt git base path
     rPath = rev-parse --show-prefix
-    rstHOmstr = reset --hard origin/master
-    rstHOcb = "!f_rsthocb() { git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\"; }; f_rsthocb"
+    rstHOrgmstr = reset --hard origin/master
+    rstHOrgcb = "!f_rsthocb() { git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\"; }; f_rsthocb"
     rstAllmstr = ! git fetch && git reset --hard origin && git pull
     rstAllcb = "!f_rstallcb() { git fetch && git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\" && git pull; }; f_rstallcb"
     rmt = ls-remote --head
-    rPrune = remote update --prune
-    rbmstr=!git fetch origin && git rebase origin/master
-    rbsftmstr=!git diff --cached && git reset --soft `git merge-base HEAD origin/master` && git diff --cached --name-only
-    rbsftrp= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/$1` && git diff --cached --name-only; }; f_rbsftrp"
+    rmtPrune = remote update --prune
+    rborgmstr=!git fetch origin && git rebase origin/master
+    rbsftorgmstr=!git diff --cached && git reset --soft `git merge-base HEAD origin/master` && git diff --cached --name-only
+    rbsftorgbr= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/$1` && git diff --cached --name-only; }; f_rbsftrp"
 
     st = status
     stSB = status --short --branch
