@@ -17,6 +17,7 @@ alias pra='function af.pra(){ cmd=`alias $1 | sed -e"s/alias .*='\''//g" | sed -
 alias find.git='git alias | grep'
 alias h.find='history | grep'
 alias v='vim'
+alias vtag='vim -c "set tags+=tags" -c "cs add cscope.out"'
 
 if [ -z $SCP_HOSTNAME ]; then export SCP_HOSTNAME=`hostname`; fi
 

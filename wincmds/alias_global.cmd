@@ -23,6 +23,7 @@
 @DOSKEY pushd=%~dp0pushd.cmd $*
 @DOSKEY popd=%~dp0pushd.cmd popd
 @DOSKEY v=gvim $*
+@DOSKEY vtag=gvim -c "set tags+=tags" -c "cs add cscope.out" $*
 
 @DOSKEY macros=%DOSKEY_ALL_MACROS% $*
 @DOSKEY d=gvim -d $*
