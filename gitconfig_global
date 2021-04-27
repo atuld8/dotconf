@@ -197,6 +197,7 @@
     rmt = ls-remote --head
     rmtPrune = remote update --prune
     rborgmstr=!git fetch origin && git rebase origin/master
+    rborgbr= "!f_rborgbr() { git fetch origin $1 && git rebase origin/$1; }; f_rborgbr"
     rbsftorgmstr=!git diff --cached && git reset --soft `git merge-base HEAD origin/master` && git diff --cached --name-only
     rbsftorgbr= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/$1` && git diff --cached --name-only; }; f_rbsftrp"
 
@@ -231,3 +232,6 @@
     ; list all files in master with respect to base irrespective of current path within the repo
     treeAllWrtBase = ls-tree -r master --name-only  --full-tree
 
+    ; list of user modified the file or folder
+    authors1 = shortlog -n -s --
+    authors2 ="!f_authors2() {git log --pretty=format:\"%an%x09\" $@ | sort | uniq; }; f_authors2"
