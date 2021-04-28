@@ -31,7 +31,7 @@
 @DOSKEY set.gcred.usracctkn=SET GIT_CREDS=%%GIT_USER%%:%%ACCESS_TOKEN%%
 
 @DOSKEY g.addtag=%~dp0alias_func.cmd ADD_EEB_TAG $*
-@DOSKEY g.brme=%%GIT_CMD_USED%% ferauth ^| findstr /c:"Atul Das" $*
+@DOSKEY g.brbyme=%%GIT_CMD_USED%% for-each-ref --format="%%(authorname) %%09 %%(refname)" --sort=authorname ^| findstr /c:"Atul Das" $*
 @DOSKEY g.cmtmsg=%~dp0alias_func.cmd OPEN_COMMIT_MSG_FILE p $*
 
 :QA_ALIAS_BLDBX
