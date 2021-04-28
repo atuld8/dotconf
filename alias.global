@@ -120,7 +120,7 @@ alias g.alias='git config --list | grep alias'
 alias g.askpass='unset SSH_ASKPASS'
 alias g.askpassno='export SSH_ASKPASS=/bin/echo'
 alias g.brlstcmt='for branch in `git branch -r | grep -v HEAD`;do echo -e `git show --format="%ai %ar by %an" $branch | head -n 1` \\t$branch; done | sort -r'
-alias g.brmrgd='function af.g() { git branch --merged origin/${1:-master} | grep -v "^[ *]*master\$";}; af.g'
+alias g.brmrgd='function af.g() { git branch --merged origin/${1:-master} | grep -v "^[ *]*${1:-master}\$";}; af.g'
 alias g.brrmtlnk='for f in `git ls-remote --head | awk "{print $2}"`; do for b in `git branch | sed -e"s/\* //g"`; do if [ "refs/heads/$b" == "$f" ]; then echo $f; fi; done;done'
 alias g.brcurrmtlink='for b in `git branch | awk '"'"' $1 =="*" { print $2 }'"'"'`; do git ls-remote --head | grep "$b"; done'
 alias g.brbymedet="git for-each-ref --format='%(committerdate) %09 %(authorname) %09 %(refname)' | sort -k5n -k2M -k3n -k4n | grep 'Atul Das'"

@@ -37,7 +37,7 @@
     ; list only current branch name
     brCrnt = rev-parse --abbrev-ref HEAD
     ; branch which are merged with master
-    brMrgd = branch --merged
+    brMrgd ="!f() { git branch --merged origin/${1:-master}; }; f"
     ; branch which are not merged with master
     brNomrgd = branch --no-merged
     ; all remote branch list
