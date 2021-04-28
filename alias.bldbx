@@ -20,7 +20,9 @@ alias g.cmtmsg='for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; d
 alias gr.srtype='egrep "TYPE|SERVICE_REQUEST|---"'
 alias gr.deftype='egrep "TYPE|DEFECT|---"'
 alias g.et1linfo='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -a {}'
+alias g.et1linfoall='git branch 2> /dev/null | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -a {}'
 alias g.etdet='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s {}'
+alias g.etdetall='git branch 2> /dev/null | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s {}'
 alias g.etsuper='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v {} | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -i eprint -vdK  {}'
 
 
