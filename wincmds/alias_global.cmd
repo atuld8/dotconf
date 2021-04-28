@@ -36,7 +36,7 @@
 @DOSKEY a.als=%DOSKEY_ALL_MACROS%  ^| findstr "^\a\..*=" ^| findstr /V "\.a\..*="  $*
 @DOSKEY a.a.all=%DOSKEY_ALL_MACROS%  ^| findstr "a\..*=" $*
 @DOSKEY a.dff=%DOSKEY_ALL_MACROS%  ^| findstr "\<d\..*=" $*
-@DOSKEY a.gbl=%DOSKEY_ALL_MACROS%  ^| findstr "\<g\..*=" $*
+@DOSKEY a.git=%DOSKEY_ALL_MACROS%  ^| findstr "\<g\..*=" $*
 @DOSKEY a.get=%DOSKEY_ALL_MACROS% ^| findstr "get\..*=" $*
 @DOSKEY a.hlp=%DOSKEY_ALL_MACROS%  ^| findstr "\<h\..*=" $*
 @DOSKEY a.loc=%DOSKEY_ALL_MACROS%  ^| findstr "^.*\.l\..*=" $*
@@ -129,12 +129,12 @@
 
 
 @DOSKEY g.alias=%%GIT_CMD_USED%% config --list ^| findstr "alias" $*
-@DOSKEY g.brmrgd=%%GIT_CMD_USED%% branch --merged master ^| findstr /r /v /c:"[* ]*master"
+@DOSKEY g.brmrgd=%%GIT_CMD_USED%% branch --merged origin/master ^| findstr /r /v /c:"[* ]*master"
 @DOSKEY g.drop=%%GIT_CMD_USED%% stash ^& %%GIT_CMD_USED%% stash drop
 @DOSKEY g.syncrb=%%GIT_CMD_USED%% remote -v update ^& %%GIT_CMD_USED%% status -uno $*
 @DOSKEY g.syncmb=%%GIT_CMD_USED%% remote -v update ^& %%GIT_CMD_USED%% log HEAD..origin/master --oneline $*
-@DOSKEY g.brRmtLink=git ls-remote --head ^> %temp%\ls-remote.output ^&^& @ECHO OFF ^&^& @FOR /f "tokens=1,2" %%a in ('git branch') DO  @IF "%%a" == "*" ( findstr /c:"refs/heads/%%b" %temp%\ls-remote.output ^| findstr /v /r "%%b." ) ELSE ( findstr /c:"refs/heads/%%a" %temp%\ls-remote.output ^| findstr /v /r "%%a." ) ^&^& @ECHO ON
-@DOSKEY g.brCurRmtLink=@FOR /f "tokens=1,2" %%a in ('git branch') DO  @IF "%%a" == "*"  git  ls-remote --head ^| findstr /c:"refs/heads/%%b" ^| findstr /v /r "%%b."
+@DOSKEY g.brrmtlink=git ls-remote --head ^> %temp%\ls-remote.output ^&^& @ECHO OFF ^&^& @FOR /f "tokens=1,2" %%a in ('git branch') DO  @IF "%%a" == "*" ( findstr /c:"refs/heads/%%b" %temp%\ls-remote.output ^| findstr /v /r "%%b." ) ELSE ( findstr /c:"refs/heads/%%a" %temp%\ls-remote.output ^| findstr /v /r "%%a." ) ^&^& @ECHO ON
+@DOSKEY g.brcurrmtlink=@FOR /f "tokens=1,2" %%a in ('git branch') DO  @IF "%%a" == "*"  git  ls-remote --head ^| findstr /c:"refs/heads/%%b" ^| findstr /v /r "%%b."
 @DOSKEY g.et=@FOR /F "tokens=1,* delims=t" %%a in ('git br ^^^| findstr "*"') do @ECHO %%b^| clip
 @DOSKEY g.gh.user.email=git config --local user.email "atuld8@gmail.com"
 @DOSKEY g.gh.user.name=git config  --local user.name "atuld8"

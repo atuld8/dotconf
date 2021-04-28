@@ -119,14 +119,14 @@ alias g='git'
 alias g.alias='git config --list | grep alias'
 alias g.askpass='unset SSH_ASKPASS'
 alias g.askpassno='export SSH_ASKPASS=/bin/echo'
-alias g.brLstCmt='for branch in `git branch -r | grep -v HEAD`;do echo -e `git show --format="%ai %ar by %an" $branch | head -n 1` \\t$branch; done | sort -r'
-alias g.brMrgd='git branch --merged master | grep -v "^[ *]*master$"'
-alias g.brRmtLnk='for f in `git ls-remote --head | awk "{print $2}"`; do for b in `git branch | sed -e"s/\* //g"`; do if [ "refs/heads/$b" == "$f" ]; then echo $f; fi; done;done'
-alias g.brCurRmtLink='for b in `git branch | awk '"'"' $1 =="*" { print $2 }'"'"'`; do git ls-remote --head | grep "$b"; done'
-alias g.brMeList="git for-each-ref --format='%(committerdate) %09 %(authorname) %09 %(refname)' | sort -k5n -k2M -k3n -k4n | grep 'Atul Das'"
-alias g.brMe="git for-each-ref --format=' %(authorname) %09 %(refname)' --sort=authorname  | grep 'Atul Das'  | sed -e 's/refs\/remotes\/origin\///'"
+alias g.brlstcmt='for branch in `git branch -r | grep -v HEAD`;do echo -e `git show --format="%ai %ar by %an" $branch | head -n 1` \\t$branch; done | sort -r'
+alias g.brmrgd='function af.g() { git branch --merged origin/${1:-master} | grep -v "^[ *]*master\$";}; af.g'
+alias g.brrmtlnk='for f in `git ls-remote --head | awk "{print $2}"`; do for b in `git branch | sed -e"s/\* //g"`; do if [ "refs/heads/$b" == "$f" ]; then echo $f; fi; done;done'
+alias g.brcurrmtlink='for b in `git branch | awk '"'"' $1 =="*" { print $2 }'"'"'`; do git ls-remote --head | grep "$b"; done'
+alias g.brbymedet="git for-each-ref --format='%(committerdate) %09 %(authorname) %09 %(refname)' | sort -k5n -k2M -k3n -k4n | grep 'Atul Das'"
+alias g.brbyme="git for-each-ref --format=' %(authorname) %09 %(refname)' --sort=authorname  | grep 'Atul Das'  | sed -e 's/refs\/remotes\/origin\///'"
 alias g.syncrb='git remote -v update; git status -uno'
-alias g.syncmb='git remote -v update; git log HEAD..origin/master --oneline'
+alias g.syncwthtrgt='function af.g() { git remote -v update; git log HEAD..origin/${1:-master} --oneline;}; af.g'
 alias g.etnum='git branch | grep "*" | awk -F'"'"'t'"'"' '"'"'{ print $2}'"'"''
 alias g.gh.user.email='git config --local user.email "atuld8@gmail.com"'
 alias g.gh.user.name='git config  --local user.name "atuld8"'
@@ -211,7 +211,7 @@ alias a.dff="alias   | grep ' d\..*='"
 alias a.edt="alias   | grep ' e\..*='"
 alias a.func="declare -F | cut -d ' ' -f 3 |  column"
 alias a.func.af="declare -F | grep "af\." | cut -d ' ' -f 3 |  column"
-alias a.gbl="alias   | grep ' g\..*='"
+alias a.git="alias   | grep ' g\..*='"
 alias a.help="alias   | grep ' h\..*='"
 alias a.loc="alias   | grep '.*\.l\..*='"
 alias a.misc="alias   | grep ' m\..*='"
