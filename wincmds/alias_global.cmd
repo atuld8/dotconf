@@ -129,10 +129,10 @@
 
 
 @DOSKEY g.alias=%%GIT_CMD_USED%% config --list ^| findstr "alias" $*
-@DOSKEY g.brmrgd=%%GIT_CMD_USED%% branch --merged origin/master ^| findstr /r /v /c:"[* ]*master"
+@DOSKEY g.brmrgd=if $1. equ . ( %%GIT_CMD_USED%% branch --merged origin/master   ^| findstr /r /v /c:"[* ]*master" ) else ( %%GIT_CMD_USED%% branch --merged origin/$1   ^| findstr /r /v /c:"[* ]*$1" )
 @DOSKEY g.drop=%%GIT_CMD_USED%% stash ^& %%GIT_CMD_USED%% stash drop
 @DOSKEY g.syncrb=%%GIT_CMD_USED%% remote -v update ^& %%GIT_CMD_USED%% status -uno $*
-@DOSKEY g.syncmb=%%GIT_CMD_USED%% remote -v update ^& %%GIT_CMD_USED%% log HEAD..origin/master --oneline $*
+@DOSKEY g.syncmb=%%GIT_CMD_USED%% remote -v update ^& if $1. equ . ( %%GIT_CMD_USED%% log HEAD..origin/master --oneline $* ) else ( %%GIT_CMD_USED%% log HEAD..origin/$1 --oneline $* )
 @DOSKEY g.brrmtlink=git ls-remote --head ^> %temp%\ls-remote.output ^&^& @ECHO OFF ^&^& @FOR /f "tokens=1,2" %%a in ('git branch') DO  @IF "%%a" == "*" ( findstr /c:"refs/heads/%%b" %temp%\ls-remote.output ^| findstr /v /r "%%b." ) ELSE ( findstr /c:"refs/heads/%%a" %temp%\ls-remote.output ^| findstr /v /r "%%a." ) ^&^& @ECHO ON
 @DOSKEY g.brcurrmtlink=@FOR /f "tokens=1,2" %%a in ('git branch') DO  @IF "%%a" == "*"  git  ls-remote --head ^| findstr /c:"refs/heads/%%b" ^| findstr /v /r "%%b."
 @DOSKEY g.et=@FOR /F "tokens=1,* delims=t" %%a in ('git br ^^^| findstr "*"') do @ECHO %%b^| clip

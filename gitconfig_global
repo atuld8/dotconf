@@ -1,6 +1,6 @@
 [core]
 	editor = vim
-	pager = less -+$LESS -F -RSX
+	pager = less -F -X
 [credential]
 	helper = cache --timeout=99999
 [http]
