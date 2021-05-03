@@ -269,6 +269,22 @@ CurrDirDepth() {
     echo `pwd | awk -F"/" '{print NF - 1 ; }'`
 }
 
+GetGBaseParent() {
+    local gbase=`git rev-parse --show-toplevel 2>/dev/null`;
+    local subfolder=
+    local parentfolder=
+    if [ "$gbase"x != ""x ]; then
+        subfolder=`basename $(dirname $gbase)`;
+        if [ "$subfolder" != "/" ]; then
+            parentfolder=`basename $(dirname $(dirname $gbase))`;
+            echo "<$parentfolder/$subfolder> "
+        else
+            echo "<$subfolder> "
+            #echo ${PROPNAMECOLOR}${BG}gprnt:${PROPCOLOR}${BG}$subfolder${PROPNAMECOLOR}${BG}
+        fi
+    fi
+}
+
 UpdateTmuxWinIdx () {
     if [ ! -z "$TMUX" ]; then
         export TMUX_WINIDX="["$(tmux display-message -p '#I')"."$(tmux display-message -p '#P')"] "
@@ -291,7 +307,7 @@ SetShortTrap()
    if [ ! -z "$WINDOW" ]; then
        export TMUX_WINIDX="[$WINDOW] "
    fi
-   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} Files:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HdnFiles:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) )) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
+   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} Files:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HdnFiles:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) )) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PURPLE}${BG}\$(GetGBaseParent)${NC}${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 SetBasicTrap()
@@ -305,7 +321,7 @@ SetBasicTrap()
    if [ ! -z "$WINDOW" ]; then
        export TMUX_WINIDX="[$WINDOW] "
    fi
-   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
+   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PURPLE}${BG}\$(GetGBaseParent)${NC}${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 if [ "$TERM" == "screen" ]
