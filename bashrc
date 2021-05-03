@@ -277,6 +277,9 @@ GetGBaseParent() {
         subfolder=`basename $(dirname $gbase)`;
         if [ "$subfolder" != "/" ]; then
             parentfolder=`basename $(dirname $(dirname $gbase))`;
+            if [ "$parentfolder" == "/" ]; then
+                parentfolder=""
+            fi
             echo "<$parentfolder/$subfolder> "
         else
             echo "<$subfolder> "
