@@ -28,7 +28,9 @@ alias g.etsuper='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///"
 
 # change dir quickly
 alias cd.nbudata='af.cd ~/nbudata'
+alias mcd.nbudata='mcd ~/nbudata'
 alias cd.custdata='af.cd ~/custdata'
+alias mcd.custdata='mcd ~/custdata'
 
 export GIT_CREDS=$GIT_USER
 alias set.gcred.usr='export GIT_CREDS=$GIT_USER'
