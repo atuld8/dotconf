@@ -99,7 +99,7 @@
 @DOSKEY cd=%~dp0cd.cmd $*
 
 @REM @DOSKEY cd.sample=%~dp0cd.cmd "sample folder with space"\subfolder $*
-@DOSKEY cd.~.win=%~dp0cd.cmd "%userprofile%"\$*
+@DOSKEY cd.up=%~dp0cd.cmd "%userprofile%"\$*
 @DOSKEY cd.drpbx=%~dp0cd.cmd "%userprofile%"\Dropbox\$*
 @DOSKEY cd.desk=%~dp0cd.cmd "%userprofile%"\Desktop\$*
 @DOSKEY cd.down=%~dp0cd.cmd "%userprofile%"\Downloads\$*
