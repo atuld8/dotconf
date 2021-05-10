@@ -1,5 +1,5 @@
 alias=DOSKEY /MACROS $*
-cd.~.win=cd /d %userprofile%
+cd.up=cd /d %userprofile%
 set.alias=%userprofile%\alias.cmd $*
 set.qalias=%userprofile%\alias.cmd QUICK_ACCESS $*
 

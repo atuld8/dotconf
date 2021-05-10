@@ -17,8 +17,8 @@ alias cyg.genlink2drive='(for f in `\ls /cygdrive`; do echo $f; if [ ! -d /${f} 
 alias d.minttyrc='vimdiff ~/.minttyrc ~/.vim/wincmds/mintty_settings/minttyrc'
 
 alias cd.down='af.cd $USERPROFILE/Downloads'
-alias cd.~.win='af.cd $USERPROFILE'
-alias cd.~.cyg='af.cd ~'
+alias cd.up='af.cd $USERPROFILE'
+alias cd.~='af.cd ~'
 alias cd.windows='af.cd `cygpath.exe -W`'
 alias cd.sys32='af.cd `cygpath.exe -S`'
 alias cd.sysdrv='af.cd $SYSTEMDRIVE'
