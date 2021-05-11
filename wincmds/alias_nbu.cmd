@@ -2,7 +2,7 @@
 
 @IF "%1" == "QUICK_ACCESS" GOTO QA_ALIAS_NBU
 
-@DOSKEY a.nb=DOSKEY /macros:all ^| findstr "\.nb\..*=" $*
+@DOSKEY a.nb=DOSKEY /macros:all ^| findstr "\.nb\..*=" ^| findstr /v "[0-9A-Za-z]\.nb\..*=" $*
 @DOSKEY a.nbc=DOSKEY /macros:all ^| findstr "\.nbc\..*=" $*
 @DOSKEY a.oc=DOSKEY /macros:all ^| findstr "oc\..*=" ^| findstr /V "\.oc\..*=" $*
 @DOSKEY a.nb.all=DOSKEY /macros:all ^| findstr "nb\..*= bmr\..*=" $*

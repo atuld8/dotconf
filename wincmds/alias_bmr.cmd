@@ -1,6 +1,6 @@
 @IF "%1" == "QUICK_ACCESS" GOTO QA_ALIAS_BMR
 
-@DOSKEY a.bmr=DOSKEY /macros:all ^| findstr "\.bmr\..*=" $*
+@DOSKEY a.bmr=DOSKEY /macros:all ^| findstr "\.bmr\..*=" ^| findstr /v "[0-9A-Za-z]\.bmr\..*="$*
 
 
 @REM BMR specific commands
