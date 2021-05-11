@@ -36,6 +36,7 @@
 @DOSKEY a.als=%DOSKEY_ALL_MACROS%  ^| findstr "^\a\..*=" ^| findstr /V "\.a\..*="  $*
 @DOSKEY a.a.all=%DOSKEY_ALL_MACROS%  ^| findstr "a\..*=" $*
 @DOSKEY a.dff=%DOSKEY_ALL_MACROS%  ^| findstr "\<d\..*=" $*
+@DOSKEY a.find=%DOSKEY_ALL_MACROS% ^| findstr "$1*=" $2 $3 $4 $5
 @DOSKEY a.git=%DOSKEY_ALL_MACROS%  ^| findstr "\<g\..*=" $*
 @DOSKEY a.get=%DOSKEY_ALL_MACROS% ^| findstr "get\..*=" $*
 @DOSKEY a.hlp=%DOSKEY_ALL_MACROS%  ^| findstr "\<h\..*=" $*
@@ -99,7 +100,7 @@
 @DOSKEY cd=%~dp0cd.cmd $*
 
 @REM @DOSKEY cd.sample=%~dp0cd.cmd "sample folder with space"\subfolder $*
-@DOSKEY cd.~.win=%~dp0cd.cmd "%userprofile%"\$*
+@DOSKEY cd.up=%~dp0cd.cmd "%userprofile%"\$*
 @DOSKEY cd.drpbx=%~dp0cd.cmd "%userprofile%"\Dropbox\$*
 @DOSKEY cd.desk=%~dp0cd.cmd "%userprofile%"\Desktop\$*
 @DOSKEY cd.down=%~dp0cd.cmd "%userprofile%"\Downloads\$*
