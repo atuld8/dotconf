@@ -41,6 +41,8 @@
 @DOSKEY cd.oc.instlogs=%~dp0cd.cmd "%allusersprofile%"\Symantec\opsCenter\InstallLogs\$*
 
 @DOSKEY cd.nb=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\$*
+@DOSKEY cd.nb.lgs=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\logs\$*
+@DOSKEY cd.nb.bin=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\bin\$*
 @DOSKEY cd.nb.adm=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\bin\admincmd\$*
 @DOSKEY cd.nb.gd=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\bin\goodies\$*
 @DOSKEY cd.nb.at=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\sec\at\bin\$*
