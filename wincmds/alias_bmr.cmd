@@ -21,8 +21,8 @@
 @DOSKEY bmr.qtidgui..id=bmrs -o querytree -r database -table config -gui -id $*
 @DOSKEY bmr.pullrsF..clnt=bmrc -o pull -res info -sourc FFFFFFFF.restore -dest FFFFFFFF.restore -client $*
 @DOSKEY bmr.pushrsF..clnt=bmrc -o push -res info -sourc FFFFFFFF.restore -dest FFFFFFFF.restore -client $*
-@DOSKEY bmr.pull..clnt.hIp.ext=bmrc -o pull -res info -client $1 -sourc $2.$3 -dest $1.$2.$3
-@DOSKEY bmr.push..clnt.hIp.ext=bmrc -o push -res info -client $1 -sourc $1.$2.$3 -dest $2.$3
+@DOSKEY bmr.pull..clnt.hIp.fextn=bmrc -o pull -res info -client $1 -sourc $2.$3 -dest $1.$2.$3
+@DOSKEY bmr.push..clnt.hIp.fextn=bmrc -o push -res info -client $1 -sourc $1.$2.$3 -dest $2.$3
 @DOSKEY bmr.pullallscripts..clnt.hIp..apnd=@FOR %%f in (hosts bp.conf resolv.conf conf listfile diskdata info restore) do bmrc -o pull -res info -client $1 -sourc $2.%%f -dest $1$3.%%f
 @DOSKEY bmr.driverLoadOrder..cfgid=@FOR /F "tokens=1,2,*" %%a in ('bmrpans -op query -table BMR_LinuxScsiDriver -where "VolumeInfoId=$*" ^^^| findstr "DriverName"') do @ECHO %%c
 @DOSKEY bmr.cancelrstjob..clnt=bmrs -op complete -res restoretask -status 150 -client $*
