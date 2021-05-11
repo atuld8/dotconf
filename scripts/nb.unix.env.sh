@@ -16,7 +16,7 @@ export PATH=$PATH:/usr/openv/db/bin:/usr/openv/netbackup/bin/goodies
 export PATH=$PATH:/usr/openv/netbackup/bin/support
 export PATH=$PATH:/usr/openv/netbackup/sec/at/bin:/usr/openv/volmgr/bin
 
-alias nb.con='jnbSA -d $ENG_VM_NAME & disown'
+alias .nb.con='jnbSA -d $ENG_VM_NAME & disown'
 
 alias cd..2='cd ../..'
 alias cd..3='cd ../../..'

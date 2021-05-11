@@ -2,8 +2,8 @@
 
 @IF "%1" == "QUICK_ACCESS" GOTO QA_ALIAS_NBU
 
-@DOSKEY a.nb=DOSKEY /macros:all ^| findstr "nb\..*=" ^| findstr /V "\.nb\..*=" $*
-@DOSKEY a.nbc=DOSKEY /macros:all ^| findstr "nbc\..*=" $*
+@DOSKEY a.nb=DOSKEY /macros:all ^| findstr "\.nb\..*=" $*
+@DOSKEY a.nbc=DOSKEY /macros:all ^| findstr "\.nbc\..*=" $*
 @DOSKEY a.oc=DOSKEY /macros:all ^| findstr "oc\..*=" ^| findstr /V "\.oc\..*=" $*
 @DOSKEY a.nb.all=DOSKEY /macros:all ^| findstr "nb\..*= bmr\..*=" $*
 
@@ -105,51 +105,51 @@
 @DOSKEY set.nb.clust.dbserver=@FOR /F "tokens=1,2,*" %%a in ('REG QUERY HKEY_LOCAL_MACHINE\SOFTWARE\Veritas\NetBackup\CurrentVersion\Cluster\Instance1 /v VirtualServerName ^^^|findstr /ri "REG_SZ"') do @SET NBUDB_SERVER=%%c
 
 @REM NBU misc commands for quick ref
-@DOSKEY nb.con=cmd /c ""%%NBU_INST_PATH%%"NetBackup\java\nbjava.bat"
-@DOSKEY nb.killbpps=@FOR /f "tokens=1,2" %%a in ('bpps -S ^^^| FINDSTR /v /c:"bpps"') DO @ECHO "killing the %%a %%b" ^&^& TASKKILL /F /PID %%b
-@DOSKEY nb.cfg=bpgetconfig -s "localhost" -L $*
-@DOSKEY nb.db.pass=nbdb_admin -dba $*
-@DOSKEY nb.db.pass.def=nbdb_admin -dba nbusql
-@DOSKEY nb.propchg=bpgetconfig -d $*
-@DOSKEY nb.jb.actv=bpdbjobs -summary $* ^&^& bpdbjobs $* ^| findstr /v /c:"Done"
-@DOSKEY nb.jb=bpdbjobs -report $*
-@DOSKEY nb.jb.rstrt=bpdbjobs -restart $*
-@DOSKEY nb.jb.sum=bpdbjobs -summary $* ^&^& %%ES%% ^&^& bpdbjobs -report $*
-@DOSKEY nb.jb.trylog=findstr LOG "%%NBU_CONF_PATH%%NetBackup\db\jobs\trylogs\$*.t"
-@DOSKEY nb.jb.dtls=bpdbjobs.exe -jobid $* -report -all_columns  ^| perl -pe "s{\\,}{_COMMA_}g;s{,}{\n}g; s{_COMMA_}{,}g;s{([^\n])(\d{2}/\d{2}/\d{4})}{$1\n$2}g;" ^| perl -ne "print if  m{^\d{2}/\d{2}/\d{4}}"
-@DOSKEY nb.jb.10=bpdbjobs.exe ^| findstr /n . ^| findstr "^[0-9]: "
-@DOSKEY nb.cc=cat_convert -dump $*
-@DOSKEY nb.restart=bpdown -v -f ^&^& bpup -v -f
-@DOSKEY nb.mux=echo https://%%NBUDB_SERVER%%:1556/webui/login
+@DOSKEY .nb.con=cmd /c ""%%NBU_INST_PATH%%"NetBackup\java\nbjava.bat"
+@DOSKEY .nb.killbpps=@FOR /f "tokens=1,2" %%a in ('bpps -S ^^^| FINDSTR /v /c:"bpps"') DO @ECHO "killing the %%a %%b" ^&^& TASKKILL /F /PID %%b
+@DOSKEY .nb.cfg=bpgetconfig -s "localhost" -L $*
+@DOSKEY .nb.db.pass=nbdb_admin -dba $*
+@DOSKEY .nb.db.pass.def=nbdb_admin -dba nbusql
+@DOSKEY .nb.propchg=bpgetconfig -d $*
+@DOSKEY .nb.jb.actv=bpdbjobs -summary $* ^&^& bpdbjobs $* ^| findstr /v /c:"Done"
+@DOSKEY .nb.jb=bpdbjobs -report $*
+@DOSKEY .nb.jb.rstrt=bpdbjobs -restart $*
+@DOSKEY .nb.jb.sum=bpdbjobs -summary $* ^&^& %%ES%% ^&^& bpdbjobs -report $*
+@DOSKEY .nb.jb.trylog=findstr LOG "%%NBU_CONF_PATH%%NetBackup\db\jobs\trylogs\$*.t"
+@DOSKEY .nb.jb.dtls=bpdbjobs.exe -jobid $* -report -all_columns  ^| perl -pe "s{\\,}{_COMMA_}g;s{,}{\n}g; s{_COMMA_}{,}g;s{([^\n])(\d{2}/\d{2}/\d{4})}{$1\n$2}g;" ^| perl -ne "print if  m{^\d{2}/\d{2}/\d{4}}"
+@DOSKEY .nb.jb.10=bpdbjobs.exe ^| findstr /n . ^| findstr "^[0-9]: "
+@DOSKEY .nb.cc=cat_convert -dump $*
+@DOSKEY .nb.restart=bpdown -v -f ^&^& bpup -v -f
+@DOSKEY .nb.mux=echo https://%%NBUDB_SERVER%%:1556/webui/login
 @REM HIDDEN / NOT DOCUMENTED CMDS
-@DOSKEY nb.vxlall=vxlogcfg -a -p 51216 -o Default -s DebugLevel=$*
-@DOSKEY nb.vxl6=vxlogcfg -a -p 51216 -s DebugLevel=6 -o $*
-@DOSKEY nb.vxl0=vxlogcfg -r -p 51216 -s DebugLevel -o $*
-@DOSKEY nb.vxls=vxlogcfg -l -p 51216 $*
-@DOSKEY nb.vxlcln=vxlogmgr --auto --del -q $*
-@DOSKEY nb.vxlids=findstr "OIDNames" "%%NBU_INST_PATH%%\NetBackup\nblog.conf" $*
-@DOSKEY nb.vxlv.prnt=echo vxlogview -G . -b "%%date:~4,2%%/%%date:~7,2%%/%%date:~-2%% %%time:~0,2%%:%%time:~3,2%%:%%time:~6,2%% AM" $*
-@DOSKEY nb.vxlv10min=vxlogview -G . -t 00:10:00 $*
-@DOSKEY nb.vxlv60min=vxlogview -G . -t 01:00:00 $*
-@DOSKEY nb.vxlv24h=vxlogview -G . -t 23:59:59 $*
-@DOSKEY nb.vxlvall=vxlogview -G . -p 51216 -d all $*
-@DOSKEY nb.x509=vxsslcmd x509 -text -noout -fingerprint -sha1 -in $*
-@DOSKEY nb.x509chn=vxsslcmd crl2pkcs7 -nocrl -certfile $* ^| vxsslcmd pkcs7 -print_certs -text -noout
-@DOSKEY nb.jver="%%NBU_INST_PATH%%NetBackup\jre\bin\java.exe" -version
-@DOSKEY nb.tcver="%%NBU_INST_PATH%%NetBackup\wmc\bin\setenv.bat" ^> NUL ^&^& pushd "%%NBU_INST_PATH%%NetBackup\wmc\webserver\bin" ^&^& version.bat ^&^& popd
+@DOSKEY .nb.vxlall=vxlogcfg -a -p 51216 -o Default -s DebugLevel=$*
+@DOSKEY .nb.vxl6=vxlogcfg -a -p 51216 -s DebugLevel=6 -o $*
+@DOSKEY .nb.vxl0=vxlogcfg -r -p 51216 -s DebugLevel -o $*
+@DOSKEY .nb.vxls=vxlogcfg -l -p 51216 $*
+@DOSKEY .nb.vxlcln=vxlogmgr --auto --del -q $*
+@DOSKEY .nb.vxlids=findstr "OIDNames" "%%NBU_INST_PATH%%\NetBackup\nblog.conf" $*
+@DOSKEY .nb.vxlv.prnt=echo vxlogview -G . -b "%%date:~4,2%%/%%date:~7,2%%/%%date:~-2%% %%time:~0,2%%:%%time:~3,2%%:%%time:~6,2%% AM" $*
+@DOSKEY .nb.vxlv10min=vxlogview -G . -t 00:10:00 $*
+@DOSKEY .nb.vxlv60min=vxlogview -G . -t 01:00:00 $*
+@DOSKEY .nb.vxlv24h=vxlogview -G . -t 23:59:59 $*
+@DOSKEY .nb.vxlvall=vxlogview -G . -p 51216 -d all $*
+@DOSKEY .nb.x509=vxsslcmd x509 -text -noout -fingerprint -sha1 -in $*
+@DOSKEY .nb.x509chn=vxsslcmd crl2pkcs7 -nocrl -certfile $* ^| vxsslcmd pkcs7 -print_certs -text -noout
+@DOSKEY .nb.jver="%%NBU_INST_PATH%%NetBackup\jre\bin\java.exe" -version
+@DOSKEY .nb.tcver="%%NBU_INST_PATH%%NetBackup\wmc\bin\setenv.bat" ^> NUL ^&^& pushd "%%NBU_INST_PATH%%NetBackup\wmc\webserver\bin" ^&^& version.bat ^&^& popd
 
-@DOSKEY nb.at.login=bpnbat -login ^&^& bpnbat -whoami
-@DOSKEY nb.at.login.auto=bpnbat -login -Info %userprofile%\atlogin$*.info ^&^& bpnbat -whoami
-@DOSKEY nb.at.loginweb=bpnbat -login -LoginType WEB ^&^& bpnbat -whoami
-@DOSKEY nb.at.loginweb.auto=bpnbat -login -Info %userprofile%\atlogin$*.info -LoginType WEB ^&^& bpnbat -whoami
+@DOSKEY .nb.at.login=bpnbat -login ^&^& bpnbat -whoami
+@DOSKEY .nb.at.login.auto=bpnbat -login -Info %userprofile%\atlogin$*.info ^&^& bpnbat -whoami
+@DOSKEY .nb.at.loginweb=bpnbat -login -LoginType WEB ^&^& bpnbat -whoami
+@DOSKEY .nb.at.loginweb.auto=bpnbat -login -Info %userprofile%\atlogin$*.info -LoginType WEB ^&^& bpnbat -whoami
 
-@DOSKEY nb.uninstmstr=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup" /v UninstallString^^^|findstr "UninstallString"') do %%b
-@DOSKEY nb.uninstclnt=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup client" /v UninstallString^^^|findstr "UninstallString"') do %%b
+@DOSKEY .nb.uninstmstr=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup" /v UninstallString^^^|findstr "UninstallString"') do %%b
+@DOSKEY .nb.uninstclnt=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup client" /v UninstallString^^^|findstr "UninstallString"') do %%b
 
-@DOSKEY nb.nbwebuser..p=net user nbwebsvc $* /add ^&^& net localgroup nbwebgrp /add ^&^& net localgroup nbwebgrp nbwebsvc /add
-@DOSKEY nb.sv.del.s1=wmic service where "displayname like '%%netbackup%%'" get name ^| findstr /V "^Name *$" $*
-@DOSKEY nb.sv.del.s2=for /f "tokens=*" %%s in (nbuservicelist.txt) do ( echo sc delete  "%%s" ) $*
-@DOSKEY nb.jreup="%%NBU_INST_PATH%%NetBackup\bin\goodies\nbcomponentupdate.exe" -pro netbackup -comp jre $*
+@DOSKEY .nb.nbwebuser..p=net user nbwebsvc $* /add ^&^& net localgroup nbwebgrp /add ^&^& net localgroup nbwebgrp nbwebsvc /add
+@DOSKEY .nb.sv.del.s1=wmic service where "displayname like '%%netbackup%%'" get name ^| findstr /V "^Name *$" $*
+@DOSKEY .nb.sv.del.s2=for /f "tokens=*" %%s in (nbuservicelist.txt) do ( echo sc delete  "%%s" ) $*
+@DOSKEY .nb.jreup="%%NBU_INST_PATH%%NetBackup\bin\goodies\nbcomponentupdate.exe" -pro netbackup -comp jre $*
 
 @DOSKEY wmic.srvc=wmic service where "displayname like '%%netbackup%%'" get name
 @DOSKEY wmic.nb.list=wmic product where "name like '%%NetBackup%%'" list brief
