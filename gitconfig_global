@@ -114,6 +114,7 @@
     ; git diff in patch format. Expects cmtid
     dlPatch = diff-tree -p
     dlPatch1= "!f() { git diff ${1-HEAD}^!; }; f"
+    dlnmoabs= "!f() { git diff --name-only .| xargs -I '{}' echo $(git rev-parse --show-toplevel)/'{}'; }; f"
     ; git diff with vim tool
     dtg = difftool --extcmd=\"gvim -d -f\"
     dtt = difftool --extcmd=\"vim -d -f\"
@@ -208,7 +209,7 @@
     stuall = status -u
     stunrm = status -unormal
     stuno = status -uno
-    strp = status -s
+    strel = status -uno -s
     sti = status --ignored
     sh = show
     shSt = show --stat

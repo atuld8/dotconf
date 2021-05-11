@@ -133,6 +133,7 @@ alias g.syncwthtrgt='function af.g() { git remote -v update; git log HEAD..origi
 alias g.etnum='git branch | grep "*" | awk -F'"'"'t'"'"' '"'"'{ print $2}'"'"''
 alias g.gh.user.email='git config --local user.email "atuld8@gmail.com"'
 alias g.gh.user.name='git config  --local user.name "atuld8"'
+alias g.dlnmorel="git diff --name-only $1 | xargs -I '{}' realpath --relative-to=. $(git rev-parse --show-toplevel)/'{}'"
 
 # to get quick help docs
 alias h.doc='vim --cmd "set key=$VIMPASS" -c ":let g:nerdtreefindexec=1" -c ":NERDTree" ~/.vim/doc/*.txt'
