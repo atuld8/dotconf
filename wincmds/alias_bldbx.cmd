@@ -25,7 +25,7 @@
 @DOSKEY g.adcln..rp=%%GIT_CMD_USED%% clone -n https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/~%%GIT_USER%%/$1.git ./$1
 
 @DOSKEY cp.gnburl=echo https://%%GIT_CREDS%%@%%GIT_SERVER%%/scm/nb/$1.git^|clip
-@DOSKEY cp.eebver..e.p.s=echo _EEB$1_PET$2_SET$3^|set /p=_EEB$1_PET$2_SET$3^|clip
+@DOSKEY cp.eebver..s.p=echo _EEB1_PET$2_SET$1^|set /p=_EEB1_PET$2_SET$1^|clip
 
 @DOSKEY set.gcred.usr=SET GIT_CREDS=%%GIT_USER%%
 @DOSKEY set.gcred.usracctkn=SET GIT_CREDS=%%GIT_USER%%:%%ACCESS_TOKEN%%
