@@ -16,6 +16,9 @@ alias find.aall='function af.faa() { alias | grep "alias \w*\.*$1\.*\w*="; }; af
 alias pra='function af.pra(){ cmd=`alias $1 | sed -e"s/alias .*='\''//g" | sed -e "s/'\''$//g"`; echo $cmd ${@:2}; $cmd ${@:2}; }; af.pra'
 alias find.git='git alias | grep'
 alias h.find='history | grep'
+alias h.dumplastcmd='history 2 | head -n 1 >> ~/.dump_cmd'
+alias h.printdump='cat -n ~/.dump_cmd'
+alias h.clear='cat /dev/null > ~/.bash_history && history -c '
 alias v='vim'
 alias vtag='vim -c "set tags+=tags" -c "cs add cscope.out"'
 
