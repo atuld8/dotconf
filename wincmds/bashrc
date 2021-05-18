@@ -136,6 +136,10 @@ CurrDirDepth() {
 }
 
 GetGBaseParent() {
+    if [ "$GIT_STATUS_LEVEL" == "0" ]; then
+        return;
+    fi
+
     local gbase=`git rev-parse --show-toplevel 2>/dev/null`;
     local subfolder=
     local parentfolder=
