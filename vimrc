@@ -199,61 +199,61 @@ map <F10> :<C-u>let @z=&so<CR>:set so=0 noscb<CR>:bo vs<CR>Ljzt:setl scb<CR><C-w
 
 
 function! F_ctag_cscope_add()
-    let s:path = fnamemodify(resolve(expand('<sfile>:p')), ':h')
-    let s:srcpath = substitute(s:path, '\/src\/.*$', '\/src\/',"")
-    let s:cscope_out = substitute(s:srcpath, '\/src\/.*$', '\/src\/cscope.out',"")
-    let s:ctags_file = substitute(s:srcpath, '\/src\/.*$', '\/src\/vtags',"")
+  let s:path = fnamemodify(resolve(expand('<sfile>:p')), ':h')
+  let s:srcpath = substitute(s:path, '\/src\/.*$', '\/src\/',"")
+  let s:cscope_out = substitute(s:srcpath, '\/src\/.*$', '\/src\/cscope.out',"")
+  let s:ctags_file = substitute(s:srcpath, '\/src\/.*$', '\/src\/vtags',"")
 
-    if filereadable(s:cscope_out)
-        exec ":cscope add " . s:cscope_out
-    endif
+  if filereadable(s:cscope_out)
+    exec ":cscope add " . s:cscope_out
+  endif
 
-    if filereadable(s:ctags_file)
-        exec ":set tags+=" . s:ctags_file
-    endif
+  if filereadable(s:ctags_file)
+    exec ":set tags+=" . s:ctags_file
+  endif
 endfunction
 
 call F_ctag_cscope_add()
 
 function! F_ctag_cscope_add_wrt_git()
-    let s:rootpath = system('git rev-parse --show-toplevel')
-    let s:cscope_out = substitute(s:rootpath, '\n$', '/cscope.out',"")
-    let s:ctags_file = substitute(s:rootpath, '\n$', '/tags',"")
+  let s:rootpath = system('git rev-parse --show-toplevel')
+  let s:cscope_out = substitute(s:rootpath, '\n$', '/cscope.out',"")
+  let s:ctags_file = substitute(s:rootpath, '\n$', '/tags',"")
 
-    if filereadable(s:cscope_out)
-        if has('win32') || has('win64')
-          exec  ":cscope.exe add " . s:cscope_out
-        else
-          exec  ":cscope add " . s:cscope_out
-        endif
+  if filereadable(s:cscope_out)
+    if has('win32') || has('win64')
+      exec  ":cscope.exe add " . s:cscope_out
+    else
+      exec  ":cscope add " . s:cscope_out
     endif
+  endif
 
-    if filereadable(s:ctags_file)
-        exec ":set tags+=" . s:ctags_file
-    endif
+  if filereadable(s:ctags_file)
+    exec ":set tags+=" . s:ctags_file
+  endif
 endfunction
 
 call F_ctag_cscope_add_wrt_git()
 
 function! F_include_project_speicific_vimrc()
-    let s:rootpath = system('git rev-parse --show-toplevel')
-    let s:rootpathtrim = substitute(s:rootpath, '\n$', '', "")
-    let s:local_vimrc = substitute(s:rootpath, '\n$', '/.vimrc',"")
+  let s:rootpath = system('git rev-parse --show-toplevel')
+  let s:rootpathtrim = substitute(s:rootpath, '\n$', '', "")
+  let s:local_vimrc = substitute(s:rootpath, '\n$', '/.vimrc',"")
 
-    if isdirectory(s:rootpathtrim)
-        exec ":let g:git_root_path=\"".s:rootpathtrim."\""
-        exec ":set path+=". s:rootpathtrim
+  if isdirectory(s:rootpathtrim)
+    exec ":let g:git_root_path=\"".s:rootpathtrim."\""
+    exec ":set path+=". s:rootpathtrim
+  else
+    exec "let g:git_root_path=\".\""
+  endif
+
+  if filereadable(s:local_vimrc)
+    if has('win32') || has('win64')
+      exec  ":source " . s:local_vimrc
     else
-        exec "let g:git_root_path=\".\""
+      exec  ":source " . s:local_vimrc
     endif
-
-    if filereadable(s:local_vimrc)
-        if has('win32') || has('win64')
-           exec  ":source " . s:local_vimrc
-        else
-           exec  ":source " . s:local_vimrc
-        endif
-    endif
+  endif
 endfunction
 
 
@@ -503,25 +503,42 @@ endfunction
 
 command! -nargs=* Run call RunProgram(<f-args>)
 
-autocmd fileType perl set makeprg=perl\ -c\ %\ $*
-autocmd FileType perl set errorformat=%f:%l:%m
-autocmd FileType perl set showmatch
-autocmd FileType perl let perl_extended_vars = 1
+augroup perl_ft
+  autocmd!
+  autocmd fileType perl set makeprg=perl\ -c\ %\ $*
+  autocmd FileType perl set errorformat=%f:%l:%m
+  autocmd FileType perl set showmatch
+  autocmd FileType perl let perl_extended_vars = 1
+augroup END
 
-au FileType python set makeprg=pylint\ --reports=n\ --output-format=parseable\ %:p
-au FileType python set efm=%A%f:%l:\ [%t%.%#]\ %m,%Z%p^^,%-C%.%#
-au FileType python let python_highlight_all = 1
-au FileType python syntax on
-au BufNewFile,BufRead *.py
-    \ set tabstop=4 |
-    \ set softtabstop=4 |
-    \ set shiftwidth=4 |
-    \ set textwidth=79 |
-    \ set expandtab |
-    \ set autoindent |
-    \ set fileformat=unix |
+augroup python_ft
+  autocmd!
+  au FileType python set makeprg=pylint\ --reports=n\ --output-format=parseable\ %:p
+  au FileType python set efm=%A%f:%l:\ [%t%.%#]\ %m,%Z%p^^,%-C%.%#
+  au FileType python let python_highlight_all = 1
+  au FileType python syntax on
+  au BufNewFile,BufRead *.py
+       \ set tabstop=4 |
+       \ set softtabstop=4 |
+       \ set shiftwidth=4 |
+       \ set textwidth=79 |
+       \ set expandtab |
+       \ set autoindent |
+       \ set fileformat=unix |
+augroup END
 
 syntax on
+
+" WiX files are XML
+augroup wix_ft
+  autocmd!
+  autocmd BufNewFile,BufRead *.wxs set filetype=xml
+augroup END
+
+augroup groovy_ft
+  autocmd!
+  autocmd BufNewFile,BufRead *.gradle set filetype=groovy
+augroup END
 
 " setting for vim-session
 let g:session_autosave='no'
@@ -567,19 +584,19 @@ command! -nargs=+ Calc :py print <args>
 
 nnoremap <C-W>z :call MaximizeToggle()<CR>
 function! MaximizeToggle()
-    if exists("s:maximize_session")
-        exec "source " . s:maximize_session
-        call delete(s:maximize_session)
-        unlet s:maximize_session
-        let &hidden=s:maximize_hidden_save
-        unlet s:maximize_hidden_save
-    else
-        let s:maximize_hidden_save = &hidden
-        let s:maximize_session = tempname()
-        set hidden
-        exec "mksession! " . s:maximize_session
-        only
-    endif
+  if exists("s:maximize_session")
+    exec "source " . s:maximize_session
+    call delete(s:maximize_session)
+    unlet s:maximize_session
+    let &hidden=s:maximize_hidden_save
+    unlet s:maximize_hidden_save
+  else
+    let s:maximize_hidden_save = &hidden
+    let s:maximize_session = tempname()
+    set hidden
+    exec "mksession! " . s:maximize_session
+    only
+  endif
 endfunction
 
 "Some setting which will allow find to search all sub-subdirctories
@@ -601,3 +618,4 @@ command! -nargs=1 SilentCmd execute ':silent !'.<q-args> | execute ':redraw!'
 " This must be last line as this will overwrite default settings by local
 " vimrc
 call F_include_project_speicific_vimrc()
+" vim: set ts=2 sw=2 et:
