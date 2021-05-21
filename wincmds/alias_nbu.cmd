@@ -41,7 +41,7 @@
 @DOSKEY cd.oc.instlogs=%~dp0cd.cmd "%allusersprofile%"\Symantec\opsCenter\InstallLogs\$*
 
 @DOSKEY cd.nb=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\$*
-@DOSKEY cd.nb.lgs=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\logs\$*
+@DOSKEY cd.nb.logs=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\logs\$*
 @DOSKEY cd.nb.bin=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\bin\$*
 @DOSKEY cd.nb.adm=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\bin\admincmd\$*
 @DOSKEY cd.nb.gd=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\bin\goodies\$*
@@ -185,7 +185,7 @@ IF %ERRORLEVEL% EQU 0 CALL :SET_NBU_PATHS
 @SET nbin="%NBU_INST_PATH%NetBackup\bin"
 @SET nadm="%NBU_INST_PATH%NetBackup\bin\admincmd"
 @SET ngds="%NBU_INST_PATH%NetBackup\bin\goodies"
-@SET nlgs="%NBU_INST_PATH%NetBackup\logs"
+@SET nlogs="%NBU_INST_PATH%NetBackup\logs"
 @SET bmrcd="%NBU_INST_PATH%NetBackup\BareMetal\Client\data"
 @SET nbdt=%SystemDrive%\nbudata
 @SET cstdt=%SystemDrive%\custdata
