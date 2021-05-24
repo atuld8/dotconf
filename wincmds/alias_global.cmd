@@ -17,7 +17,7 @@
 @DOSKEY find.afile=findstr /I $* "%userprofile%"\.vim\wincmds\alias* "%userprofile%"\alias.cmd
 @DOSKEY find.afileall=findstr /I $* "%userprofile%"\.vim\wincmds\alias* "%userprofile%"\alias* "%userprofile%"\.vim\alias*
 @DOSKEY a.print=@FOR /F "tokens=1,* delims==" %%a in ('DOSKEY /MACROS ^^^| findstr /I $1') do @FOR /F "tokens=1,*" %%x in ("$*") do @ECHO cmd:%%b args:%%y
-@DOSKEY find.git=git alias ^| findstr /I $*
+@DOSKEY find.g=git alias ^| findstr /I $*
 @DOSKEY history.find=Doskey /history ^| findstr /I $*
 @DOSKEY history=Doskey /history $*
 @DOSKEY pushd=%~dp0pushd.cmd $*
