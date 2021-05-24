@@ -10,6 +10,7 @@ source ~/.vim/alias.global
 #source ~/.vim/alias.nbu
 #source ~/.vim/alias.nbsd.test
 #source ~/.vim/alias.bldbx
+#source ~/.vim/alias.extra
 #source ~/.vim/alias.dotconf
 #source ~/.vim/scripts/definstallpathsaliases.sh
 #source ~/.vim/alias.sf
