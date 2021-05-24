@@ -124,12 +124,12 @@
 @DOSKEY .nb.restart=bpdown -v -f ^&^& bpup -v -f
 @DOSKEY .nb.mux=echo https://%%NBUDB_SERVER%%:1556/webui/login
 @REM HIDDEN / NOT DOCUMENTED CMDS
-@DOSKEY .nb.vxlall=vxlogcfg -a -p 51216 -o Default -s DebugLevel=$*
-@DOSKEY .nb.vxl6=vxlogcfg -a -p 51216 -s DebugLevel=6 -o $*
-@DOSKEY .nb.vxl0=vxlogcfg -r -p 51216 -s DebugLevel -o $*
-@DOSKEY .nb.vxls=vxlogcfg -l -p 51216 $*
-@DOSKEY .nb.vxlcln=vxlogmgr --auto --del -q $*
-@DOSKEY .nb.vxlids=findstr "OIDNames" "%%NBU_INST_PATH%%\NetBackup\nblog.conf" $*
+@DOSKEY .nb.vxlcall=vxlogcfg -a -p 51216 -o Default -s DebugLevel=$*
+@DOSKEY .nb.vxlc6=vxlogcfg -a -p 51216 -s DebugLevel=6 -o $*
+@DOSKEY .nb.vxlc0=vxlogcfg -r -p 51216 -s DebugLevel -o $*
+@DOSKEY .nb.vxlcls=vxlogcfg -l -p 51216 $*
+@DOSKEY .nb.vxlmcln=vxlogmgr --auto --del -q $*
+@DOSKEY .nb.vxlfids=findstr "OIDNames" "%%NBU_INST_PATH%%\NetBackup\nblog.conf" $*
 @DOSKEY .nb.vxlv.prnt=echo vxlogview -G . -b "%%date:~4,2%%/%%date:~7,2%%/%%date:~-2%% %%time:~0,2%%:%%time:~3,2%%:%%time:~6,2%% AM" $*
 @DOSKEY .nb.vxlv10min=vxlogview -G . -t 00:10:00 $*
 @DOSKEY .nb.vxlv60min=vxlogview -G . -t 01:00:00 $*

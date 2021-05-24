@@ -26,7 +26,7 @@
 @DOSKEY .bmr.pullallscripts..clnt.hIp..apnd=@FOR %%f in (hosts bp.conf resolv.conf conf listfile diskdata info restore) do bmrc -o pull -res info -client $1 -sourc $2.%%f -dest $1$3.%%f
 @DOSKEY .bmr.driverLoadOrder..cfgid=@FOR /F "tokens=1,2,*" %%a in ('bmrpans -op query -table BMR_LinuxScsiDriver -where "VolumeInfoId=$*" ^^^| findstr "DriverName"') do @ECHO %%c
 @DOSKEY .bmr.cancelrstjob..clnt=bmrs -op complete -res restoretask -status 150 -client $*
-@DOSKEY .bmr.vxlids=findstr "OIDNames" "%%NBU_INST_PATH%%\NetBackup\nblog.conf" ^| findstr /I "bmr" $*
+@DOSKEY .bmr.vxlfids=findstr "OIDNames" "%%NBU_INST_PATH%%\NetBackup\nblog.conf" ^| findstr /I "bmr" $*
 
 @DOSKEY .bmr.db.crt=dbinit -q -b -c -z UTF8 -p 4096  -dba dba,nbusql "%%NBU_CONF_PATH%%NetBackupDB\data\BMRDB.DB"
 @DOSKEY .bmr.db.cnn=dbisqlc -c "CS=utf8;UID=dba;PWD=nbusql;LINKS=shmem,tcpip{PORT=13785};DBN=BMRDB;SERVER=NB_%%NBUDB_SERVER%%" $*
