@@ -3,7 +3,7 @@ alias cmd.nb.vxdbms='. /usr/openv/db/vxdbms_env.sh'
 alias cmd.nb.nbsucmds.old='grep -A1 " Command Used " *.txt | grep -v " Command Used " | grep -v "\-\-" | sed -e "s/-#/ -#/" | vim -'
 alias cmd.nb.nbsucmdssubdirs.old='grep -R -A1 " Command Used " */*.txt | grep -v " Command Used " | grep -v "\-\-" | sed -e "s/-#/ -#/" | vim -'
 alias cmd.nb.ff='find /usr/openv/ -name'
-alias cmd.nb.localdata='function af.localdata() { mkdir $1/nbudata; mkdir $1/custdata; ln -s -- $1/nbudata ~; ln -s -- $1/custdata ~; }; af.localdata'
+alias cmd.nb.localdata='function af.localdata() { if [ ! -e ~/nbudata ]; then mkdir $1/nbudata; ln -s -- $1/nbudata ~; else echo "~/nbudata exists"; fi;  if [ ! -e ~/custdata ]; then mkdir $1/custdata;  ln -s -- $1/custdata ~; else echo "~/custdata exists"; fi;  if [ ! -e ~/nbtestdata ]; then mkdir $1/nbtestdata;  ln -s -- $1/nbtestdata ~; else echo "~/nbtestdata exists"; fi; if [ ! -d ~/nbudata/quickTestEnv ]; then mkdir ~/nbudata/quickTestEnv; fi;  if [ ! -d ~/nbudata/tools ]; then mkdir ~/nbudata/tools; fi;  }; af.localdata'
 
 # Edit commands NBU config
 alias e.nb.bpconf='$CFG_EDITOR /usr/openv/netbackup/bp.conf'
