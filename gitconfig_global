@@ -90,12 +90,14 @@
 
     dg = difftool --gui --no-prompt
     dl = diff --no-ext-diff
+    dll = diff --no-ext-diff .
     ; this will check for error like trailing spaces and report
     dlChk = diff --no-ext-diff --check
     dlICr = diff --no-ext-diff --ignore-cr-at-eol
     dlICrSpc = diff --no-ext-diff --ignore-cr-at-eol --ignore-all-space
     dlR = diff --no-ext-diff -R
     dlNmo = diff --no-ext-diff --name-only
+    dlNmol = diff --no-ext-diff --name-only .
     dlNmoCwd = diff --no-ext-diff --name-only --relative
     dC = diff --cached
     dlC = diff --cached --no-ext-diff
@@ -124,8 +126,8 @@
 
     ; find alias of git
     finda = "!fa() { git alias | grep $@; }; fa"
-    fo = "!git fetch origin"
-    focb = "!git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\""
+    forg = "!git fetch origin"
+    forgcb = "!git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\""
     fus = fetch --unshallow
     fp  = fetch --prune
 
