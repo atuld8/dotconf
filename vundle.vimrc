@@ -535,6 +535,10 @@ Plugin 'LucHermitte/local_vimrc'
 " # triggered by:  <Leader>p
 Plugin 'prettier/vim-prettier'
 
+
+" # A vim plugin to open file having format file:line
+Plugin 'bogado/file-line'
+
 "filetype plugin on
 "
 " Brief help
