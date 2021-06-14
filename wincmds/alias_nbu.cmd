@@ -16,7 +16,7 @@
 @DOSKEY e.nb.srvconf=%%CFG_EDITOR%% "%%NBU_CONF_PATH%%NetBackupDB\CONF\server.conf" $*
 @DOSKEY e.nb.vxdbmsconf=%%CFG_EDITOR%% "%%NBU_CONF_PATH%%NetBackupDB\data\vxdbms.conf" $*
 @DOSKEY e.nb.usercert=%%CFG_EDITOR%% "%userprofile%\AppData\Roaming\VxSS\credentials" $*
-@DOSKEY e.nb.at.linfo=@IF NOT EXIST %userprofile%\atlogin$*.info ( @echo Uses the authentication ty e, domain, user name, password, and broker ^> %userprofile%\atlogin$*.info$*.it ^&^& %%CFG_EDITOR%% %userprofile%\atlogin$*.info ) ELSE %%CFG_EDITOR%% %userprofile%\atlogin$*.info
+@DOSKEY e.nb.at.linfo=@IF NOT EXIST %userprofile%\atlogin$*.info ( @echo Uses the authentication type, domain, user name, password, and broker ^> %userprofile%\atlogin$*.info ^&^& ( @echo WINDOWS^& @echo %COMPUTERNAME%^&@echo %USERNAME% )^>^> %userprofile%\atlogin$*.info ^&^& %%CFG_EDITOR%% %userprofile%\atlogin$*.info ) ELSE %%CFG_EDITOR%% %userprofile%\atlogin$*.info
 @DOSKEY e.nb.db.op=%%CFG_EDITOR%% dbisqlc.output.txt $*
 @DOSKEY e.bmr.bndl=%%CFG_EDITOR%% "%%NBU_CONF_PATH%%NetBackupDB\BareMetal\client\data\bundle.dat" $*
 @DOSKEY e.nb.java.authconf=%%CFG_EDITOR%% "%%NBU_CONF_PATH%%NetBackup\java\auth.conf" $*
