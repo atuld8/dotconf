@@ -94,7 +94,7 @@ function af.mvFromOrg() { mv $1.org $1; }
 alias cd.data='af.mcd ~/data'
 alias cd.sb.stage='af.cd ~/stage || ( mkdir ~/stage && cd ~/stage )'
 alias cd.vim='af.cd ~/.vim'
-alias cd.down='af.cd ~/Downloadas'
+alias cd.down='af.cd ~/Downloads'
 alias cd.desk='af.cd ~/Desktop'
 alias pd.vim='af.pushd ~/.vim'
 alias cd.vim.mintty='af.cd ~/.vim/wincmds/mintty_settings/mintty-colors-solarized-master/'
