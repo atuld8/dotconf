@@ -74,7 +74,7 @@
 @DOSKEY cd.nb.pbx=%~dp0cd.cmd  "%SystemDrive%\Program Files (x86)"\VERITAS\VxPBX\$*
 @DOSKEY cd.nb.vxms=%~dp0cd.cmd  "%SystemDrive%\Program Files\Common Files"\VERITAS\VxMS\$*
 @DOSKEY cd.nb.usercert=%~dp0cd.cmd "%userprofile%"\AppData\Roaming\VxSS
-@DOSKEY cd.nb.tmp=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\temp\$*
+@DOSKEY cd.nb.temp=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackup\Temp\$*
 @DOSKEY cd.nb.rjc=%~dp0cd.cmd "%%NBU_INST_PATH%%"Java\$*
 @DOSKEY cd.nb.tir=%~dp0cd.cmd  "%%NBU_CONF_PATH%%"NetBackup\tir_info\$*
 @DOSkEY cd.nb.testdata=%~dp0cd.cmd  "%SystemDrive%\nbtestdata"\$*
