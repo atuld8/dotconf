@@ -153,7 +153,7 @@ alias .ssh='function af.ssh() { if [ ! -z "$TMUX" ]; then tmux rename-window "${
 alias .ssh.setpassless='function af.ssh.setpassless () { .ssh $1 "mkdir ~/.ssh; echo `cat ~/.ssh/id_rsa.pub` >> ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 644 ~/.ssh/authorized_keys"; .ssh $1; }; af.ssh.setpassless'
 alias .sshtmux..session='function af.sshtmux() { if [ ! -z "$TMUX" ]; then tmux rename-window "${1%%.*}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${1%%.*}"; fi; ssh -X -Y -t -o  StrictHostKeyChecking=no  -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1 -t "tmux attach -d -t ${2:-main} || tmux new -s ${2:-main}";if [ ! -z "$TMUX" ]; then tmux rename-window "${TMUX_HOSTNAME}"; fi; if [ ! -z "$WINDOW" ]; then screen -X title "${HOSTNAME}"; fi;}; af.sshtmux'
 alias .pushd='IFS=$'"'"'\n'"'"'; for f in `alias  | grep '"'"' cd\..*='"'"' | grep "^alias" | sed -e'"'"'s/cd\./pd\./g'"'"' | sed -e'"'"'s/cd /pushd /g'"'"'`; do echo $f ; done > /tmp/1.sh; . /tmp/1.sh'
-alias .tmux=' tmux attach -d -t main; if [ $? -ne 0 ]; then tmux new -s main; fi;'
+alias .tmux='function af.tmux() { tmux attach -d -t ${1:-main}; if [ $? -ne 0 ]; then tmux new -s ${1:-main}; fi; }; af.tmux'
 # addhock alias
 alias .dfl='df --type btrfs --type ext4 --type ext3 --type ext2 --type vfat --type iso9660 --type xfs'
 alias .ascii='man ascii'
