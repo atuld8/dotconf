@@ -29,7 +29,8 @@ alias @vim='function af.atvim() { (cd ~/.vim && $@;); }; af.atvim'
 
 alias cmd.lh='ls -A | grep "^\."'
 alias cmd.filetree="ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/ /' -e 's/-/|/'"
-alias cmd.notes='vim -n -c ":vsp | bN" -c ":wincmd r" -c ":wincmd |" -c ":vertical resize -70" -c ":wincmd w" ~/.notes_flist /work/AtazNbuNotes/VI\ shortcuts\ info.txt'
+#alias cmd.notes='vim -n -c ":vsp | bN" -c ":wincmd r" -c ":wincmd |" -c ":vertical resize -70" -c ":wincmd w" filewithlist file2'
+alias cmd.notes='vim -n -c ":vnew | r! ls"  -c ":wincmd |"  -c ":vertical resize 70"'
 alias cmd.vimc='vim -c "Tlist" -c "NERDTree" -c "wincmd w"'
 alias cmd.vimpluginst='vim +PluginInstall +qall'
 alias cmd.vimplugupd='vim +PluginUpdate +qall'
