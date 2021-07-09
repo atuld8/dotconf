@@ -145,8 +145,8 @@
 @DOSKEY .nb.at.loginweb=bpnbat -login -LoginType WEB ^&^& bpnbat -whoami
 @DOSKEY .nb.at.loginweb.auto=bpnbat -login -Info %userprofile%\atlogin$*.info -LoginType WEB ^&^& bpnbat -whoami
 
-@DOSKEY .nb.uninstmstr=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup" /v UninstallString^^^|findstr "UninstallString"') do %%b
-@DOSKEY .nb.uninstclnt=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup client" /v UninstallString^^^|findstr "UninstallString"') do %%b
+@DOSKEY .nb.uninst.mstr=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup" /v UninstallString^^^|findstr "UninstallString"') do %%b
+@DOSKEY .nb.uninst.clnt=@for /f "tokens=2,*" %%a in ('REG QUERY "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Veritas NetBackup client" /v UninstallString^^^|findstr "UninstallString"') do %%b
 
 @DOSKEY .nb.nbwebuser..p=net user nbwebsvc $* /add ^&^& net localgroup nbwebgrp /add ^&^& net localgroup nbwebgrp nbwebsvc /add
 @DOSKEY .nb.sv.del.s1=wmic service where "displayname like '%%netbackup%%'" get name ^| findstr /V "^Name *$" $*
