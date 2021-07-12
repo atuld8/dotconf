@@ -49,6 +49,10 @@ if [ "$OSName" = "Cygwin" ]; then
     OSVer=`uname -s`; PROCName=`uname -m`;
     alias install-apt-cyg='lynx -source rawgit.com/transcode-open/apt-cyg/master/apt-cyg > apt-cyg; install apt-cyg /bin '
 fi
+if [ "$OSName" = "GNU/Linux" ]; then
+    OSVer=`uname -s`; PROCName=`uname -m`;
+    alias install-apt-cyg='lynx -source rawgit.com/transcode-open/apt-cyg/master/apt-cyg > apt-cyg; install apt-cyg /bin '
+fi
 
 if [ -z "$GIT_STATUS_LEVEL" ]; then
     export GIT_STATUS_LEVEL=0
