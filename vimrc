@@ -615,6 +615,9 @@ command! -nargs=1 SilentCmd execute ':silent !'.<q-args> | execute ':redraw!'
 "Example
 "command! Makeall :SilentCmd tmux send -t 2 'make ; make.suse' Enter
 
+" Setting the buffer list as default option for ctrlp plugin
+let g:ctrlp_cmd = 'CtrlPBuffer'
+
 " This must be last line as this will overwrite default settings by local
 " vimrc
 call F_include_project_speicific_vimrc()

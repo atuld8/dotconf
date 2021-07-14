@@ -29,7 +29,8 @@ alias @vim='function af.atvim() { (cd ~/.vim && $@;); }; af.atvim'
 
 alias cmd.lh='ls -A | grep "^\."'
 alias cmd.filetree="ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/ /' -e 's/-/|/'"
-alias cmd.notes='vim -n -c ":vsp | bN" -c ":wincmd r" -c ":wincmd |" -c ":vertical resize -70" -c ":wincmd w" ~/.notes_flist /work/AtazNbuNotes/VI\ shortcuts\ info.txt'
+#alias cmd.notes='vim -n -c ":vsp | bN" -c ":wincmd r" -c ":wincmd |" -c ":vertical resize -70" -c ":wincmd w" filewithlist file2'
+alias cmd.notes='vim -n -c ":vnew | r! ls"  -c ":wincmd |"  -c ":vertical resize 70"'
 alias cmd.vimc='vim -c "Tlist" -c "NERDTree" -c "wincmd w"'
 alias cmd.vimpluginst='vim +PluginInstall +qall'
 alias cmd.vimplugupd='vim +PluginUpdate +qall'
@@ -138,6 +139,7 @@ alias g.etnum='git branch | grep "*" | awk -F'"'"'t'"'"' '"'"'{ print $2}'"'"''
 alias g.gh.user.email='git config --local user.email "atuld8@gmail.com"'
 alias g.gh.user.name='git config  --local user.name "atuld8"'
 alias g.dlnmorel='git diff --name-only $1 | xargs -I '"'"'{}'"'"' realpath --relative-to=. $(git rev-parse --show-toplevel)/'"'"'{}'"'"''
+alias g.shwDiffCmtidHead..cmtid='function af.sh_diff_cmtid_head() { export gbase=`git rev-parse --show-toplevel`; for f in `g shfincmt ${1}`; do read -p "Do you check for $f file?" -n 1 -r; echo;  if [[ $REPLY =~ ^[Yy]$ ]]; then  vimdiff ${gbase}/${f} <(g show ${1}:${f}); fi; done; }; af.sh_diff_cmtid_head'
 
 # to get quick help docs
 alias h.doc='vim --cmd "set key=$VIMPASS" -c ":let g:nerdtreefindexec=1" -c ":NERDTree" ~/.vim/doc/*.txt'
