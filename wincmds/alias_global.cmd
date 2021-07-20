@@ -74,6 +74,7 @@
 @DOSKEY cmd.gencscopeStp2=cscope -q -R -b -v -C -i cscope.files -f cscope.out
 @DOSKEY cmd.paths=cmd /v:on /c "for %%p in ("!path:;=" "!") do @echo %%~p"
 @DOSKEY cmd.gendoskey=copy /y %userprofile%\alias.doskey alias.doskey.bkp ^& doskey /macros ^> %userprofile%\alias.doskey
+@DOSKEY cmd.reconn=for /f "tokens=2,3" %%a in ('net use ^^^| findstr "^Disconnected ^Unavailable" ^^^| findstr " [A-Z]: "') do net use %%a %%b /PERSISTENT:YES
 
 @DOSKEY d.winc=%~dp0diff_configs.cmd
 
