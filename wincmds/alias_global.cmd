@@ -91,7 +91,7 @@
 @DOSKEY e.scratch=%%CFG_EDITOR%% "%userprofile%\scratch.txt"
 @DOSKEY e.key=%%CFG_EDITOR%% "%userprofile%\keyfile.txt"
 @DOSKEY e.enc=gvim --cmd "set key=%%VIMPASS%%" $*
-@DOSKEY e.tmp..x=%%CFG_EDITOR%% "%temp%\tmp$*.txt"
+@DOSKEY e.tmp..x=%%CFG_EDITOR%% "%%temp%%\tmp$*.txt"
 
 @DOSKEY cat.key=type "%userprofile%\keyfile.txt" $*
 @DOSKEY cat.rme=type %~dp0..\README.md $*
@@ -113,7 +113,7 @@
 @DOSKEY cd.wow64=%~dp0cd.cmd "%WINDIR%"\syswow64\$*
 @DOSKEY cd.vim=%~dp0cd.cmd %~dp0\..\$*
 @DOSKEY pd.vim=%~dp0pushd.cmd %~dp0\..\$*
-@DOSKEY cd.temp=%~dp0cd.cmd %temp%
+@DOSKEY cd.temp=%~dp0cd.cmd %%temp%%
 @DOSKEY cd.tmp=%~dp0cd.cmd %SystemDrive%\temp
 @DOSKEY cd.wn= %~dp0cd.cmd "%userprofile%"\Dropbox\Worknotes\$*
 @DOSKEY cd.data=IF EXIST "%userprofile%\data\$*" ( %~dp0cd.cmd %userprofile%\data\$* ) ELSE ( mkdir "%userprofile%\data\$*" ^& %~dp0cd.cmd %userprofile%\data\$* 2^> NUL )
@@ -185,7 +185,7 @@
 @DOSKEY cp.env.unix=clip^<%~dp0..\scripts\nb.unix.env.sh
 @DOSKEY cp.env.win=clip^<%~dp0..\scripts\nb.win.env.cmd
 @DOSKEY cp.es=%~dp0..\scripts\echo.line.sep.cmd $*^|clip
-@DOSKEY cp.tmp..x=echo^|set /p="%temp%\tmp$*.txt"^|clip
+@DOSKEY cp.tmp..x=echo^|set /p="%%temp%%\tmp$*.txt"^|clip
 @DOSKEY cp.clear=@echo^|set /p=^|clip
 @DOSKEY cp.alias=@doskey /macros^|findstr "\<"$*"\>"^|clip
 
