@@ -173,6 +173,7 @@
 @DOSKEY .7z="%SYSTEMDRIVE%\Program Files\7-Zip\7z.exe" $*
 @DOSKEY .st3="%SYSTEMDRIVE%\Program Files\Sublime Text 3\sublime_text.exe" $*
 @DOSKEY .ff=FORFILES /S /C "cmd /c echo @path" $*
+@DOSKEY .mbxtrm="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -newtab
 
 @DOSKEY cp.vp=echo^|set /p=%%VIMPASS%%^|clip
 @DOSKEY cp.accTkn=echo^|set /p=%%ACCESS_TOKEN%%^|clip
