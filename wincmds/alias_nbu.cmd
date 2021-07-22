@@ -8,7 +8,7 @@
 @DOSKEY a.nb.all=DOSKEY /macros:all ^| findstr "nb\..*= bmr\..*=" $*
 
 @DOSKEY cmd.nb.logcln=DEL /S /Q "%%NBU_INST_PATH%%"NetBackup\logs\*.log
-@DOSKEY cmd.nb.ff=FORFILES /S /P "%%NBU_INST_PATH%%." /M $* /C "cmd /c echo @path"
+@DOSKEY cmd.nb.ff=FORFILES /S /P "%%NBU_INST_PATH%%." /C "cmd /c echo @path" $*
 
 @DOSKEY e.nb.ver=%%CFG_EDITOR%% "%%NBU_INST_PATH%%NetBackup\version.txt" $*
 @DOSKEY e.nb.logconf=%%CFG_EDITOR%% "%%NBU_INST_PATH%%NetBackup\nblog.conf" $*
