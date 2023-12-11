@@ -187,7 +187,7 @@
 @DOSKEY .mbxtrm="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" $*
 @DOSKEY .hlp=$* 2^>^&1^| vim -R -
 @DOSKEY .as="C:\Program Files\Android\Android Studio\bin\studio64.exe"
-
+@DOSKEY .vsc="C:\Users\atul.das1\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd"
 
 @DOSKEY cp.vp=echo^|set /p=%%VIMPASS%%^|clip
 @DOSKEY cp.accTkn=echo^|set /p=%%ACCESS_TOKEN%%^|clip
