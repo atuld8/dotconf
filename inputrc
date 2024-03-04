@@ -15,6 +15,10 @@ bind -x '"\C-Bk":cat ~/.keyfile'
 # HELP <HOTKEY> v pull dotconf
 bind -x '"\C-Bv":x.vimpull'
 
+# get pass
+# HELP <HOTKEY> p cp.pass
+bind -x '"\C-Bp":cp.pass'
+#
 #expand alias
 # bind -x '"\C-Be":alias-expand-line'
 # bind -x '"\C-Bh":history-and-alias-expand-line'
