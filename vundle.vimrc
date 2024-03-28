@@ -370,7 +370,8 @@ Plugin 'mtth/scratch.vim'
 
 "# execute commands on tmux or screen
 "# string and then ctrl-c ctrl-c to send string
-Plugin 'jpalardy/vim-slime'
+"# Disabled to avoid error Undefined variable: g:slime_config_defaults
+"# Plugin 'jpalardy/vim-slime'
 
 "# Run unite to display files and buffers as sources to pick from.
 "# :Unite file buffer
