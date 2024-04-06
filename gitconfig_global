@@ -23,6 +23,7 @@
     aCFPhUpcb = "!f_acfphupcb() { git add -u . && git commit -F $@ && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acfphupcb"
     aCmPhfwl = "!f_acmphfwl() { git add -u . && git commit -m \"$@\" && git push --force-with-leasse; }; f_acmphfwl"
     aCFPhfwl = "!f_acfphfwl() { git add -u . && git commit -F $@ && git push --force-with-lease; }; f_acfphfwl"
+    aCAmdPhfwl = "!f_acamdphfwl() { git add -u . && git commit --verbose --amend --no-edit && git push --force-with-lease; }; f_acamdphfwl"
     ; alias with format alias.a def
     aList = config --get-regexp alias
     aGList = config --global --get-regexp alias
