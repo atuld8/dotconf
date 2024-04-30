@@ -46,7 +46,7 @@
     brNomrgd = branch --no-merged
     ; all remote branch list
     brRmt = branch --remote
-    ; list of branches with Auther and diff formats
+    ; list of branches with Author and diff formats
     brbyAuth = for-each-ref --format='%(authorname) %09 %(refname)' --sort=authorname
     brbyAuthOn = for-each-ref --format='%(committerdate) %09 %(authorname) %09 %(refname)' --sort=committerdate
     brbyAuthColor = for-each-ref --format='%(color:cyan)%(authordate:format:%m/%d/%Y %I:%M %p)    %(align:25,left)%(color:yellow)%(authorname)%(end) %(color:reset)%(refname:strip=3)' --sort=authordate refs/remotes
@@ -75,7 +75,7 @@
     cmtAmdNedt = commit --amend --no-edit
     cmtAAmd = commit -a --verbose --amend --no-edit
     cmtAmd  = commit --amend
-    cmtAuther = commit --amend --reset-author --no-edit
+    cmtAuthor = commit --amend --reset-author --no-edit
     cmtmPP = "!f_cmtp() { git commit -m \"$@\" && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_cmtp"
     cmtfPP = "!f_cmtp() { git commit -F $@ && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_cmtp"
     cmtmPh = "!f_cmtp() { git commit -m \"$@\" && git push; }; f_cmtp"
