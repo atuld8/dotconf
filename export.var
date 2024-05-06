@@ -6,4 +6,5 @@
 # export SCP_HOSTNAME=`hostname`.`domainname`
 # export DOTCONF_HOSTNAME=
 # export SPECIAL_PRMPT_DATA='T/B/L/E '
+# export CSCOPE_EDITOR=vim
 

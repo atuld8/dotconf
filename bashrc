@@ -573,7 +573,7 @@ export HISTIGNORE='export VIMPASS=*:VIMPASS=*:'$HISTIGNORE
 
 export SSH_RMNDEV='$NIS_USER@$NIS_SERVER'
 
-export CSCOPE_EDITOR=/usr/local/bin/vim
+export CSCOPE_EDITOR=vim
 
 PATH="/Users/atul.das1/perl5/bin${PATH+:}${PATH}"; export PATH;
 PERL5LIB="/Users/atul.das1/perl5/lib/perl5${PERL5LIB+:}${PERL5LIB}"; export PERL5LIB;
