@@ -4,7 +4,7 @@
 #Set below env before using it
 #export JIRA_ACC_TOKEN='tkn'
 #export JIRA_WATCHERS_LIST="user1 user2 user3"
-#export JIRA_SERVER_Name=".com"
+#export JIRA_SERVER_NAME=".com"
 #export JIRA_PROJECT_NAME="PROJ"
 
 JIRA_ID=$1
