@@ -7,6 +7,16 @@ if [[ "$JIRA_SERVER_NAME" == "" ]]; then
   exit 1
 fi
 
+if [[ "$JIRA_USER_NAME" == "" ]]; then
+  echo "JIRA_USER_NAME is not defined"
+  exit 1
+fi
+
+if [[ "$JIRA_USER_EMAIL" == "" ]]; then
+  echo "JIRA_USER_EMAIL is not defined"
+  exit 1
+fi
+
 export JIRA_ALIAS_EXTRA_OPT="--silent"
 
 alias j.2.get='function af.jira_rest_call() { REST_ARG=$1; shift; curl $JIRA_ALIAS_EXTRA_OPT -H "Authorization: Bearer $JIRA_ACC_TOKEN" "https://$JIRA_SERVER_NAME/rest/api/2/$REST_ARG" $@; }; af.jira_rest_call'
@@ -25,6 +35,8 @@ alias j.get.issue.sum='function af.jira_get_issue() { j.2.get issue/$1 | jq.fmt.
 alias j.get.issue.all='function af.jira_get_issue() { j.2.get issue/$1 | jq .; }; af.jira_get_issue'
 alias j.update.bld.det_in_solution.bld.Jid='function af.jira_update_solution() { [[ "$1" =~ ^NBSM_[0-9.]+_[0-9]{4}$ ]] && [[ "$2" =~ ^NBU-[0-9]+$ ]] && echo "Updating the $2 ticket with build id $1" && j.updateFieldWithValue_id_field_value.sh $2 Solution \"The solution is present in $1 build\"; }; af.jira_update_solution'
 alias j.get.field.list='function af.jira_get_fields() { j.2.get field | jq ".[].name"; }; af.jira_get_fields'
+alias j.get.field.name_id='function af.jira_get_field.id_name() { j.2.get field | jq ".[] | {ID: .id, Name: .name}"; }; af.jira_get_field.id_name'
+alias j.get.fields.for.name='function af.jira_get_fields_for_name() { j.2.get field | jq ".[] | select(.name==\"$@\")"; }; af.jira_get_fields_for_name'
 
 alias j.tknvrfy='curl $JIRA_ALIAS_EXTRA_OPT -H "Authorization: Bearer $JIRA_ACC_TOKEN" -X GET https://$JIRA_SERVER_NAME/rest/api/2/myself | jq .'
 alias j.tknupt='read -sp "Enter Jira Access Token (Hidden): " JIRA_ACC_TOKEN; export JIRA_ACC_TOKEN'
