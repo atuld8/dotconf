@@ -19,4 +19,9 @@ doc/toolboxmake.txt
 **/cscope.files
 jira/j.createSingleJiraForEpicNBServerMigrator.py
 jira/j.createTrackingJiraForEpicNBServerMigrator.py
+jira/j.createSingleJiraForEpicNBServerRename.py
+jira/nbsm_10401.sh
+jira/renamestory.sh
 story_file
+rename_story_file
+nbsm_story_file
