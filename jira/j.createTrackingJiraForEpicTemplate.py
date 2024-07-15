@@ -39,7 +39,7 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
             },
             "summary": summary,
             "description": description,
-            "labels": ["TOOL_NAME", "TOOL_NAME_{JIRA_RELEASE}", "Tracking"],
+            "labels": ["TOOL_NAME", f"TOOL_NAME_{JIRA_RELEASE}", "Tracking"],
             "priority": {
                 "name": "P3"
             },
