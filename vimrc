@@ -90,6 +90,7 @@ command! VimGrepWarn :execute 'vimgrep /\<\(WARNING\|DELETE\|DELETING\|DELETED\|
 command! VimGrepErrorAppend :execute 'vimgrepadd /\<\(FATAL\|ERROR\|ERRORS\|FAIL\|FAILED\|FAILURE\)\>/ '.fnameescape(expand('%:p')) | :copen | :cc
 command! VimGrepWarnAppend :execute 'vimgrepadd /\<\(WARNING\|DELETE\|DELETING\|DELETED\|RETRY\|RETRYING\|Diagnostic\)\>/ '.fnameescape(expand('%:p')) | :copen | :cc
 command! Nblog :execute 'source ~/.vim/syntax/nblog.vim'
+command! Abb :execute 'source ~/.vim/plugin/abbreviations.vim'
 
 
 command! CurrentFilePathCopy :let @+=expand("%:p")
