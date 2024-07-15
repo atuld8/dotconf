@@ -16,6 +16,7 @@ JIRA_WATCHERS_LIST  = os.getenv('JIRA_WATCHERS_LIST')
 
 parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
 parser.add_argument('jira_epic_id', type=str, help='The ID of the Epic')
+parser.add_argument('story_file', type=str, help='The file containing the story details')
 
 args = parser.parse_args()
 JIRA_EPIC_LINK      = args.jira_epic_id
@@ -99,80 +100,22 @@ def create_multiple_stories(project_key, watcher_group, stories):
         create_jira_story(project_key, summary, description, watcher_group, epic_link)
 
 
+def generate_json_structure(file_path):
+    stories = []
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        if lines:
+            summary = lines[0].strip()
+            description = ''.join(lines[1:]).strip()
+            story = {
+                    'summary': summary,
+                    'description': description,
+                    'epic_link': JIRA_EPIC_LINK
+                }
+            stories.append(story)
+    return stories
 
 
-stories = [
-    {
-        'summary': '[Tracking] Update Version and Request Production Build Enablement',
-        'description': 'This task is to track the code changes required to update the version.\n\nRequest the production build enablement after the changes.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Update Confluence page and Technote for \"How to perform migration\"',
-        'description': 'This Jira ticket is to track the work regarding TechNote update task for this release.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Threat Modeling and Threat analysis for TOOL_NAME',
-        'description': 'Please check whether any new threats are being introduced.\nAdditionally, verify that the current models address all the newly discovered threats.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Check EULA Year for TOOL_NAME',
-        'description': 'This Jira ticket is to track the work regarding the EULA Year of this release.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] TechNote for TOOL_NAME',
-        'description': 'This Jira ticket is to track the work regarding TechNotes of this release.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Remove Beta Tag for Release',
-        'description': 'The Beta tag needs to be removed when the binaries are release-ready.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Documentation for TOOL_NAME',
-        'description': 'This ticket is intended to track the work related to the documentation for this release.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] TOOL_NAME GA build testing',
-        'description': 'This ticket has been created to track testing activities for the GA build.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Validate TOOL_NAME bundle is available for download from the Download Centre.',
-        'description': 'To validate that the correct NBServerMigrtator binaries are uploaded to Download centre (DC).',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Horizon Test plan and report.',
-        'description': 'This ticket is to generate the Horizon test plan and report to meet 100/100/0 criteria.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] OSRB Approval for this release',
-        'description': 'This task is to track the BlackDuck scan activity and obtain OSRB approval.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] CSTS Enablement Document Update',
-        'description': 'This task is to track the CSTS Enablement document update related progress',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] Demo Recording for current Epic.',
-        'description': 'This task is to track the demo recording progress.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    {
-        'summary': '[Tracking] OSRB Approval for this release',
-        'description': 'This task is to track the BlackDuck scan activity and obtain OSRB approval.',
-        'epic_link': JIRA_EPIC_LINK
-    },
-    # Add more stories as needed
-]
+stories = generate_json_structure(args.story_file)
 
 create_multiple_stories(JIRA_PROJECT_KEY, JIRA_WATCHER_GROUP, stories)
