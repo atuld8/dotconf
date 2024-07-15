@@ -22,7 +22,7 @@ iabbrev vrts Veritas
 iabbrev etk Etrack
 iabbrev snbpps sournce NetBackup primary server
 iabbrev tnbpps target NetBackup primary server
-"iabbrev
+iabbrev nbsvrup NBServer_Update
 "iabbrev
 "iabbrev
 "iabbrev
