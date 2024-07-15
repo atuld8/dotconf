@@ -2,7 +2,8 @@
 #
 
 JIRA_ID=$1;
-JIRA_COMPONENT_NAME="${2:-Commandos}"
+JIRA_RELEASE=$2
+JIRA_COMPONENT_NAME="${3:-Commandos}"
 JIRA_COMPONENT_ID=""
 
 #
@@ -35,28 +36,28 @@ generatePostDataToCreateSubTasks() {
         {"fields": {
              "project": {"key": "NBU"},
              "parent": {"key": "$JIRA_ID"},
-             "summary": "Dev Task",
-             "description": "This sub-task is to track the DEV progress.",
+             "summary": "Development Task",
+             "description": "Keep track of all coding work, including new features and bug fixes.",
              "issuetype": {"id": "5"},
-             "labels": ["NBServerMigrator","NBServerMigrator_mainline"],
+             "labels": ["NBServerMigrator","NBServerMigrator_$JIRA_RELEASE"],
              "components": [ {"id" : "$JIRA_COMPONENT_ID"} ]
          } },
          {"fields": {
              "project": {"key": "NBU"},
              "parent": {"key": "$JIRA_ID"},
-             "summary": "Doc Task",
-             "description": "This sub-task is to track the Documentation progress.",
+             "summary": "Documentation Task",
+             "description": "Update documents to reflect the latest changes and improvements.",
              "issuetype": {"id": "5"},
-             "labels": ["NBServerMigrator","NBServerMigrator_mainline"],
+             "labels": ["NBServerMigrator","NBServerMigrator_$JIRA_RELEASE"],
              "components": [ {"id" : "$JIRA_COMPONENT_ID"} ]
          } },
          {"fields": {
              "project": {"key": "NBU"},
              "parent": {"key": "$JIRA_ID"},
              "summary": "QA Task",
-             "description": "This sub-task is to track the QA progress.",
+             "description": "Follow and manage all testing activities to ensure everything works correctly.",
              "issuetype": {"id": "5"},
-             "labels": ["NBServerMigrator","NBServerMigrator_mainline"],
+             "labels": ["NBServerMigrator","NBServerMigrator_$JIRA_RELEASE"],
              "components": [ {"id" : "$JIRA_COMPONENT_ID"} ]
          } }
       ]}
@@ -144,6 +145,16 @@ fi
 
 if [ "$JIRA_ID" == "" ]; then
     echo "Please pass the JIRA_ID with this script"
+    exit 1
+fi
+
+if [ "$JIRA_ID" == "-h" ]; then
+    echo "$0 JIRA_ID RELEASE_LABEL [TEAM_NAME]"
+    exit 0
+fi
+
+if [ "$JIRA_RELEASE" == "" ]; then
+    echo "Please pass the JIRA_RELEASE with this script"
     exit 1
 fi
 

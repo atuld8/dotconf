@@ -16,9 +16,11 @@ JIRA_WATCHERS_LIST  = os.getenv('JIRA_WATCHERS_LIST')
 
 parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
 parser.add_argument('jira_epic_id', type=str, help='The ID of the Epic')
+parser.add_argument('jira_release_ver', type=str, help='The release version of the Epic')
 
 args = parser.parse_args()
 JIRA_EPIC_LINK      = args.jira_epic_id
+JIRA_RELEASE        = args.jira_release_ver
 
 
 def create_jira_story(project_key, summary, description, watcher_group, epic_link=None):
@@ -37,7 +39,7 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
             },
             "summary": summary,
             "description": description,
-            "labels": ["TOOL_NAME", "TOOL_NAME_2.5", "Tracking"],
+            "labels": ["TOOL_NAME", "TOOL_NAME_{JIRA_RELEASE}", "Tracking"],
             "priority": {
                 "name": "P3"
             },
