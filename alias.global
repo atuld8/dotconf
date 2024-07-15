@@ -23,7 +23,7 @@ alias h.dumplastcmd='history 2 | head -n 1 >> ~/.dump_cmd'
 alias h.printdump='cat -n ~/.dump_cmd'
 alias h.clear='cat /dev/null > ~/.bash_history && history -c '
 alias v='vim'
-alias vw='vim -R '
+alias view='vim -R '
 alias v++='vim -c "set tags+=tags" -c "cs add cscope.out"'
 alias vgrk='function af.vimgrok() { cmd=`echo $1 | awk -F'"'"'#'"'"' '"'"'{ print "vim "$1" +"$2 }'"'"'`;$cmd;}; af.vimgrok'
 
