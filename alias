@@ -6,6 +6,11 @@ if [ -f ~/.export.vrts ]; then
     source ~/.export.vrts
 fi
 
+if [ -f ~/.jira ]; then
+    source ~/.jira
+fi
+
+
 source ~/.vim/alias.global
 #source ~/.vim/alias.nbu
 #source ~/.vim/alias.nbsd.test
