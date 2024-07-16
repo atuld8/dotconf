@@ -22,6 +22,7 @@
     aCRPh = "!f_acrp() { git add -u . && git commit --reuse-message=$@ && git push; }; f_acrp"
     aCmPhUpCb = "!f_acmphupcb() { git add -u . && git commit -m \"$@\" && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acmphupcb"
     aCFPhUpcb = "!f_acfphupcb() { git add -u . && git commit -F $@ && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acfphupcb"
+    aCRPhUpcb = "!f_acrphupcb() { git add -u . && git commit --reuse-message=$@ && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acrphupcb"
     aCmPhfwl = "!f_acmphfwl() { git add -u . && git commit -m \"$@\" && git push --force-with-leasse; }; f_acmphfwl"
     aCFPhfwl = "!f_acfphfwl() { git add -u . && git commit -F $@ && git push --force-with-lease; }; f_acfphfwl"
     aCAmdPhfwl = "!f_acamdphfwl() { git add -u . && git commit --verbose --amend --no-edit && git push --force-with-lease; }; f_acamdphfwl"
