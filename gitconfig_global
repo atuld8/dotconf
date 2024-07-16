@@ -19,6 +19,7 @@
     aCFPP = "!f_acfp() { git add -u . && git commit -F $@ && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acfp"
     aCmPh = "!f_acmp() { git add -u . && git commit -m \"$@\" && git push; }; f_acmp"
     aCFPh = "!f_acfp() { git add -u . && git commit -F $@ && git push; }; f_acfp"
+    aCRPh = "!f_acrp() { git add -u . && git commit --reuse-message=$@ && git push; }; f_acrp"
     aCmPhUpCb = "!f_acmphupcb() { git add -u . && git commit -m \"$@\" && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acmphupcb"
     aCFPhUpcb = "!f_acfphupcb() { git add -u . && git commit -F $@ && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acfphupcb"
     aCmPhfwl = "!f_acmphfwl() { git add -u . && git commit -m \"$@\" && git push --force-with-leasse; }; f_acmphfwl"
@@ -82,6 +83,7 @@
     cmtfPh = "!f_cmtp() { git commit -F $@ && git push; }; f_cmtp"
     cmtmPhUpCb = "!f_cmtmphupcb() { git commit -m \"$@\" && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_cmtmphupcb"
     cmtFPhUpCb = "!f_cmtFphupcb() { git commit -F $@ && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_cmtFphupcb"
+    cmtru = "!f_cmtru() { git commit --reuse-message=$@; }; f_cmtru"
     co = checkout
     crbreeb = "!f_coeeb() { git checkout -b eeb/et$1 NB_$2; }; f_coeeb"
     crbrbfx = "!f_coeeb() { git checkout -b bugfix/et$1 ${2:-origin/master}; }; f_coeeb"
