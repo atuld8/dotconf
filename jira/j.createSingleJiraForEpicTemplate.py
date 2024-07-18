@@ -106,6 +106,9 @@ def generate_json_structure(file_path):
     stories = []
     with open(file_path, 'r') as file:
         lines = file.readlines()
+        # Skip lines starting with #
+        lines = [line for line in lines if not line.strip().startswith('#')]
+
         if lines:
             summary = lines[0].strip()
             description = ''.join(lines[1:]).strip()
