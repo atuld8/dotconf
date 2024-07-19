@@ -25,12 +25,15 @@ if [ -f /etc/bashrc ]; then
    . /etc/bashrc
 fi
 
+if [ -z "${VIM_BASHRC_CALLED}" ] || [ "${VIM_BASHRC_CALLED}" -eq 0 ]; then
+
 MANPATH=$MANPATH:/usr/dt/man:/usr/man:/usr/openwin/share/man:/usr/openv/man/share/man
 export MANPATH
 
 
 PATH=$PATH:~/scripts:~/.vim/bin:~/.vim/scripts:~/.vim/jira:
 export PATH
+fi
 
 # Define this before calling current file into bash
 #export PUNIN=''
@@ -453,8 +456,10 @@ jnbSAcft () { ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "Se
 
 alias mysshpasscmd="sshpass -f ~/.stdpass ssh $@"
 
+if [ -z "${VIM_BASHRC_CALLED}" ] || [ "${VIM_BASHRC_CALLED}" -eq 0 ]; then
 PATH=$PATH:/usr/openv/netbackup/bin/admincmd:/usr/openv/netbackup/bin:/usr/openv/db/bin:/usr/openv/netbackup/bin/goodies:/usr/openv/netbackup/bin/support:/usr/openv/netbackup/sec/at/bin:/usr/openv/volmgr/bin:/usr/openv/java/jre/bin
 export PATH
+fi
 
 ls > /dev/null; if [ $? -ne 0 ]; then alias ls='ls -hF --color'; fi
 
@@ -567,19 +572,21 @@ if [ -f ~/.alias ]; then
    source ~/.alias
 fi
 
-export HISTFILESIZE=500000
-export HISTSIZE=100000
+export HISTFILESIZE=2000
+export HISTSIZE=1000
 export HISTIGNORE='export VIMPASS=*:VIMPASS=*:'$HISTIGNORE
 
 export SSH_RMNDEV='$NIS_USER@$NIS_SERVER'
 
 export CSCOPE_EDITOR=vim
 
+if [ -z "${VIM_BASHRC_CALLED}" ] || [ "${VIM_BASHRC_CALLED}" -eq 0 ]; then
 PATH="/Users/atul.das1/perl5/bin${PATH+:}${PATH}"; export PATH;
 PERL5LIB="/Users/atul.das1/perl5/lib/perl5${PERL5LIB+:}${PERL5LIB}"; export PERL5LIB;
 PERL_LOCAL_LIB_ROOT="/Users/atul.das1/perl5${PERL_LOCAL_LIB_ROOT+:}${PERL_LOCAL_LIB_ROOT}"; export PERL_LOCAL_LIB_ROOT;
 PERL_MB_OPT="--install_base \"/Users/atul.das1/perl5\""; export PERL_MB_OPT;
 PERL_MM_OPT="INSTALL_BASE=/Users/atul.das1/perl5"; export PERL_MM_OPT;
+fi
 
 myhelp () {
 echo "Below are the alias and functions you have"
@@ -595,4 +602,5 @@ declare -F
 echo "********************"
 }
 
+export VIM_BASHRC_CALLED=1
 shopt -s direxpand 2>/dev/null
