@@ -614,6 +614,7 @@ set path+=**
 
 let g:syntastic_cpp_compiler_options = '-Wall'
 let g:syntastic_c_compiler_options = '-Wall'
+let g:syntastic_python_flake8_args='--ignore=E501,E221'
 
 " Data for template plugin
 let g:tmpl_auto_initialize = 0

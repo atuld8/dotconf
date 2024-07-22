@@ -1,0 +1,11 @@
+[flake8]
+max-line-length = 125
+ignore =
+    # E203: whitespace before ':'
+    E203,
+    # E221: Extra whitespace between variable and assignment
+    E221,
+    # E303: Too many blank blank lines
+    #E303,
+    # E501: line too long
+    E501,

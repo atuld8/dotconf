@@ -15,6 +15,7 @@ ln -s ~/.vim/nanorc ~/.nanorc
 ln -s ~/.vim/tmux ~/.tmux
 ln -s ~/.vim/emacs.d/ ~/.emacs.d
 ln -s ~/.vim/gitconfig ~/.gitconfig
+ln -s ~/.vim/flake8 ~/.flake8
 ```
 
 ## When first time setup the git
