@@ -49,7 +49,7 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
         }
     }
 
-     # Add Epic link if provided
+    # Add Epic link if provided
     if epic_link:
         fields["fields"]["customfield_10001"] = epic_link  # Change customfield_10008 to your instance's Epic Link field ID
 
@@ -99,8 +99,6 @@ def create_multiple_stories(project_key, watcher_group, stories):
         description = story['description']
         epic_link = story.get('epic_link')
         create_jira_story(project_key, summary, description, watcher_group, epic_link)
-
-
 
 
 stories = [
@@ -176,5 +174,6 @@ stories = [
     },
     # Add more stories as needed
 ]
+
 
 create_multiple_stories(JIRA_PROJECT_KEY, JIRA_WATCHER_GROUP, stories)
