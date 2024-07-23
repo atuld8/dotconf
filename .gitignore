@@ -17,9 +17,8 @@ doc/toolboxdoxygen.txt
 doc/toolboxmake.txt
 **.swp
 **/cscope.files
-jira/j.createSingleJiraForEpicNBServerMigrator.py
-jira/j.createTrackingJiraForEpicNBServerMigrator.py
-jira/j.createSingleJiraForEpicNBServerRename.py
+jira/j.createSingleJiraForEpicNB*
+jira/j.createTrackingJiraForEpicNB*
 jira/nbsm_10401.sh
 jira/renamestory.sh
 story_file
