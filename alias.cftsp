@@ -1,6 +1,12 @@
 # Alias to reopen the closed Etrack and update the ET with reason
 alias x.et.repen4ParentAndSRCreation='function af() { eset -S REOPEN $1; echo "I reopened it to create a parent ET and a sibling SR ET alongside it." | ecom -B -i $1;}; af'
 
+alias x.et.repenParentET4SRCreation='function af() { eset -S REOPEN $1; echo "I opened it again to create an SR ET under it." | ecom -B -i $1;}; af'
+
+alias x.et.repenEtwithReason='function af() { eset -S REOPEN $1; echo ${*:2} | ecom -B -i $1;}; af'
+
+
+# Create new ET cloned using mentioned ET
 alias x.et.createParentEt.ver.usr.srcet='function af() { NEW_ET=$(enew  -T PRIMARY -t DEFECT -s 4 -C rep --u2 CFTSP -Y @ -k @ -w @ --progressStatus "" -B -v $1 -K $3 -o $2 < ~/.vim/etrack/enew.input.file | grep -oP "Incident \K[0-9]+" | xargs -I {} echo {}); if [ $? -eq 0 ]; then echo "Parent Incident $NEW_ET created."; echo "This parent ET was created to create the SR ETs under it." | ecom -B -i ${NEW_ET}; else echo "Error: Operation failed."; fi;}; af'
 
 alias x.et.createSREt.ver.usr.srcet='function af() { NEW_ET=$(enew  -T @ -t SERVICE_REQUEST -s 4 -C rep --u2 CFTSP -Y @ -k @ -w @ --progressStatus "" -B -v $1 -G $3 -o $2 < ~/.vim/etrack/enew.input.file | grep -oP "Incident \K[0-9]+" | xargs -I {} echo {}); if [ $? -eq 0 ]; then echo "Service-Request Incident $NEW_ET created."; echo "This SR is to deliver the EEB related to the security package." | ecom -B -i ${NEW_ET}; else echo "Error: Operation failed."; fi;}; af'
