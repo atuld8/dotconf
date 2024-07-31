@@ -38,5 +38,5 @@ alias j.get.field.list='function af.jira_get_fields() { j.2.get field | jq ".[].
 alias j.get.field.name_id='function af.jira_get_field.id_name() { j.2.get field | jq ".[] | {ID: .id, Name: .name}"; }; af.jira_get_field.id_name'
 alias j.get.fields.for.name='function af.jira_get_fields_for_name() { j.2.get field | jq ".[] | select(.name==\"$@\")"; }; af.jira_get_fields_for_name'
 
-alias j.tknvrfy='curl $JIRA_ALIAS_EXTRA_OPT -H "Authorization: Bearer ${JIRA_ACC_TOKEN:-NULL}" -X GET https://$JIRA_SERVER_NAME/rest/api/2/myself | { output=`cat -`; if egrep -q "xml version|doctype html" <<<"$output"; then echo "$output"; else echo "$output" | jq .; fi; }'
+alias j.tknvrfy='curl $JIRA_ALIAS_EXTRA_OPT -H "Authorization: Bearer ${JIRA_ACC_TOKEN:-NULL}" -X GET https://$JIRA_SERVER_NAME/rest/api/2/myself | { output=`cat -`; if egrep -q "xml version|doctype html" <<<"$output"; then echo "$output" | xmllint --format -; else echo "$output" | jq .; fi; }'
 alias j.tknupt='read -sp "Enter Jira Access Token (Hidden): " JIRA_ACC_TOKEN; export JIRA_ACC_TOKEN'
