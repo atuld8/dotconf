@@ -145,7 +145,7 @@ alias g.gh.user.email='git config --local user.email "atuld8@gmail.com"'
 alias g.gh.user.name='git config  --local user.name "atuld8"'
 alias g.dlnmorel='git diff --name-only $1 | xargs -I '"'"'{}'"'"' realpath --relative-to=. $(git rev-parse --show-toplevel)/'"'"'{}'"'"''
 alias g.shwDiffCmtidHead..cmtid='function af.sh_diff_cmtid_head() { export gbase=`git rev-parse --show-toplevel`; for f in `g shfincmt ${1}`; do read -p "Do you check for $f file?" -n 1 -r; echo;  if [[ $REPLY =~ ^[Yy]$ ]]; then  vimdiff ${gbase}/${f} <(g show ${1}:${f}); fi; done; }; af.sh_diff_cmtid_head'
-alias g.l1t='function af.l1t() { git log --pretty=format:"%h - %an, %ar : %s" -n 10 | awk -F'"'"' - |, | : '"'"' '"'"'{printf "%-10s - %-20s %-14s : %s\n", $1, $2, $3, $4}'"'"'; }; af.l1t'
+alias g.l1x='function af.l1x() { git log --pretty=format:"%h - %an, %ar : %s" -n 10 | awk -F'"'"' - |, | : '"'"' '"'"'{printf "%-7s - %-20s %-14s : %s\n", $1, $2, $3, $4}'"'"'; }; af.l1x'
 
 # to get quick help docs
 alias h.doc='vim --cmd "set key=$VIMPASS" -c ":let g:nerdtreefindexec=1" -c ":NERDTree" ~/.vim/doc/*.txt'
