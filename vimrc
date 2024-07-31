@@ -137,6 +137,7 @@ else
 endif
 
 source ~/.vim/cscope_maps.vim
+source ~/.vim/et.vim
 
 " quick copy current buffer to next window
 let  @c="ggVGyggVGp"
