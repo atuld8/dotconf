@@ -99,34 +99,34 @@
     confLoc = config --list --show-origin
 
     dg = difftool --gui --no-prompt
-    dl = diff --no-ext-diff
-    dll = diff --no-ext-diff .
+    df = diff --no-ext-diff
+    dfl = diff --no-ext-diff .
     ; this will check for error like trailing spaces and report
-    dlChk = diff --no-ext-diff --check
-    dlICr = diff --no-ext-diff --ignore-cr-at-eol
-    dlICrSpc = diff --no-ext-diff --ignore-cr-at-eol --ignore-all-space
-    dlR = diff --no-ext-diff -R
-    dlNmo = diff --no-ext-diff --name-only
-    dllNmo = diff --no-ext-diff --name-only .
-    dlNmoCwdOnly = diff --no-ext-diff --name-only --relative
+    dfChk = diff --no-ext-diff --check
+    dfICr = diff --no-ext-diff --ignore-cr-at-eol
+    dfICrSpc = diff --no-ext-diff --ignore-cr-at-eol --ignore-all-space
+    dfR = diff --no-ext-diff -R
+    dfNmo = diff --no-ext-diff --name-only
+    dflNmo = diff --no-ext-diff --name-only .
+    dfNmoCwdOnly = diff --no-ext-diff --name-only --relative
     dC = diff --cached
-    dlC = diff --cached --no-ext-diff
-    dlCR = diff --cached --no-ext-diff -R
-    dlCNmo = diff --cached --no-ext-diff --name-only
-    dlCNmoCwd = diff --cached --no-ext-diff --name-only --relative
-    dlCw = diff --no-ext-diff --color-words
-    dlCwd = diff --no-ext-diff --color-words=.
-    dlWrx = diff --no-ext-diff --word-diff-regex=. --color-words=.
-    dlWrxSp = diff --no-ext-diff --word-diff-regex=.
-    dlWrxSp1 = diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\"
-    dlf ="!dlfm() { git diff --no-ext-diff --diff-filter=$@;}; dlfm"
-    dlWrxSp1f ="!dlfm() { git diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\" --diff-filter=$@;}; dlfm"
-    dlWrxSpf ="!dlfm() { git diff --no-ext-diff --word-diff-regex=. --diff-filter=$@;}; dlfm"
+    dfC = diff --cached --no-ext-diff
+    dfCR = diff --cached --no-ext-diff -R
+    dfCNmo = diff --cached --no-ext-diff --name-only
+    dfCNmoCwd = diff --cached --no-ext-diff --name-only --relative
+    dfCw = diff --no-ext-diff --color-words
+    dfCwd = diff --no-ext-diff --color-words=.
+    dfWrx = diff --no-ext-diff --word-diff-regex=. --color-words=.
+    dfWrxSp = diff --no-ext-diff --word-diff-regex=.
+    dfWrxSp1 = diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\"
+    dff ="!dffm() { git diff --no-ext-diff --diff-filter=$@;}; dffm"
+    dfWrxSp1f ="!dffm() { git diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\" --diff-filter=$@;}; dffm"
+    dfWrxSpf ="!dffm() { git diff --no-ext-diff --word-diff-regex=. --diff-filter=$@;}; dffm"
     dt = difftool
     ; git diff in patch format. Expects cmtid
-    dlPatch = diff-tree -p
-    dlPatch1= "!f() { git diff ${1-HEAD}^!; }; f"
-    dlnmoabs= "!f() { git diff --name-only $@| xargs -I '{}' echo $(git rev-parse --show-toplevel)/'{}'; }; f"
+    dfPatch = diff-tree -p
+    dfPatch1= "!f() { git diff ${1-HEAD}^!; }; f"
+    dfnmoabs= "!f() { git diff --name-only $@| xargs -I '{}' echo $(git rev-parse --show-toplevel)/'{}'; }; f"
     ; git diff with vim tool
     dtg = difftool --extcmd=\"gvim -d -f\"
     dtt = difftool --extcmd=\"vim -d -f\"
