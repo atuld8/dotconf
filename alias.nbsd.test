@@ -28,7 +28,7 @@ alias t.nbsd.truncatesyslog='echo > /var/log/debug.log'
 alias t.nbsd.getevd='export NBSD_EVIDENCE_PATH=`/usr/openv/netbackup/bin/nbgetconfig | grep NBSD_EVIDENCE_PATH | sed -e'"'"'s/\s*NBSD_EVIDENCE_PATH\s*=\s*//g'"'"'`; echo $NBSD_EVIDENCE_PATH'
 alias cd.nbsd.evd='if [ ! -z "$NBSD_EVIDENCE_PATH" ]; then cd ${NBSD_EVIDENCE_PATH}/nbsmartdiag; else echo call t.nbsd.getevd; fi;'
 alias cd.nbsd.logs='cd /usr/openv/netbackup/logs/nbsmartdiag'
-alias t.nbsd.setconf='nbsetconfig ~/.vim/nbsd.conf'
+alias t.nbsd.setconf='nbsetconfig ~/.vim/nbsd/nbsd.conf'
 alias t.nbsd.getconf='nbgetconfig | grep "^NBSD_" | column -t'
 alias t.nbsd.resetconf='nbgetconfig | grep "^NBSD_" | grep -v NBSD_EVIDENCE_PATH | awk '"'"'{ print $1 $2 }'"'"' | bpsetconfig'
 
