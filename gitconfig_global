@@ -190,6 +190,9 @@
     mrg = merge
 
     pl = pull -p
+    plrb = pull -p --rebase
+    plnrb = pull -p --no-rebase
+    plff = pull -p --ff-only
     ; Pull current branch only
     plCb = "!git pull origin \"$(git rev-parse --abbrev-ref HEAD)\""
     ph = push
