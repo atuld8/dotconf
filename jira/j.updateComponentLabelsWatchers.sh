@@ -4,8 +4,10 @@
 #Set below env before using it
 #export JIRA_ACC_TOKEN='tkn'
 #export JIRA_WATCHERS_LIST="user1 user2 user3"
+#export JIRA_WATCHER_GROUP="DL"
 #export JIRA_SERVER_NAME=".com"
 #export JIRA_PROJECT_NAME="PROJ"
+#export JIRA_LABELS="Label1 Label2"
 
 JIRA_ID=$1
 JIRA_COMPONENT_NAME="${2:-Commandos}"
@@ -45,6 +47,21 @@ generatePostDataToUpdateLabels() {
             }
         ]
     }
+  }
+POST_DATA_EOF
+}
+
+#
+# Function
+#
+generatePostDataToUpdateWatcherGroupField() {
+  _JIRA_FIELD_VALUE=$1
+  cat <<POST_DATA_EOF
+  {
+    "fields":
+        {
+            "customfield_14600": [{"name": "$_JIRA_FIELD_VALUE"}]
+        }
   }
 POST_DATA_EOF
 }
@@ -94,7 +111,7 @@ jira_post_call() {
         -H \"Authorization: Bearer $JIRA_ACC_TOKEN\" \
         -H \"Content-Type:application/json\" \
         \"https://$JIRA_SERVER_NAME/rest/api/2/$REST_API_PATH\" \
-        --data-raw '"$($REST_GET_DATA_FUNC)"'" | sh
+        --data-raw '"$($REST_GET_DATA_FUNC)"'" | tee sh
 }
 
 #
@@ -118,8 +135,17 @@ set_component_id_to_jira_ticket() {
 #
 set_labels_id_to_jira_ticket() {
     REST_API_PATH="issue/$JIRA_ID"
-    jira_put_call $REST_API_PATH generatePostDataToUpdateLabels "NBServerMigrator"
-    jira_put_call $REST_API_PATH generatePostDataToUpdateLabels "NBServerMigrator_mainline"
+
+    if [[ -z $JIRA_LABELS ]]; then
+        echo "Setting default labels: NBServerMigrator and NBServerMigrator_mainline"
+        jira_put_call $REST_API_PATH generatePostDataToUpdateLabels "NBServerMigrator"
+        jira_put_call $REST_API_PATH generatePostDataToUpdateLabels "NBServerMigrator_mainline"
+    else
+        for label in $JIRA_LABELS; do
+            echo "Setting label: $label"
+            jira_put_call $REST_API_PATH generatePostDataToUpdateLabels $label
+        done
+    fi
 }
 
 #
@@ -133,6 +159,19 @@ set_watchers_to_jira_ticket() {
     for user in ${watchersArray[@]}; do
         echo "Adding $user to watcher"
         jira_post_call $REST_API_PATH generatePostDataToUpdateWatcher $user
+    done
+}
+
+#
+# Function
+#
+set_watchers_group_to_jira_ticket() {
+    REST_API_PATH="issue/$JIRA_ID"
+    watchersGroupArray=($JIRA_WATCHER_GROUP)
+
+    for group in ${watchersGroupArray[@]}; do
+        echo "Adding $group to watcher group"
+        jira_put_call $REST_API_PATH generatePostDataToUpdateWatcherGroupField $group
     done
 }
 
@@ -166,4 +205,7 @@ set_component_id_to_jira_ticket
 set_labels_id_to_jira_ticket
 
 # set the watchers
-set_watchers_to_jira_ticket
+# set_watchers_to_jira_ticket
+
+# set the watchers groups
+set_watchers_group_to_jira_ticket

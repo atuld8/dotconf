@@ -113,10 +113,10 @@ def generate_json_structure(file_path):
             summary = lines[0].strip()
             description = ''.join(lines[1:]).strip()
             story = {
-                    'summary': summary,
-                    'description': description,
-                    'epic_link': JIRA_EPIC_LINK
-                }
+                'summary': summary,
+                'description': description,
+                'epic_link': JIRA_EPIC_LINK
+            }
             stories.append(story)
     return stories
 
