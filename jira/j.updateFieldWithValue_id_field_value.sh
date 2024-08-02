@@ -96,6 +96,7 @@ jira_post_call() {
 get_field_id() {
     REST_API_PATH="field"
     JIRA_FIELD_ID=`jira_get_call $REST_API_PATH | jq -r --arg jira_field_name "$JIRA_FIELD_NAME" '.[] | select (.name == $jira_field_name) | .id'`
+    echo "Field Name = $JIRA_FIELD_NAME and Field Id = $JIRA_FIELD_ID"
 }
 
 #
@@ -128,6 +129,10 @@ fi
 # To get the component id from component name
 get_field_id
 
+if [[ ! -z $JIRA_FIELD_ID ]]; then
 # Set the compoent id
-update_field_with_value
+    update_field_with_value
+else
+    echo -e "\n\nError: Jira field id is null for field name '$JIRA_FIELD_NAME'"
+fi
 
