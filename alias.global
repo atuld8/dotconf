@@ -65,6 +65,7 @@ alias x.tmuxinfo='function af.tmuxinfo() { TMUXINFO="${HOSTNAME/.*/} $OSName ${O
 alias x.mk.multi.ln..s.list='function af.mk.multi.link() { for f in "${@:2}"; do echo creating link for $f; if [ ! -e $f ]; then ln -s -- $1 $f; echo link created; else echo $f already exists; fi; done; }; af.mk.multi.link'
 alias x.unc2http='function af.unc2http() { echo "$@" | sed -e "s/^\\\\/http:\/\//g" | sed -e "s/\\\\/\//g" | sed -e "s/$/\//g"; }; af.unc2http'
 alias x.rmtcmd='function af.cmdrmt() { ssh -q -t $RMTCMD_HOST bash -ic '"\'"'$@'"\'"'; }; af.cmdrmt'
+alias x.unix2win='function af.unix2win() { drive="${1:-U:}"; path=$(realpath "${2:-$PWD}"); echo $path | sed "s|^$HOME|$drive|; s|/|\\\\|g"; }; af.unix2win'
 
 # modify configs quickly
 alias e='$CFG_EDITOR'
