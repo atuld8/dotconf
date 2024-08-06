@@ -96,6 +96,12 @@ command! Abb :execute 'source ~/.vim/plugin/abbreviations.vim'
 command! CurrentFilePathCopy :let @+=expand("%:p")
 command! CurrentFileDirCopy  :let @+=expand("%:p:h")
 
+" Command to set both iskeyword and completeopt
+command SetWORDcomplete set iskeyword+=@,.,-,_ | set completeopt+=menuone
+
+" Command to unset both iskeyword and completeopt
+command UnsetWORDcomplete set iskeyword-=@,.,-,_ | set completeopt-=menuone
+
 " Convert slashes to backslashes for Windows.
 if has('win32')
     nmap ,cs :let @*=substitute(expand("%"), "/", "\\", "g")<CR>
