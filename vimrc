@@ -98,9 +98,10 @@ command! CurrentFileDirCopy  :let @+=expand("%:p:h")
 
 " Command to set both iskeyword and completeopt
 command SetWORDcomplete set iskeyword+=@,.,-,_ | set completeopt+=menuone
-
 " Command to unset both iskeyword and completeopt
-command UnsetWORDcomplete set iskeyword-=@,.,-,_ | set completeopt-=menuone
+command UnsetWORDcomplete set iskeyword-=.,- | set completeopt-=menuone
+" Command to print current iskeyword setting
+command ShowKeywords echo &iskeyword
 
 " Convert slashes to backslashes for Windows.
 if has('win32')
