@@ -575,10 +575,15 @@ let g:session_autoload='no'
  let g:multi_cursor_start_key='<F4>'
 
 
+ if !isdirectory($HOME . "/.backup")
+       call mkdir($HOME . "/.backup", "p", 0700)
+ endif
+
 let g:mark_multiple_trigger = "<leader>mm"
 let g:yankring_replace_n_nkey = "<leader>mmn"
 let g:yankring_replace_n_pkey = "<leader>mmp"
-
+let g:yankring_history_dir = '$HOME/.backup'
+let g:yankring_history_file = '.yankring_history'
 
 " Start interactive EasyAlign in visual mode (e.g. vipga)
 xmap ga <Plug>(EasyAlign)
