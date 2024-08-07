@@ -150,7 +150,7 @@ alias .nb.uninst.aix='function af.nb.uninst.aix() { for p in `lslpp -L | egrep -
 alias .nb.uninst.hp='function af.nb.uninst.hp() { for p in `swlist | egrep "VRTSnbclt|VRTSnetbp|VRTSnbjre|VRTSnbcfg|VRTSnbpck|VRTSnbjava|VRTSpddes|VRTSpddea|VRTSpbx"  | awk '"'"'{ print $1 }'"'"'`; do echo $p; swremove $p; done; }; af.nb.uninst.hp'
 alias .nb.uninst.sol='function af.nb.uninst.sol() { for f in `pkginfo | egrep "SYMC|VRTSnbclt|VRTSnetbp|VRTSnbjre|VRTSnbcfg|VRTSnbpck|VRTSnbjava|VRTSpddes|VRTSpddea|${1:-VRTSnb}" | awk '"'"'{ print $2; }'"'"'`; do echo $f; yes y | pkgrm $f; done; if [ ! -z $1 ]; then echo "Uninstalling $1.."; yes y | pkgrm $1; fi;}; af.nb.uninst.sol'
 
-alias .nb.nbUsers='groupadd nbwebgrp; useradd -g nbwebgrp -c "NetBackup Web Services account" -d /usr/openv/wmc nbwebsvc;groupadd nbgrp; useradd -g nbgrp -G nbwebgrp -c "NetBackup Service account" -d /usr/openv nbsvc'
+alias .nb.createnbusers='groupadd nbwebgrp; useradd -g nbwebgrp -c "NetBackup Web Services account" -d /usr/openv/wmc nbwebsvc;groupadd nbgrp; useradd -g nbgrp -G nbwebgrp -c "NetBackup Service account" -d /usr/openv nbsvc'
 
 # BMR specific commands
 alias .bmr.cfg='bmrs -op list -res config'

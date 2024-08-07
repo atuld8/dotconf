@@ -23,6 +23,7 @@ source ~/.vim/alias.global
 #source ~/.vim/wincmds/alias_cygwin
 #source ~/.vim/wincmds/alias_nbu_cygwin
 
+
 if [ -f ~/.alias.tmp ]; then
     source ~/.alias.tmp
 fi

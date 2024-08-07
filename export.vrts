@@ -2,6 +2,8 @@
 # export NIS_SERVER=
 
 # export RMTCMD_HOST=
+# export ENGVM_HOST=
+# export SCP_ENGVM=
 
 # export PUNDEV=
 # export pundev=$PUNDEV
@@ -16,3 +18,5 @@
 # export rsv=$RSV
 
 # export EXTSRC_ROOT=''
+
+# export JIRA_SERVER_NAME=""
