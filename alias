@@ -22,6 +22,7 @@ source ~/.vim/alias.global
 #source ~/.vim/alias.sf
 #source ~/.vim/wincmds/alias_cygwin
 #source ~/.vim/wincmds/alias_nbu_cygwin
+#source ~/.vim/alias.mac
 
 
 if [ -f ~/.alias.tmp ]; then
