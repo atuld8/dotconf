@@ -1,0 +1,2 @@
+# This file is for cygwin or similar compatible os
+bind-key -n C-\ send-prefix

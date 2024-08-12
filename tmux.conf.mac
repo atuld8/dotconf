@@ -1,0 +1,2 @@
+# This file is for MAC or other compabitle file 
+bind-key -n C-\\ send-prefix
