@@ -5,8 +5,9 @@ alias mc.notesmv='open -a MacVim.app  $HOME/.notes_flist --args -n'
 alias mc.tags='cat ~/.tagfiles | grep Tag= | grep -v ".tagfiles" | sed -e"s/Tag=//"'
 alias mc.worknotes='tag -f worknotes'
 
-alias mc.eclipse='/Users/atul.das1/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse'
+alias mc.eclipse='$HOME/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse'
 alias mc.as='open -a "Android Studio.app"'
 alias mc.outlook='open -a /Applications/Microsoft\ Outlook.app'
 alias mc.nano='/usr/local/bin/nano'
+alias mc.vsc='open -a /Applications/Visual\ Studio\ Code.app'
 

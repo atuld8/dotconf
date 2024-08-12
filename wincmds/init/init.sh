@@ -8,8 +8,10 @@ git clone https://github.com/VundleVim/Vundle.vim.git .vim/bundle/Vundle.vim
 cd ~
 echo source ~/.vim/vimrc >> .vimrc
 echo source ~/.vim/gvimrc >> .gvimrc
+echo source-file  ~/.vim/tmux.conf >> .tmux.conf
+#echo source-file  ~/.vim/tmux.conf.mac >> .tmux.conf
+echo source-file  ~/.vim/tmux.conf.cyg >> .tmux.conf
 
-ln -s ~/.vim/tmux.conf .tmux.conf
 ln -s ~/.vim/screenrc .screenrc
 ln -s ~/.vim/emacs .emacs
 
