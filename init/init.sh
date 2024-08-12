@@ -10,7 +10,7 @@ echo source ~/.vim/vimrc >> .vimrc
 echo source ~/.vim/gvimrc >> .gvimrc
 echo source-file  ~/.vim/tmux.conf >> .tmux.conf
 echo source-file  ~/.vim/tmux.conf.mac >> .tmux.conf
-# echo source-file  ~/.vim/tmux.conf.cyg >> .tmux.conf
+#echo source-file  ~/.vim/tmux.conf.cyg_lnx >> .tmux.conf
 
 ln -s ~/.vim/screenrc .screenrc
 ln -s ~/.vim/emacs .emacs
