@@ -19,7 +19,7 @@ JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN')
 
 # JQL query to filter issues
 JQL_QUERY = 'labels = Tracking and labels = NBServerMigrator_2.4'
-MAX_RESULTS = 50  # Adjust this based on the expected number of results
+MAX_RESULTS = 150  # Adjust this based on the expected number of results
 
 # Headers for authentication and content type
 headers = {
