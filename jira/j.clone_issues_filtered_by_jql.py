@@ -19,8 +19,8 @@ NEW_LABEL = 'Cloned'
 
 # Headers for authentication and content type
 headers = {
-        'Authorization': f'Bearer {JIRA_API_TOKEN}',
-        'Content-Type': 'application/json'
+    'Authorization': f'Bearer {JIRA_API_TOKEN}',
+    'Content-Type': 'application/json'
 }
 
 
@@ -67,11 +67,11 @@ def main():
     issues = get_issues_by_jql(JQL_QUERY)
 
     if not issues:
-        print(f"No issues found.")
+        print("No issues found.")
         return
 
     for issue in issues:
-        print(f"Cloning issue issue['key']")
+        print("Cloning issue issue['key']")
         clone_issue(issue)
 
 
