@@ -47,7 +47,7 @@ def get_issues_by_jql(jql):
         params = {
             'jql': jql,
             'maxResults': MAX_RESULTS,
-            'fields': ['key', 'summary', 'status', 'assignee']  # Adjust based on required fields
+            'fields': ['key', 'summary', 'status', 'assignee', 'priority', 'issuetype']  # Adjust based on required fields
         }
 
         response = requests.get(url, headers=headers, params=params)
@@ -73,12 +73,16 @@ def print_issues_in_table_format(issues):
         summary = issue['fields']['summary']
         status = issue['fields']['status']['name']
         assignee = issue['fields']['assignee']['displayName'] if issue['fields']['assignee'] else 'Unassigned'
+        priority = issue['fields']['priority']['name'] if issue['fields']['priority']['name'] else 'NA'
+        issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
         data.append({
             'Serial': index,
             'Key': key,
             'Summary': summary,
             'Status': status,
-            'Assignee': assignee
+            'Assignee': assignee,
+            'Priority': priority,
+            'IssueType': issuetype
         })
 
     # Convert the data to a pandas DataFrame and display it as a table
