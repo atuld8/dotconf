@@ -524,7 +524,7 @@ augroup END
 
 augroup python_ft
   autocmd!
-  au FileType python set makeprg=pylint\ --reports=n\ --output-format=parseable\ %:p
+  au FileType python set makeprg=pylint\ --reports=n\ --output-format=parseable\ --rcfile=`git\ rev-parse\ --show-toplevel`/.pylintrc\ %:p
   au FileType python set efm=%A%f:%l:\ [%t%.%#]\ %m,%Z%p^^,%-C%.%#
   au FileType python let python_highlight_all = 1
   au FileType python syntax on
