@@ -50,3 +50,4 @@ alias j.tknupt='read -sp "Enter Jira Access Token (Hidden): " JIRA_ACC_TOKEN; ex
 #export JIRA_PROJECT_KEY=''
 #export JIRA_WATCHER_GROUP='DL'
 #export JIRA_LABELS="L1 L2"
+#export JIRA_EPIC_LINK=""
