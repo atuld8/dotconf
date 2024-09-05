@@ -153,6 +153,7 @@ set_component_id_to_jira_ticket() {
     jira_put_call $REST_API_PATH generatePostDataToUpdateComponent $JIRA_COMPONENT_ID
 }
 
+
 #
 # Function
 #
