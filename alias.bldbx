@@ -55,8 +55,8 @@ alias g.nbcln..rp='function af.nbcln1() { git clone -n https://$GIT_CREDS@$GIT_S
 alias g.nbcln..rp.br='function af.nbclnsb2() { git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/$1.git ./$1 --branch $2; }; af.nbclnsb2'
 alias g.nbcln.sngl..rp.br='function af.nbclnsb2() { git clone -n https://$GIT_CREDS@$GIT_SERVER/scm/nb/$1.git ./$1 --single-branch --branch $2; }; af.nbclnsb2'
 alias g.addtag='echo -n "EEB version : "; read EEB_VER;for a in `git branch  | grep "*" | awk '"'"'{print $2 }'"'"'`; do et=`echo $a | sed -e'"'"'s/eeb\/et//gi'"'"'`; git log -1;  echo git tag -a EEB_et${et}_v${EEB_VER} -m \"EEB Version ${EEB_VER}\" `git rev-parse HEAD`; echo git push origin EEB_et${et}_v${EEB_VER}; echo git log -1; done'
-alias g.log.tags.4.br='function af.g.log.tag() { NBSM_TAG1=$(git describe --tags --abbrev=0 $1); NBSM_TAG2=$(git describe --tags --abbrev=0 ${NBSM_TAG1}~); echo "-- NBSM_TAG1=$NBSM_TAG1"; echo "-- NBSM_TAG2=${NBSM_TAG2}"; echo -e "\n\n\n"; git log ${NBSM_TAG2}..${NBSM_TAG1} $@; }; af.g.log.tag'
-alias g.log.tags..tag='function af.g.log.tag() { NBSM_TAG1=$1; NBSM_TAG2=$(git describe --tags --abbrev=0 ${NBSM_TAG1}~); echo "-- NBSM_TAG1=$NBSM_TAG1"; echo "-- NBSM_TAG2=${NBSM_TAG2}"; echo -e "\n\n\n"; git log ${NBSM_TAG2}..${NBSM_TAG1} $@; }; af.g.log.tag'
+alias g.ltags.4.br='function af.g.log.tag() { NBSM_TAG1=$(git describe --tags --abbrev=0 $1); NBSM_TAG2=$(git describe --tags --abbrev=0 ${NBSM_TAG1}~); echo "-- NBSM_TAG1=$NBSM_TAG1"; echo "-- NBSM_TAG2=${NBSM_TAG2}"; echo -e "\n\n\n"; git log ${NBSM_TAG2}..${NBSM_TAG1} $@; }; af.g.log.tag'
+alias g.ltags..tag='function af.g.log.tag() { NBSM_TAG1=$1; NBSM_TAG2=$(git describe --tags --abbrev=0 ${NBSM_TAG1}~); echo "-- NBSM_TAG1=$NBSM_TAG1"; echo "-- NBSM_TAG2=${NBSM_TAG2}"; echo -e "\n\n\n"; git log ${NBSM_TAG2}..${NBSM_TAG1} $@; }; af.g.log.tag'
 
 #misc commands
 alias x.md.nb.serverplatfs..path='function af.md.nb.serverplatfs () { mkdir -p $1/AMD64 $1/solaris $1/solaris_x86 $1/linuxR_x86 $1/linuxS_x86; }; af.md.nb.serverplatfs'
