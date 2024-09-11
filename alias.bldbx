@@ -35,6 +35,7 @@ alias g.etdet='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" |
 alias g.etdetcmt='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s -c {}'
 alias g.etdetall='git branch 2> /dev/null | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v -f -s {}'
 alias g.etsuper='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -i eprint -v {} | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -i eprint -vdK  {}'
+alias g.istrkd='function f() { git ls-files --error-unmatch $1 >/dev/null 2>/dev/null && echo "Info: $1 is tracked." || echo "Error: $1 is not tracked..."; }; f'
 
 
 # change dir quickly
