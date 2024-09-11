@@ -1,9 +1,9 @@
 #!/bin/bash
 
-[[ "$2" =~ ^(NBSM|NBSVRUP)_[0-9.]+_[0-9]{4}$ ]] && [[ "$1" =~ ^NBU-[0-9]+$ ]] || (echo "Error. Please enter Jira_ID Build_ID correctly..." & exit 1)
+[[ "$1" =~ ^(NBSM|NBSVRUP)_[0-9.]+_[0-9]{4}$ ]] && [[ "$2" =~ ^NBU-[0-9]+$ ]] || (echo "Error. Please enter Build_ID & Jira_ID Build_ID correctly in this order..." & exit 1)
 
-JIRA_ISSUE_ID=$1
-TARGET_BLD_ID=$2
+TARGET_BLD_ID=$1
+JIRA_ISSUE_ID=$2
 
 
 # Update the Target Build
