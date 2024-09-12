@@ -522,12 +522,55 @@ augroup perl_ft
   autocmd FileType perl let perl_extended_vars = 1
 augroup END
 
+function! InsertDocString()
+  " Save current position
+  let l:pos = getpos('.')
+
+  " Set the default file path
+  let l:file = expand('$HOME/.vim/plugin/pydocstring')
+  " Read file content into the current buffer
+  echo "File path: " . l:file
+  execute 'r ' . l:file
+
+  " Restore the cursor position
+  call setpos('.', l:pos)
+endfunction
+
+" Define a text object for placeholders like ${...}
+function! TextobjPlaceholder()
+  "Get the current line content
+  let l:line = getline('.')
+
+  " Find the position of the opening ${ in the current line
+  let l:start = matchstrpos(l:line, '\${')
+
+  " Find the position of the closing } in the current line
+  let l:end = matchstrpos(l:line, '}')
+
+  " Ensure both start and end are valid, and start comes before end
+  if l:start[1] >= 0 && l:end[1] >= 0 && l:start[1] < l:end[1]
+    " Move the cursor to the start of the placeholder
+    call cursor('.', l:start[1] + 1)
+    normal! v
+    " Move the cursor to the end of the placeholder
+    call cursor('.', l:end[1] + 1)
+  endif
+
+endfunction
+
+" Map to text objects
+xnoremap i$ :<C-u>call TextobjPlaceholder()<CR>
+onoremap i$ :<C-u>call TextobjPlaceholder()<CR>
+
+
 augroup python_ft
   autocmd!
   au FileType python set makeprg=pylint\ --reports=n\ --output-format=parseable\ --rcfile=`git\ rev-parse\ --show-toplevel`/.pylintrc\ %:p
   au FileType python set efm=%A%f:%l:\ [%t%.%#]\ %m,%Z%p^^,%-C%.%#
   au FileType python let python_highlight_all = 1
   au FileType python syntax on
+  au FileType python inoremap <C-d> <Esc>:call InsertDocString()<CR>a
+  " imap <C-d> call InsertDocString()<Cr>
   au BufNewFile,BufRead *.py
        \ set tabstop=4 |
        \ set softtabstop=4 |
@@ -627,7 +670,7 @@ set path+=**
 
 let g:syntastic_cpp_compiler_options = '-Wall'
 let g:syntastic_c_compiler_options = '-Wall'
-let g:syntastic_python_flake8_args='--ignore=E501,E221'
+let g:syntastic_python_flake8_args='--ignore=E501,E221,W12'
 
 " Data for template plugin
 let g:tmpl_auto_initialize = 0
