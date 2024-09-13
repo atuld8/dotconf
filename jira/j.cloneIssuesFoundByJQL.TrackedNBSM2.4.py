@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.12
 # pip install requests
 # pip install python-dotenv
 import os
