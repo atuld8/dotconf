@@ -139,6 +139,9 @@ def update_sprint(ticket_id, board, sprint):
     Returns:
     ${5:type}: ${6:Description of the return value.}
     """
+    if not board:
+        board = os.getenv('JIRA_BOARD_NAME')
+        print(f"Board was not passed. Read from the enviornment: {board}")
 
     board_id = get_board_id(board)
     if board_id is not None:

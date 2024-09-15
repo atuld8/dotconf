@@ -54,3 +54,4 @@ alias j.usrInEpic='echo -e "Users: $JIRA_EPIC_USERS_LIST\n\n"; IFS="," read -r -
 #export JIRA_LABELS="L1 L2"
 #export JIRA_EPIC_LINK=""
 #export JIRA_EPIC_USERS_LIST=""
+#export JIRA_BOARD_NAME=""
