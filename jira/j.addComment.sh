@@ -5,6 +5,11 @@ JIRA_ID=$1
 shift
 JIRA_COMMENT=$@
 
+if [[ -z "$1" ]]; then
+    echo "Usage: $0 Jira_Id  <DubleQuoteComment...>| -f <file_Path>"
+    exit 0
+fi
+
 if [[ "$1" == "-f" ]]; then
     if [[ -f $2 ]]; then
         JIRA_COMMENT=`cat $2`;
