@@ -36,7 +36,7 @@ headers = {
 
 
 # Make the get request to get issue details
-response = requests.get(issue_url, headers=headers)
+response = requests.get(issue_url, headers=headers, timeout=20)
 
 # Check the response
 if response.status_code == 200:
@@ -50,7 +50,7 @@ current_watchers = issue_details['fields'].get(JIRA_SEC_ISSUE_WATCHER_CUST_ID, [
 
 
 # Make the get request to get user details
-response = requests.get(user_url, headers=headers)
+response = requests.get(user_url, headers=headers, timeout=20)
 
 # Check the response
 if response.status_code == 200:
@@ -80,7 +80,8 @@ data = {
     }
 }
 
-response = requests.put(issue_url, headers=headers, data=json.dumps(data))
+response = requests.put(issue_url, headers=headers,
+                        data=json.dumps(data), timeout=20)
 if response.status_code == 204:
     print(f'{JIRA_NEW_WATCHER} has been added to the security watcher list.')
 else:
@@ -88,7 +89,7 @@ else:
 
 
 # Make the get request to get issue details
-response = requests.get(issue_url, headers=headers)
+response = requests.get(issue_url, headers=headers, timeout=20)
 
 # Check the response
 if response.status_code == 200:

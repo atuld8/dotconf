@@ -61,7 +61,8 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
     payload = fields
 
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(url, headers=headers,
+                                 data=json.dumps(payload), timeout=20)
         response.raise_for_status()  # Raise HTTPError for bad responses
         issue = response.json()
         print(f"Jira story created successfully with key: {issue['key']}")
@@ -85,7 +86,7 @@ def add_watcher_group(jira_url, api_token, issue_key, watcher_group):
     payload = json.dumps(watcher_group)
 
     try:
-        response = requests.post(url, headers=headers, data=payload)
+        response = requests.post(url, headers=headers, data=payload, timeout=20)
         response.raise_for_status()  # Raise HTTPError for bad responses
         print(f"Watcher group '{watcher_group}' added to issue {issue_key}")
     except requests.exceptions.HTTPError as http_err:
@@ -122,6 +123,6 @@ def generate_json_structure(file_path):
     return stories
 
 
-stories = generate_json_structure(args.story_file)
+generate_stories = generate_json_structure(args.story_file)
 
-create_multiple_stories(JIRA_PROJECT_KEY, JIRA_WATCHER_GROUP, stories)
+create_multiple_stories(JIRA_PROJECT_KEY, JIRA_WATCHER_GROUP, generate_stories)

@@ -27,7 +27,7 @@ headers = {
 # Function to get the current labels of a Jira issue
 def get_current_labels(ticket_id):
     url = f"{issue_url}/{ticket_id}"
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=20)
 
     if response.status_code == 200:
         try:
@@ -51,7 +51,7 @@ def update_labels(ticket_id, new_labels):
         }
     })
 
-    response = requests.put(url, headers=headers, data=payload)
+    response = requests.put(url, headers=headers, data=payload, timeout=20)
 
     if response.status_code == 204:
         print(f"Labels updated successfully for ticket {ticket_id}: {new_labels}")
@@ -96,4 +96,3 @@ if __name__ == "__main__":
 
     # Perform label management
     manage_labels(args.ticket_id, args.add, args.remove)
-

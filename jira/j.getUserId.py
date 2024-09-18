@@ -30,7 +30,7 @@ headers = {
 }
 
 # Make the PUT request to update the assignee
-response = requests.get(url, headers=headers)
+response = requests.get(url, headers=headers, timeout=20)
 
 # Check the response
 if response.status_code == 200:

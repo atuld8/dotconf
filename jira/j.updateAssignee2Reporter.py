@@ -32,7 +32,7 @@ headers = {
 
 # Get issue details to extract the reporter's username
 def get_issue_reporter(ticket_id):
-    response = requests.get(issue_url, headers=headers)
+    response = requests.get(issue_url, headers=headers, timeout=20)
 
     if response.status_code == 200:
         issue_data = response.json()
@@ -46,7 +46,8 @@ def get_issue_reporter(ticket_id):
 def assign_ticket_to_reporter(ticket_id, reporter):
     payload = json.dumps({"name": reporter})
 
-    response = requests.put(assignee_url, headers=headers, data=payload)
+    response = requests.put(assignee_url, headers=headers, data=payload,
+                            timeout=20)
 
     if response.status_code == 204:
         print(f"Ticket {ticket_id} assigned to {reporter}.")

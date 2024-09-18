@@ -2,8 +2,8 @@
 # pip install requests
 # pip install python-dotenv
 import os
-import requests
 import json
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,7 +33,7 @@ def get_issues_by_jql(jql):
         params = {
             'jql': jql,
         }
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, timeout=20)
 
         response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
 
@@ -55,7 +55,7 @@ def clone_issue(issue):
             'labels': issue['fields']['labels'] + [NEW_LABEL]
         }
     }
-    response = requests.post(url, headers=headers, data=json.dumps(clone_payload))
+    response = requests.post(url, headers=headers, data=json.dumps(clone_payload), timeout=20)
     if response.status_code == 201:
         print(f"Issue {issue_key} cloned successfully.")
     else:

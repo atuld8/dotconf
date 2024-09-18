@@ -36,7 +36,8 @@ payload = {
 }
 
 # Make the PUT request to update the assignee
-response = requests.put(url, headers=headers, data=json.dumps(payload))
+response = requests.put(url, headers=headers, data=json.dumps(payload),
+                        timeout=20)
 
 # Check the response
 if response.status_code == 204:

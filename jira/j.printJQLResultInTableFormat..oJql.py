@@ -6,9 +6,9 @@
 # pip install prettytable
 
 import os
+import argparse
 import requests
 import pandas as pd
-import argparse
 from dotenv import load_dotenv
 from prettytable import PrettyTable
 
@@ -51,14 +51,13 @@ def get_issues_by_jql(jql):
             'fields': ['key', 'summary', 'status', 'assignee', 'priority', 'issuetype']  # Adjust based on required fields
         }
 
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, timeout=20)
 
         response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
 
         return response.json().get('issues', [])
 
     except requests.exceptions.RequestException as e:
-
         print(f"Error fetching issues: {e}")
         return []
 
@@ -97,7 +96,7 @@ def print_issues_in_table_format(issues):
 
     # Set column alignment to left
     for field in table.field_names:
-       table.align[field] = "l"  # Align to the left
+        table.align[field] = "l"  # Align to the left
     for _, row in df.iterrows():
         table.add_row(row.tolist())
     print(table)
