@@ -68,6 +68,8 @@ alias x.unc2http='function af.unc2http() { echo "$@" | sed -e "s/^\\\\/http:\/\/
 alias x.unc2http.evd='function af.unc2http() { echo "$@" | sed -e "s/^\\\\/https:\/\//g" | sed -E "s/\.comm(.*)\\\evidence/\-web.comm\1/g" | sed -e "s/\\\\/\//g" | sed -e "s/$/\//g"; }; af.unc2http'
 alias x.rmtcmd='function af.cmdrmt() { ssh -q -t $RMTCMD_HOST bash -ic '"\'"'$@'"\'"'; }; af.cmdrmt'
 alias x.unix2win='function af.unix2win() { drive="${1:-U:}"; path=$(realpath "${2:-$PWD}"); echo $path | sed "s|^$HOME|$drive|; s|/|\\\\|g"; }; af.unix2win'
+alias x.tmp2='function tmx() { tmux send-key -t 2 "$@" C-m; }; tmx'
+alias x.tmp2c='function tmxc() { tmux send-key -t 2 "clear" C-m; }; tmxc'
 
 # modify configs quickly
 alias e='$CFG_EDITOR'
