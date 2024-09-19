@@ -126,9 +126,9 @@ fi
 if [[ ! -z $JIRA_LABELS ]]; then
     echo -e "\n"
     echo -n "Labels before updating it: " & get_issue_labels_details
-    echo -e "\n\n"
+    echo -e "\n"
     set_labels_id_to_jira_ticket
-    echo -e "\n\n"
+    echo -e "\n"
     echo -n "Labels after updating it: "
     get_issue_labels_details
     echo -e "\n"
