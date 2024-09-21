@@ -48,7 +48,13 @@ def get_issues_by_jql(jql):
         params = {
             'jql': jql,
             'maxResults': MAX_RESULTS,
-            'fields': ['key', 'summary', 'status', 'assignee', 'priority', 'issuetype']  # Adjust based on required fields
+            'fields': ['key',
+                       'summary',
+                       'status',
+                       'assignee',
+                       'priority',
+                       'issuetype',
+                       'labels']  # Adjust based on required fields
         }
 
         response = requests.get(url, headers=headers, params=params, timeout=20)
@@ -70,11 +76,12 @@ def print_issues_in_table_format(issues):
 
     for index, issue in enumerate(issues, start=1):
         key = issue['key']
-        summary = issue['fields']['summary']
+        summary = issue['fields']['summary'] if len(issue['fields']['summary']) < 120 else issue['fields']['summary'][:120] + "..."
         status = issue['fields']['status']['name']
         assignee = issue['fields']['assignee']['displayName'] if issue['fields']['assignee'] else 'Unassigned'
         priority = issue['fields']['priority']['name'] if issue['fields']['priority']['name'] else 'NA'
         issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
+        labels = ', '.join(issue['fields']['labels']) if issue['fields']['labels'] else '-'
         data.append({
             'Serial': index,
             'Key': key,
@@ -82,7 +89,8 @@ def print_issues_in_table_format(issues):
             'Status': status,
             'Assignee': assignee,
             'Priority': priority,
-            'IssueType': issuetype
+            'IssueType': issuetype,
+            'Labels': labels
         })
 
     # Convert the data to a pandas DataFrame and display it as a table
