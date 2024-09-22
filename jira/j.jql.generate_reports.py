@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 # Function to process input data into a dataframe
 def process_table(input_data):
     headers = ["Serial", "Key", "Summary",
-               "Status", "Assignee", "Priority",
-               "IssueType", "Labels"]
+               "Status", "Assignee", "Reporter",
+               "Priority", "IssueType", "Labels"]
     data = [line.strip().strip('|').split('|') for line in input_data]
 
 
@@ -91,7 +91,7 @@ def main():
 
     # Read input file
     with open(args.input_file, 'r') as f:
-        input_data = f.readlines()[3:]  # Skipping the header line
+        input_data = f.readlines()[3:-1]  # Skipping the header line
 
     # Process the table and generate dataframe
     df = process_table(input_data)
