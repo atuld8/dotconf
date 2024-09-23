@@ -24,11 +24,6 @@ JIRA_COMMENT=$(echo "$JIRA_COMMENT" | awk '{printf "%s\\n", $0}')
 if [[ -z "$JIRA_COMMENT" ]]; then
     echo "Usage: $0 Jira_Id  <DubleQuoteComment...>| -f <file_Path>"
     exit 0
-else
-    echo -e "\n\n"
-    echo "Info: Adding Comment as:"
-    echo "${JIRA_COMMENT}"
-    echo -e "\n"
 fi
 
 generatePostData() {
