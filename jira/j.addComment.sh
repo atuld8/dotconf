@@ -3,17 +3,24 @@
 
 JIRA_ID=$1
 shift
-JIRA_COMMENT=$@
 
-if [[ -z "$1" ]]; then
-    echo "Usage: $0 Jira_Id  <DubleQuoteComment...>| -f <file_Path>"
-    exit 0
-fi
 
 if [[ "$1" == "-f" ]]; then
     if [[ -f $2 ]]; then
         JIRA_COMMENT=`cat $2`;
     fi
+else
+    if [[ ! -z "$1" ]]; then
+        JIRA_COMMENT=$@
+    else
+        echo "Enter your comment, then press Ctrl+D when finished:"
+        JIRA_COMMENT=$(cat)
+    fi
+fi
+
+if [[ -z "$JIRA_COMMENT" ]]; then
+    echo "Usage: $0 Jira_Id  <DubleQuoteComment...>| -f <file_Path>"
+    exit 0
 fi
 
 generatePostData() {
