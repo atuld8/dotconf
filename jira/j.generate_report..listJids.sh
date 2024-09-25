@@ -2,24 +2,17 @@
 
 print_dash() {
         echo -n "--------------------------------------------------------------------------------------------------------------------------------------------------"
-        echo "--------------------------------------------------------------------------------------------------------------------------"
+        echo "-------------------------------------------------------------------------------------------------------------------------------------"
 }
 
 # Function to print the header of the table
-print_header() {
+print_header_footer() {
     print_dash
-printf "%-6s | %-10s | %-100s | %-13s | %-20s | %-20s | %-8s | %-10s | %-8s\n" \
-       "Serial" "Key" "Summary" "Status" "Assignee" "Reporter" "Priority" "IssueType" "Labels"
+printf "%-6s | %-10s | %-100s | %-13s | %-20s | %-20s | %-8s | %-8s | %-10s | %-8s\n" \
+       "Serial" "Key" "Summary" "Status" "Assignee" "Reporter" "Priority" "Severity" "IssueType" "Labels"
     print_dash
 }
 
-# Function to print the footer of the table
-print_footer() {
-    print_dash
-printf "%-6s | %-10s | %-100s | %-13s | %-20s | %-20s | %-8s | %-10s | %-8s\n" \
-       "Serial" "Key" "Summary" "Status" "Assignee" "Reporter" "Priority" "IssueType" "Labels"
-    print_dash
-}
 
 # Function to get issue details from Jira
 get_issue_details() {
@@ -32,10 +25,10 @@ get_issue_details() {
             assignee: (.fields.assignee.displayName // "Unassigned"),
             reporter: .fields.reporter.displayName,
             priority: .fields.priority.name,
+            severity: (.fields.customfield_16006.value // "NA"),
             issuetype: .fields.issuetype.name,
             labels: (.fields.labels | join(", "))
-        }| [.key, (.summary | if length > 100 then .[0:97] + "..." else . end), .status, (.assignee | if length > 20 then .[0:20] else . end), (.reporter | if length > 20 then .[0:20] else . end), .priority, .issuetype, .labels] | @tsv'
-        # jq -jr '.key, .fields.summary, .fields.status.name, .fields.assignee.displayName, .fields.reporter.displayName, .fields.priority.name, .fields.issuetype.name, .fields.labels | join(", ") | @tsv'
+        }| [.key, (.summary | if length > 100 then .[0:97] + "..." else . end), .status, (.assignee | if length > 20 then .[0:20] else . end), (.reporter | if length > 20 then .[0:20] else . end), .priority, .severity, .issuetype, .labels] | @tsv'
     }
 
 # Check if at least one argument is provided
@@ -45,7 +38,7 @@ if [ "$#" -eq 0 ]; then
 fi
 
 # Print the header
-print_header
+print_header_footer
 
 # Initialize a counter for the serial number
 serial=1
@@ -57,9 +50,9 @@ for ticket_id in "$@"; do
 
     # Print the details in the desired format
     if [ -n "$details" ]; then
-        IFS=$'\t' read -r key summary status assignee reporter priority issuetype labels <<< "$details"
-        printf "%-6s | %-10s | %-100s | %-13s | %-20s | %-20s | %-8s | %-10s | %-8s\n" \
-            "$serial" "$key" "$summary" "$status" "$assignee" "$reporter" "$priority" "$issuetype" "$labels"
+        IFS=$'\t' read -r key summary status assignee reporter priority severity issuetype labels <<< "$details"
+        printf "%-6s | %-10s | %-100s | %-13s | %-20s | %-20s | %-8s | %-8s | %-10s | %-8s\n" \
+            "$serial" "$key" "$summary" "$status" "$assignee" "$reporter" "$priority" "$severity" "$issuetype" "$labels"
         serial=$((serial + 1))
    else
        echo "Issue $ticket_id not found."
@@ -67,5 +60,5 @@ for ticket_id in "$@"; do
 done
 
 # Print the footer
-print_footer
+print_header_footer
 
