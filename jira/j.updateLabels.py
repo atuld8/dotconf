@@ -54,7 +54,8 @@ def update_labels(ticket_id, new_labels):
     response = requests.put(url, headers=headers, data=payload, timeout=20)
 
     if response.status_code == 204:
-        print(f"Labels updated successfully for ticket {ticket_id}: {new_labels}")
+        print(f"Labels updated successfully for ticket {ticket_id}")
+        print(f"Updated labels in {ticket_id}: {new_labels}")
     else:
         print(f"Failed to update labels: {response.status_code} - {response.text}")
 

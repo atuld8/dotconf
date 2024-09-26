@@ -7,3 +7,4 @@ alias fmt.fold='fold -w $MAX_CHARS -s'
 alias fmt.unalias='sed -e'"'"'s/^\(alias\) \([a-zA-Z0-9\.\]*\)*\=.*/un\1 \2/g'"'"''
 alias fmt.clip='xclip -d $ENG_VM_NAME -selection clipboard'
 
+alias fmt.lc='awk '"'"'BEGIN{ignored_lines=0; header_found=0;} /--------------/ { ignored_lines++; print; header_found=1; next } {print} END {print "\n\nLine Count: " NR-ignored_lines-header_found}'"'"''

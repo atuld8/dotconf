@@ -87,13 +87,13 @@ def print_issues_in_table_format(issues):
         issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
         labels = ', '.join(issue['fields']['labels']) if issue['fields']['labels'] else '-'
         data.append({
-            'Serial': index,
+            'Sr.': index,
             'Key': key,
             'Summary': summary,
             'Status': status,
             'Assignee': assignee,
             'Reporter': reporter,
-            'Priority': priority,
+            'P#': priority,
             'Severity': severity,
             'IssueType': issuetype,
             'Labels': labels
@@ -110,10 +110,16 @@ def print_issues_in_table_format(issues):
 
     # Set column alignment to left
     for field in table.field_names:
-        table.align[field] = "l"  # Align to the left
+        if field == 'Sr.':
+            table.align[field] = "r"  # Align to the right
+        elif field == 'P#':
+            table.align[field] = "c"  # Align to the right
+        else:
+            table.align[field] = "l"  # Align to the left
     for _, row in df.iterrows():
         table.add_row(row.tolist())
     print(table)
+    # print(table.get_html_string())
 
 
 # Main function
