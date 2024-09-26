@@ -93,7 +93,7 @@ def print_issues_in_table_format(issues):
             'Status': status,
             'Assignee': assignee,
             'Reporter': reporter,
-            'P#': priority,
+            'Priority': priority,
             'Severity': severity,
             'IssueType': issuetype,
             'Labels': labels
@@ -112,7 +112,7 @@ def print_issues_in_table_format(issues):
     for field in table.field_names:
         if field == 'Sr.':
             table.align[field] = "r"  # Align to the right
-        elif field == 'P#':
+        elif field == 'Priority':
             table.align[field] = "c"  # Align to the right
         else:
             table.align[field] = "l"  # Align to the left

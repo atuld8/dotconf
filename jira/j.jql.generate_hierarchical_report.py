@@ -6,7 +6,8 @@ from tabulate import tabulate
 
 # Function to process input data into a dataframe
 def process_table(input_data):
-    headers = ["Serial", "Key", "Summary", "Status", "Assignee", "Reporter", "Priority", "IssueType", "Labels"]
+    headers = ["Sr.", "Key", "Summary", "Status", "Assignee", "Reporter",
+               "Priority", "Severity", "IssueType", "Labels"]
     data = [line.strip().strip('|').split('|') for line in input_data]
 
     df = pd.DataFrame(data, columns=headers)
@@ -15,7 +16,7 @@ def process_table(input_data):
     df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
 
     # Split the 'Labels' column by comma if there are multiple labels
-    df['Labels'] = df['Labels'].apply(lambda x: x.split(',') if x else [])
+    df['Labels'] = df['Labels'].apply(lambda x: [label.strip() for label in x.split(',')] if x else [])
     return df
 
 
@@ -72,7 +73,7 @@ def generate_vertical_report2(df, group_by_column):
         print("-" * 60)
         print(f"{'Status':<20} {'Priority':<15} {'IssueType':<15} {'Count':<5}")
         print("-" * 60)
-        total_count = 0 # Initialize total count
+        total_count = 0  # Initialize total count
         for _, row in data.iterrows():
             print(f"{row['Status']:<20} {row['Priority']:<15} {row['IssueType']:<15} {row['Count']:<5}")
             total_count += row['Count']
