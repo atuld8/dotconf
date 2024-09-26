@@ -27,7 +27,7 @@ def process_table(input_data):
 
 # Generate reports based on status
 def report_by_status(df):
-    status_report = df['Status'].value_counts()
+    status_report = df['Status'].value_counts().sort_index()
 
     # Convert the value counts into a list of tuples
     report_items = status_report.items()
@@ -47,7 +47,7 @@ def report_by_status(df):
 # Generate reports for defects by status
 def report_defects_by_status(df):
     defects_df = df[df['IssueType'] == 'Defect']
-    status_report = defects_df['Status'].value_counts()
+    status_report = defects_df['Status'].value_counts().sort_index()
 
     # Convert the value counts into a list of tuples
     report_items = status_report.items()
@@ -67,7 +67,7 @@ def report_defects_by_status(df):
 # Generate reports for defects by status
 def report_Story_by_status(df):
     defects_df = df[df['IssueType'] == 'Story']
-    status_report = defects_df['Status'].value_counts()
+    status_report = defects_df['Status'].value_counts().sort_index()
 
     # Convert the value counts into a list of tuples
     report_items = status_report.items()
@@ -85,7 +85,7 @@ def report_Story_by_status(df):
 
 # Generate reports based on priority
 def report_by_priority(df):
-    priority_report = df['Priority'].value_counts()
+    priority_report = df['Priority'].value_counts().sort_index()
 
     # Convert the value counts into a list of tuples
     report_items = priority_report.items()
@@ -104,7 +104,7 @@ def report_by_priority(df):
 
 # Generate reports based on severity
 def report_by_severiry(df):
-    severity_report = df['Severity'].value_counts()
+    severity_report = df['Severity'].value_counts().sort_index()
 
     # Convert the value counts into a list of tuples
     report_items = severity_report.items()
@@ -123,7 +123,7 @@ def report_by_severiry(df):
 
 # Generate reports based on issue type
 def report_by_issue_type(df):
-    issue_type_report = df['IssueType'].value_counts()
+    issue_type_report = df['IssueType'].value_counts().sort_index()
 
     # Convert the value counts into a list of tuples
     report_items = issue_type_report.items()
