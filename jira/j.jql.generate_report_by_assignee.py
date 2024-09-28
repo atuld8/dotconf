@@ -65,8 +65,10 @@ def print_jira_report(file):
         assignee_issue_count += 1
         total_issues += 1
 
+    if last_assignee is not None:
+        print(f"\n\tNumber of issues for {last_assignee}: {assignee_issue_count}\n")
     # Print the total number of issues
-    print(f"Total number of issues: {total_issues}")
+    print(f"\n\nTotal number of issues: {total_issues}")
 
 
 if __name__ == "__main__":
