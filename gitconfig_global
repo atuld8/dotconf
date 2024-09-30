@@ -235,6 +235,7 @@
     ; List of files commited in commitid
     shflist = show --name-only --pretty=""
     shflistCwd = show --name-only --pretty="" --relative
+    shcmtmsg = show --no-patch --pretty=format:"%H%n%B%n----------------------------------------"
     shFlist4Cmtid ="!f() { git diff-tree --no-commit-id --name-only -r ${1-HEAD}; }; f"
     shcmtmsg = log --format=%B -n 1
     shcmtidmsg ="!f() { git rev-list --format=%B --max-count=1 ${1-HEAD}; }; f"
