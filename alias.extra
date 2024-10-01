@@ -12,3 +12,7 @@ alias fmt.nr='awk '"'"'BEGIN{ignored_lines=0; header_found=0;} /--------------/ 
 function fmt.jql() {
         grep --color=never -E "^(\+|.*Sr\..*|.*$1.*)"
 }
+
+function fmt.et() {
+    grep --color=never -E "^(\+|.* Incident .*|.*$1.*)"
+}
