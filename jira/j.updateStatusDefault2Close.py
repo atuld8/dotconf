@@ -24,7 +24,28 @@ headers = {
 }
 
 
-# Function to get the status id allowed for the the Jira issue
+# Function to get the current status of the Jira issue
+def get_current_status(ticket_id):
+    """
+    Get the status of the Jira ticket
+    """
+    url = f"{issue_url}/{ticket_id}"
+    response = requests.get(url, headers=headers, timeout=20)
+
+    if response.status_code == 200:
+        try:
+            issue_data = response.json()
+            status = issue_data['fields']['status']['name']
+            return status
+        except requests.exceptions.JSONDecodeError as e:
+            print(f'Error decoding JSON: {e}')
+    else:
+        print(f"Failed to fetch issue details: {response.status_code} - {response.text}")
+
+    return None
+
+
+# Function to get the status id allowed for the Jira issue
 def get_status_id(ticket_id, status):
     """
     Get the transition id if the status and allowed transition matches
@@ -77,13 +98,26 @@ def main(ticket_id, status):
     Update the status of jira ticket id to status
     """
 
+    current_status = get_current_status(ticket_id)
+
+    if current_status == "Open" and status == "Done":
+        print(r"Requested change is Done.Hence, changing the state from Open to open to \"Start Progress\"")
+        status_id = get_status_id(ticket_id, "Start Progress")
+        if status_id is None:
+            print(f"Status id in none. Transition is not allowed to {status}")
+            return
+
+        # Update Jira ticket with new status
+        print(f"Setting the status id to {status_id}")
+        update_status(ticket_id, status_id)
+
     status_id = get_status_id(ticket_id, status)
     if status_id is None:
         print(f"Status id in none. Transition is not allowed to {status}")
         return
 
     # Update Jira ticket with new status
-    print(f"Setting the status id to {status_id}") 
+    print(f"Setting the status id to {status_id}")
     update_status(ticket_id, status_id)
 
 
