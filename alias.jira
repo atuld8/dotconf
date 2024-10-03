@@ -44,7 +44,7 @@ alias j.getCommentsRev='function af.jira_get_comments() { j.2.get issue/$1/comme
 alias j.tknvrfy='curl $JIRA_ALIAS_EXTRA_OPT -H "Authorization: Bearer ${JIRA_ACC_TOKEN:-NULL}" -X GET https://$JIRA_SERVER_NAME/rest/api/2/myself | { output=`cat -`; if egrep -q "xml version|doctype html" <<<"$output"; then if egrep -q "doctype html" <<<"$output"; then XMLLINT_ARG="--html"; fi; echo "$output" | xmllint $XMLLINT_ARG --format -; else echo "$output" | jq .; fi; }'
 alias j.tknupt='read -sp "Enter Jira Access Token (Hidden): " JIRA_ACC_TOKEN; export JIRA_ACC_TOKEN'
 
-alias j.usrInEpic='echo -e "Users: $JIRA_EPIC_USERS_LIST\n\n"; IFS="," read -r -a users <<< "$JIRA_EPIC_USERS_LIST"; for user in "${users[@]}"; do $MVP/jira/j.getUserId.py "$user"; done | awk '"'"'BEGIN {print "Key               Name              Email-Address";print "----------------  ----------------  ----------------------------";} /@/ {printf "%-18s%-18s%-30s\n", $1, $2, $3}'"'"''
+alias j.userInEpic='echo -e "Users: $JIRA_EPIC_USERS_LIST\n\n"; IFS="," read -r -a users <<< "$JIRA_EPIC_USERS_LIST"; for user in "${users[@]}"; do $MVP/jira/j.getUserId.py "$user"; done | awk '"'"'BEGIN {print "Key               Name              Email-Address";print "----------------  ----------------  ----------------------------";} /@/ {printf "%-18s%-18s%-30s\n", $1, $2, $3}'"'"''
 
 #export JIRA_ACC_TOKEN='Jtkn'
 #export JIRA_WATCHERS_LIST="u1 u2"
