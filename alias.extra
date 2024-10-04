@@ -9,10 +9,6 @@ alias fmt.clip='xclip -d $ENG_VM_NAME -selection clipboard'
 
 alias fmt.nr='awk '"'"'BEGIN{ignored_lines=0; header_found=0;} /--------------/ { ignored_lines++; print; header_found=1; next } {print} END {print "\n\nNumber of Records: " NR-ignored_lines-header_found}'"'"''
 
-function fmt.jql() {
-        grep --color=never -E "^(\+|.*Sr\..*|.*$1.*)"
-}
+function fmt.jql() { grep --color=never -E "^(\+|.*Sr\..*|.*$1.*)"; }
+function fmt.et()  { grep --color=never -i -E "^(\+|\------|.*Incident.*|.*$1.*)"; }
 
-function fmt.et() {
-    grep --color=never -E "^(\+|.* Incident .*|.*$1.*)"
-}
