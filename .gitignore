@@ -19,8 +19,7 @@ doc/toolboxmake.txt
 **/cscope.files
 jira/j.createSingleJiraForEpicNB*
 jira/j.createTrackingJiraForEpicNB*
-jira/nbsm_10401.sh
-jira/renamestory.sh
-story_file
-rename_story_file
-nbsm_story_file
+jira/j.createRenameStoryFromRenameStoryFile.sh
+jira/j.createMigratorStoryFromNBSMStoryFile.sh
+jira/NBSMStoryFile
+jira/NBSVRUPStoryFile
