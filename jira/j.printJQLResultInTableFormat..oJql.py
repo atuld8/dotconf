@@ -37,6 +37,15 @@ parser.add_argument(
     nargs='?',
     default=JQL_QUERY,
     help='The JQL query to execute.')
+
+# Add optional argument to accept a comma-separated list
+parser.add_argument(
+    "--excludeCols",
+    type=lambda s: s.split(','),
+    help="Comma-separated list of Headers",
+    default=[]
+)
+
 args = parser.parse_args()
 
 
@@ -71,7 +80,7 @@ def get_issues_by_jql(jql):
 
 
 # Function to get issues by JQL
-def print_issues_in_table_format(issues):
+def print_issues_in_table_format(issues, excludeCols):
 
     # Extract the relevant data into a list of dictionaries
     data = []
@@ -86,7 +95,8 @@ def print_issues_in_table_format(issues):
         severity = issue['fields']['customfield_16006']['value'] if issue['fields']['customfield_16006']['value'] else 'NA'
         issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
         labels = ', '.join(issue['fields']['labels']) if issue['fields']['labels'] else '-'
-        data.append({
+
+        unfiltered_entry = {
             'Sr.': index,
             'Key': key,
             'Summary': summary,
@@ -97,7 +107,13 @@ def print_issues_in_table_format(issues):
             'Severity': severity,
             'IssueType': issuetype,
             'Labels': labels
-        })
+        }
+
+        # Filter the entry to exclude any key that is in the exclude_keys list
+        filtered_entry = {k: v for k, v in unfiltered_entry.items() if k not in excludeCols}
+
+        # Append the filtered dictionary to the data list
+        data.append(filtered_entry)
 
     # Convert the data to a pandas DataFrame and display it as a table
     df = pd.DataFrame(data)
@@ -131,7 +147,7 @@ def main():
         print("No issues found.")
         return
 
-    print_issues_in_table_format(issues)
+    print_issues_in_table_format(issues, args.excludeCols)
 
 
 if __name__ == '__main__':
