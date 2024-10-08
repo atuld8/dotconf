@@ -124,7 +124,7 @@ GetNBUData ()
         NBU_MASTER=`head -1 /usr/openv/netbackup/bp.conf | awk -F'=' '{ print $2; }'| sed -e's/^\s*//g' | sed -e's/\s*$//g'`;
         NBU_CLIENT_NAME=`grep CLIENT_NAME /usr/openv/netbackup/bp.conf | awk -F'=' '{ print $2; }'| sed -e's/^\s*//g' | sed -e's/\s*$//g'`;
         head -1 /usr/openv/netbackup/bp.conf | grep "$HOSTNAME" > /dev/null;
-        if [ $? -eq 0 ]; then NBU_TYPE="Master";
+        if [ $? -eq 0 ]; then NBU_TYPE="Primary";
         else
             grep "^SERVER =" /usr/openv/netbackup/bp.conf | grep "$HOSTNAME" > /dev/null;
             if [ $? -eq 0 ]; then NBU_TYPE="Media"; fi;
@@ -137,8 +137,8 @@ GetNBUData ()
         else
             if [ -f /usr/openv/netbackup/bin/version ]; then NBU_VER=`awk '{ print $2 }' /usr/openv/netbackup/bin/version`; fi
         fi
-        export NBU_DATA="${BROWN}${BG}[NBU Type:${blue}${BG}${NBU_TYPE} ${BROWN}${BG}Ver:${blue}${BG}${NBU_VER}${BROWN}${BG} ${NBU_BUILDNUMBER}${BROWN}${BG}Master:${blue}${BG}${NBU_MASTER}${BROWN}${BG}]"
-        export NBU_DATA_TERMINAL="NBU Type: ${NBU_TYPE} \nVer: ${NBU_VER} \n${NBU_BUILDNUMBER_TERMINAL} \nMaster: ${NBU_MASTER} \nClient: ${NBU_CLIENT_NAME} \n${NBU_RELEASEDATE}"
+        export NBU_DATA="${BROWN}${BG}[NBU Type:${blue}${BG}${NBU_TYPE} ${BROWN}${BG}Ver:${blue}${BG}${NBU_VER}${BROWN}${BG} ${NBU_BUILDNUMBER}${BROWN}${BG}Primary:${blue}${BG}${NBU_MASTER}${BROWN}${BG}]"
+        export NBU_DATA_TERMINAL="NBU Type: ${NBU_TYPE} \nVer: ${NBU_VER} \n${NBU_BUILDNUMBER_TERMINAL} \nPrimary: ${NBU_MASTER} \nClient: ${NBU_CLIENT_NAME} \n${NBU_RELEASEDATE}"
     fi
 }
 
