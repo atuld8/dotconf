@@ -15,4 +15,4 @@ export MAC_DEF_BROWSER='Safari'
 alias mc.setBrow=' function f() { if [ "$1" == "c" ]; then MAC_DEF_BROWSER="Google Chrome"; else MAC_DEF_BROWSER="Safari"; fi; }; f'
 alias mc.jr='function f() { open -a "$MAC_DEF_BROWSER" https://$JIRA_SERVER_NAME/browse/$1; }; f'
 alias mc.et='function f() { open -a "$MAC_DEF_BROWSER" https://$ETRACK_SERVER_NAME/Etrack/readonly_inc.php?incident=$1; }; f'
-
+alias mc.web='function f() { open -a "$MAC_DEF_BROWSER" $1; }; f'
