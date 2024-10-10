@@ -586,6 +586,11 @@ Plugin 'adelarsq/vim-matchit'
 Plugin 'jelera/vim-javascript-syntax'
 Plugin 'pangloss/vim-javascript'
 
+" This is added for the html formatter
+Plugin 'vim-pandoc/vim-pandoc'
+Plugin 'thinca/vim-prettyprint'
+Plugin 'maksimr/vim-jsbeautify'
+
 "On Windows Cygwin platform use below command to install all plugins under
 "~/.vim/bundle folder
 "for p in `egrep "^Plugin" ~/.vim/vundle.vimrc  | sed -e"s/Plugin //" | awk
