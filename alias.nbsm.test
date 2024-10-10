@@ -18,7 +18,7 @@ alias t.nbsup.elogall='e /usr/openv/nbsm/nbserverupdate/logs/nbserver_update_*.l
 
 alias t.nbsup.mc='rm -fr /usr/openv/nbsm/nbserverupdate/nbserverstaging'
 alias t.nbsup.mcall='rm -fr /usr/openv/nbsm/nbserverupdate/{nbserverstaging,logs,report}'
-alias t.nbsup.bkp='cp -r /usr/openv/nbsm/nbserverupdate/{nbserverstaging,logs,report} .'
+alias t.nbsup.bkp='function af.cp() { cp -r /usr/openv/nbsm/nbserverupdate/{nbserverstaging,logs,report} ${1:-.}; af.cp'
 
 alias t.nbsup.scpprr='echo scp $USER@$HOSTNAME:$nbsup/report/pre_rename_report.html \~/nbdata/'
 alias t.nbsup.scppor='echo scp $USER@$HOSTNAME:$nbsup/report/post_rename_report.html \~/nbdata/'

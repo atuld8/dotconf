@@ -104,8 +104,9 @@ alias cat.iprc='cat ~/.vim/inputrc'
 function af.cd() { cd $1/$2; }
 function af.pushd() { pushd $1/$2; }
 function af.mcd() { cd $1/$2 2>/dev/null || mkdir -p $1/$2 && cd $1/$2; }
-function af.mvToOrg() { mv $1 $1.org; }
-function af.mvFromOrg() { mv $1.org $1; }
+function af.mvToOrg() { if [[ ! -e "$1" ]]; then echo "$1 not exists"; else [ "${1##*.}" != "org" ] && mv "$1" "${1}.org" || echo "$1 already has .org ext"; fi; }
+function af.mvFromOrg() { if [[ ! -e "$1" ]]; then echo "$1 not exists"; else [ "${1##*.}" == "org" ] && mv "$1" "${1%.org}" || echo "$1 already has not org ext"; fi; }
+function af.mv24bkp() { DF=$1; if [[ ! -e "$DF" && ! -e "$DF.bkp" ]]; then echo "$1 not exists"; else [ ! -e "$DF" ] && DF="${1}.bkp" && echo "Moving file from $DF"; [ "${DF##*.}" != "bkp" ] && mv "$DF" "${DF}.bkp" || mv "$DF" "${DF%.bkp}"; fi; }
 alias cd.data='af.mcd ~/data'
 alias cd.sb.stage='af.cd ~/stage || ( mkdir ~/stage && cd ~/stage )'
 alias cd.vim='af.cd ~/.vim'
@@ -119,6 +120,7 @@ alias .cdls='function af.cdls() { cd $1/$2 && echo -e "current dir: $PWD\n\n" &&
 alias .mcd='af.mcd'
 alias .mv2org='af.mvToOrg'
 alias .mv4org='af.mvFromOrg'
+alias .mv24bkp='af.mv24bkp'
 alias .mvlnas..s.d='function af.cmd_mv_ln () { if [ ! -e $2 ]; then if [ -e $1 ]; then mv -- "$1" "$2"; ln -s -- $2 $1; else print "$1 not exists"; fi; else echo "$2 already exists"; fi; }; af.cmd_mv_ln'
 alias .mvlnunder..s.d='function af.cmd_mv_ln () { if [ -e $2 ]; then if [ -e $1 ]; then SRC=${1%/}; DEST=${2%/}; mv -- "$SRC" "$DEST"; ln -s -- $DEST/`basename $SRC` $SRC; else print "$1 not exists"; fi; else echo "$2 is not exists"; fi; }; af.cmd_mv_ln'
 alias cd..1='af.cd ..'
