@@ -14,6 +14,7 @@ fi
 source ~/.vim/alias.global
 #source ~/.vim/alias.nbu
 #source ~/.vim/alias.nbsd.test
+#source ~/.vim/alias.nbsm.test
 #source ~/.vim/alias.bldbx
 #source ~/.vim/alias.extra
 #source ~/.vim/alias.dotconf
