@@ -88,7 +88,8 @@ def manage_labels(ticket_id, add_labels, remove_labels):
 
 # Command-line argument parser
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Update labels for a Jira ticket")
+    parser = argparse.ArgumentParser(description="Update labels for a Jira ticket",
+                                     usage="%(prog)s [-h] <ticket_id> --add List --remove List")
     parser.add_argument("ticket_id", help="Jira ticket ID (e.g., JIR-123)")
     parser.add_argument("--add", nargs="*", default=[], help="List of labels to add")
     parser.add_argument("--remove", nargs="*", default=[], help="List of labels to remove")
