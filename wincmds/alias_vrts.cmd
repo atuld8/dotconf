@@ -16,5 +16,7 @@
 @DOSKEY cd.qTE=%~dp0cd.cmd %systemDrive%\nbdata\quickTestEnv\$* 2^> NUL
 @DOSKEY cd.cstdt=IF EXIST "%systemDrive%\custdata\$*" ( %~dp0cd.cmd %systemDrive%\custdata\$* ) ELSE ( mkdir "%systemDrive%\custdata\$*" ^& %~dp0cd.cmd %systemDrive%\custdata\$* 2^> NUL )
 
+@DOSKEY x.mnt.Veritas=net use * "\\$*\C$\Program Files\Veritas" /user:$*\Administrator
+
 :QA_ALIAS_VRTS
 
