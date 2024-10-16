@@ -46,6 +46,10 @@ alias j.tknupt='read -sp "Enter Jira Access Token (Hidden): " JIRA_ACC_TOKEN; ex
 
 alias j.userInEpic='echo -e "Users: $JIRA_EPIC_USERS_LIST\n\n"; IFS="," read -r -a users <<< "$JIRA_EPIC_USERS_LIST"; for user in "${users[@]}"; do $MVP/jira/j.getUserId.py "$user"; done | awk '"'"'BEGIN {print "Key               Name              Email-Address";print "----------------  ----------------  ----------------------------";} /@/ {printf "%-18s%-18s%-30s\n", $1, $2, $3}'"'"''
 
+alias j.fmt.P='awk '"'"' /P1/ { p1_count++ } /P2/ { p2_count++ } /P3/ { p3_count++ } /P4/ { p4_count++ } END {print "P1 count:", p1_count ? p1_count : 0; print "P2 count:", p2_count ? p2_count : 0; print "P3 count:", p3_count ? p3_count : 0; print "P4 count:", p4_count ? p4_count : 0 }'"'"''
+alias j.fmt.TS='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ || $10 ~ /Story/ { print ; }'"'"''
+alias j.fmt.TD='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ || $10 ~ /Defect/ { print ; }'"'"''
+
 #export JIRA_ACC_TOKEN='Jtkn'
 #export JIRA_WATCHERS_LIST="u1 u2"
 #export JIRA_SERVER_NAME=".com"

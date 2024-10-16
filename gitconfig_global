@@ -99,7 +99,8 @@
     confLoc = config --list --show-origin
 
     dg = difftool --gui --no-prompt
-    df = diff --no-ext-diff
+    df = -c diff.wsErrorHighlight=all diff --no-ext-diff
+    dfnw = diff --no-ext-diff
     dfl = diff --no-ext-diff .
     ; this will check for error like trailing spaces and report
     dfChk = diff --no-ext-diff --check
