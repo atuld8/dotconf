@@ -50,7 +50,7 @@ alias j.userInEpic='echo -e "Users: $JIRA_EPIC_USERS_LIST\n\n"; IFS="," read -r 
 alias j.fmt.P='awk '"'"' /P1/ { p1_count++ } /P2/ { p2_count++ } /P3/ { p3_count++ } /P4/ { p4_count++ } END {print "P1 count:", p1_count ? p1_count : 0; print "P2 count:", p2_count ? p2_count : 0; print "P3 count:", p3_count ? p3_count : 0; print "P4 count:", p4_count ? p4_count : 0 }'"'"''
 alias j.fmt.TS='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ || $10 ~ /Story/ { print ; }'"'"''
 alias j.fmt.TD='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ || $10 ~ /Defect/ { print ; }'"'"''
-alias j.fmt.ltdCols='awk -F '"'"'[+|]'"'"' '"'"'  { DELIM = "|" } $3 ~ /-------/ { DELIM = "+" } { print DELIM $3 DELIM $4 DELIM $5 DELIM $6 DELIM; }'"'"''
+alias j.fmt.ltdCols='awk -F '"'"'[+|]'"'"' '"'"'  { DELIM = "|" } $3 ~ /-------/ { DELIM = "+" } { print DELIM $3 DELIM $4 DELIM $5 DELIM $6 DELIM $8 DELIM; }'"'"''
 
 function j.fmt.A_() { assignee=$1 && awk -F '[+|]' '$6 ~ /------/ || $6 ~ /Assignee/ || $6 ~ /'"${ass}"'/ { print ; }'; }
 function j.fmt.R_() { reporter=$1 && awk -F '[+|]' '$7 ~ /------/ || $7 ~ /Reporter/ || $7 ~ /'"${reporter}"'/ { print ; }'; }
