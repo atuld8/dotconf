@@ -188,6 +188,7 @@ alias .hlp='function af.help() { $@ 2>&1 | less -I -g -J -N -X -F;}; af.help '
 alias .dushlog='function af.dushlog() { date +"%Y.%m.%d %H.%M.%S" | tee du.sh.log; echo | tee -a du.sh.log;  du -sh ${1:-*} ${@:2} | tee -a du.sh.log;}; af.dushlog'
 alias .json='python -mjson.tool'
 alias .json.paths='jq -r '"'"' paths(scalars) as $p | [ ( [ $p[] | tostring ] | join(".") ) , ( getpath($p) | tojson ) ] | join(": ")'"'"''
+alias .jq.keys='jq '"'"'path(..) | map(tostring) | join(".")'"'"''
 
 # frequeently used alias, hence quick access
 # alias q.=''
