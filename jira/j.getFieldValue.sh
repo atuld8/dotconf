@@ -132,8 +132,9 @@ get_field_id
 if [[ ! -z $JIRA_FIELD_ID ]]; then
 # Set the compoent id
     get_field_value_using_field_id
-    echo -e "\n\n$JIRA_FIELD_NAME ==> $JIRA_FIELD_VALUE"
+    echo -e "Jira ID ==> $JIRA_ID"
+    echo -e "$JIRA_FIELD_NAME ==> $JIRA_FIELD_VALUE\n"
 else
-    echo -e "\n\nError: Jira field id is null for field name '$JIRA_FIELD_NAME'"
+    echo -e "Error: Jira field id is null for field name '$JIRA_FIELD_NAME'\n"
 fi
 
