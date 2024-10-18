@@ -50,6 +50,11 @@ alias j.fmt.P='awk '"'"' /P1/ { p1_count++ } /P2/ { p2_count++ } /P3/ { p3_count
 alias j.fmt.TS='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ || $10 ~ /Story/ { print ; }'"'"''
 alias j.fmt.TD='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ || $10 ~ /Defect/ { print ; }'"'"''
 
+function j.fmt.A_() { assignee=$1 && awk -F '[+|]' '$6 ~ /------/ || $6 ~ /Assignee/ || $6 ~ /'"${ass}"'/ { print ; }'; }
+function j.fmt.R_() { reporter=$1 && awk -F '[+|]' '$7 ~ /------/ || $7 ~ /Reporter/ || $7 ~ /'"${reporter}"'/ { print ; }'; }
+function j.fmt.ST_() { status=$1 && awk -F '[+|]' '$5 ~ /------/ || $5 ~ /Status/ || $5 ~ /'"${status}"'/ { print ; }'; }
+function j.fmt.SE_() { severity=$1 && awk -F '[+|]' '$9 ~ /------/ || $9 ~ /Serverity/ || $9 ~ /'"${severity}"'/ { print ; }'; }
+
 #export JIRA_ACC_TOKEN='Jtkn'
 #export JIRA_WATCHERS_LIST="u1 u2"
 #export JIRA_SERVER_NAME=".com"
