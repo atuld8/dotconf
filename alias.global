@@ -75,8 +75,10 @@ alias x.tmp2c='function tmxc() { tmux send-key -t :.2 "clear" C-m; }; tmxc'
 
 # modify configs quickly
 alias e='$CFG_EDITOR'
+alias el='vim +":call OpenLastFile() | normal \`.w"'
 alias ew='af.ew() { which $1 && $CFG_EDITOR $(which $1) || echo "$1 is not a file"; }; af.ew'
 alias ewa='af.ewa() { if [[ "$CFG_EDITOR" == "vim" ]]; then extra_para="+/$1"; fi; $CFG_EDITOR $(grep -lw "$1" ~/.alias* ~/.vim/alias*) $extra_para;}; af.ewa'
+alias ewa1='af.ewa() { if [[ "$CFG_EDITOR" == "vim" ]]; then extra_para="+/\s$1="; fi; $CFG_EDITOR $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*) $extra_para;}; af.ewa'
 alias e.l.a='$CFG_EDITOR ~/.alias'
 alias e.l.al='$CFG_EDITOR ~/.alias.loc'
 alias e.l.at='$CFG_EDITOR ~/.alias.tmp'

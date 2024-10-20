@@ -70,6 +70,17 @@ else
    call CursorLineL()
 endif
 
+" open last session file
+function OpenLastFile()
+    if argc() != 0
+        return
+    endif
+
+    if exists("v:oldfiles[0]") && filereadable(expand(v:oldfiles[0]))
+        execute "e " . v:oldfiles[0]
+    endif
+endfunction
+
 function! OverLen()
     if &background == "dark"
         "if dark color background
