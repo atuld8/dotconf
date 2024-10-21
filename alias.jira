@@ -52,7 +52,7 @@ alias j.fmt.TS='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ |
 alias j.fmt.TD='awk -F '"'"'[+|]'"'"' '"'"'$10 ~ /------/ || $10 ~ /IssueType/ || $10 ~ /Defect/ { print ; }'"'"''
 alias j.fmt.KSumSTAP='awk -F '"'"'[+|]'"'"' '"'"'  { DELIM = "|" } $3 ~ /-------/ { DELIM = "+" } { print DELIM $3 DELIM $4 DELIM $5 DELIM $6 DELIM $8 DELIM; }'"'"''
 
-function j.fmt.A_() { assignee=$1 && awk -F '[+|]' '$6 ~ /------/ || $6 ~ /Assignee/ || $6 ~ /'"${ass}"'/ { print ; }'; }
+function j.fmt.A_() { assignee=$1 && awk -F '[+|]' '$6 ~ /------/ || $6 ~ /Assignee/ || $6 ~ /'"${assignee}"'/ { print ; }'; }
 function j.fmt.R_() { reporter=$1 && awk -F '[+|]' '$7 ~ /------/ || $7 ~ /Reporter/ || $7 ~ /'"${reporter}"'/ { print ; }'; }
 function j.fmt.ST_() { status=$1 && awk -F '[+|]' '$5 ~ /------/ || $5 ~ /Status/ || $5 ~ /'"${status}"'/ { print ; }'; }
 function j.fmt.SE_() { severity=$1 && awk -F '[+|]' '$9 ~ /------/ || $9 ~ /Serverity/ || $9 ~ /'"${severity}"'/ { print ; }'; }
