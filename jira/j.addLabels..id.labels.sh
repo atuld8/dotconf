@@ -97,7 +97,7 @@ set_labels_id_to_jira_ticket() {
 
     if [[ ! -z $JIRA_LABELS ]]; then
         for label in $JIRA_LABELS; do
-            echo "Setting label: $label"
+            echo "Setting label             : $label"
             jira_put_call $REST_API_PATH generatePostDataToUpdateLabels $label
         done
     fi
@@ -125,11 +125,10 @@ fi
 
 if [[ ! -z $JIRA_LABELS ]]; then
     echo -e "\n"
-    echo -n "Labels before updating it: " & get_issue_labels_details
+    echo -n "Labels before updating it : " & get_issue_labels_details
     echo -e "\n"
     set_labels_id_to_jira_ticket
-    echo -e "\n"
-    echo -n "Labels after updating it: "
+    echo -n "Labels after updating it  : "
     get_issue_labels_details
     echo -e "\n"
 else
