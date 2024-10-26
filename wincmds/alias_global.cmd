@@ -13,12 +13,12 @@
 @DOSKEY alias=%DOSKEY_ALL_MACROS% $*
 @DOSKEY a.list.col=(@FOR /F "tokens=1,* delims==" %%a in ('@DOSKEY /MACROS') DO @ECHO^|@SET /P="%%a      " )
 @DOSKEY a.list=(@FOR /F "tokens=1,* delims==" %%a in ('@DOSKEY /MACROS') DO @ECHO %%a )
-@DOSKEY find.a=%DOSKEY_ALL_MACROS% ^| findstr /I $*
-@DOSKEY find.a1=%DOSKEY_ALL_MACROS% ^| findstr /I $1
-@DOSKEY find.afile=findstr /I $* "%userprofile%"\.vim\wincmds\alias* "%userprofile%"\alias.cmd
-@DOSKEY find.afileall=findstr /I $* "%userprofile%"\.vim\wincmds\alias* "%userprofile%"\alias* "%userprofile%"\.vim\alias*
+@DOSKEY f.a=%DOSKEY_ALL_MACROS% ^| findstr /I $*
+@DOSKEY f.a1=%DOSKEY_ALL_MACROS% ^| findstr /I $1
+@DOSKEY f.afile=findstr /I $* "%userprofile%"\.vim\wincmds\alias* "%userprofile%"\alias.cmd
+@DOSKEY f.afileall=findstr /I $* "%userprofile%"\.vim\wincmds\alias* "%userprofile%"\alias* "%userprofile%"\.vim\alias*
 @DOSKEY a.print=@FOR /F "tokens=1,* delims==" %%a in ('DOSKEY /MACROS ^^^| findstr /I $1') do @FOR /F "tokens=1,*" %%x in ("$*") do @ECHO cmd:%%b args:%%y
-@DOSKEY find.g=git alias ^| findstr /I $*
+@DOSKEY f.g=git alias ^| findstr /I $*
 @DOSKEY history.find=Doskey /history ^| findstr /I $*
 @DOSKEY history=Doskey /history $*
 @DOSKEY pushd=%~dp0pushd.cmd $*

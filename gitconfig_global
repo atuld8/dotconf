@@ -136,7 +136,7 @@
 
 
     ; find alias of git
-    finda = "!fa() { git alias | grep $@; }; fa"
+    fda = "!fda() { git alias | grep $@; }; fda"
     forg = "!git fetch origin -p"
     forgcb = "!git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\""
     fus = fetch --unshallow
