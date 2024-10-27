@@ -35,7 +35,7 @@
     apChk = apply --check --stat
 
     ; delete local branches which are merged into Master; The default value setting works with ${1:-master} and ${1-master}
-    bClean = "!f() { git branch --merged ${1-master} | grep -v \" ${1-master}$\" | xargs -r  git branch -d; }; f"
+    bClean = "!f() { git branch --merged ${1:-master} | grep -v \" ${1:-master}$\" | xargs -r  git branch -d; }; f"
     ; list branches from local repo
     br = branch
     ; list branches from local with summary like sh, rmt br, cmtmsg of top
@@ -126,7 +126,7 @@
     dt = difftool
     ; git diff in patch format. Expects cmtid
     dfPatch = diff-tree -p
-    dfPatch1= "!f() { git diff ${1-HEAD}^!; }; f"
+    dfPatch1= "!f() { git diff ${1:-HEAD}^!; }; f"
     dfnmoabs= "!f() { git diff --name-only $@| xargs -I '{}' echo $(git rev-parse --show-toplevel)/'{}'; }; f"
     ; git diff with vim tool
     dtg = difftool --extcmd=\"gvim -d -f\"
@@ -237,9 +237,9 @@
     shflist = show --name-only --pretty=""
     shflistCwd = show --name-only --pretty="" --relative
     shcmtmsg = show --no-patch --pretty=format:"%H%n%B%n----------------------------------------"
-    shFlist4Cmtid ="!f() { git diff-tree --no-commit-id --name-only -r ${1-HEAD}; }; f"
+    shFlist4Cmtid ="!f() { git diff-tree --no-commit-id --name-only -r ${1:-HEAD}; }; f"
     shcmtmsg = log --format=%B -n 1
-    shcmtidmsg ="!f() { git rev-list --format=%B --max-count=1 ${1-HEAD}; }; f"
+    shcmtidmsg ="!f() { git rev-list --format=%B --max-count=1 ${1:-HEAD}; }; f"
     serve = daemon --reuseaddr --base-path=. --export-all --verbose
 
     ; list tag name in which this cmtid present
