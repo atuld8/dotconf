@@ -192,6 +192,9 @@ alias .json='python -mjson.tool'
 alias .json.paths='jq -r '"'"' paths(scalars) as $p | [ ( [ $p[] | tostring ] | join(".") ) , ( getpath($p) | tojson ) ] | join(": ")'"'"''
 alias .jq.keys='jq '"'"'path(..) | map(tostring) | join(".")'"'"''
 
+.jq.keysHasSubValue() { jq -r --arg search "$1" 'paths(scalars) as $p | select(getpath($p) | tostring | contains($search)) | $p | join(".")'; }
+
+
 # frequeently used alias, hence quick access
 # alias q.=''
 
