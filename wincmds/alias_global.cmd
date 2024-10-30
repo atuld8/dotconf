@@ -14,7 +14,7 @@
 @DOSKEY a=%DOSKEY_ALL_MACROS% $*
 @DOSKEY a.list.col=(@FOR /F "tokens=1,* delims==" %%a in ('@DOSKEY /MACROS') DO @ECHO^|@SET /P="%%a      " )
 @DOSKEY a.list=(@FOR /F "tokens=1,* delims==" %%a in ('@DOSKEY /MACROS') DO @ECHO %%a )
-@DOSKEY f.as=%DOSKEY_ALL_MACROS% ^| findstr /I $*
+@DOSKEY f.a=%DOSKEY_ALL_MACROS% ^| findstr /I $*
 @DOSKEY f.a1=%DOSKEY_ALL_MACROS% ^| findstr /I $1
 @DOSKEY f.ao=%DOSKEY_ALL_MACROS% ^| findstr /I /B $1=
 @DOSKEY f.af=findstr /I $* "%userprofile%"\.vim\wincmds\alias* "%userprofile%"\alias.cmd
