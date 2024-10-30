@@ -11,6 +11,7 @@
 @IF "%1" == "QUICK_ACCESS" GOTO QA_ALIAS_GLOBAL
 
 @DOSKEY alias=%DOSKEY_ALL_MACROS% $*
+@DOSKEY a=%DOSKEY_ALL_MACROS% $*
 @DOSKEY a.list.col=(@FOR /F "tokens=1,* delims==" %%a in ('@DOSKEY /MACROS') DO @ECHO^|@SET /P="%%a      " )
 @DOSKEY a.list=(@FOR /F "tokens=1,* delims==" %%a in ('@DOSKEY /MACROS') DO @ECHO %%a )
 @DOSKEY f.as=%DOSKEY_ALL_MACROS% ^| findstr /I $*

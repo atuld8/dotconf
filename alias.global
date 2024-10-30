@@ -6,6 +6,7 @@ export mvp=~/.vim
 function af.esh { echo "Cmd: $@"; $@; echo "Rc: $?";}
 
 alias set.b='. ~/.bashrc'
+alias a='alias'
 alias h='history'
 alias d='vim -d'
 alias eb='exec bash'
