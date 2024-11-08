@@ -260,6 +260,12 @@
     ; list all files in master with respect to base irrespective of current path within the repo
     treeAllWrtBase = ls-tree -r master --name-only  --full-tree
 
+    ; list of files tracked by git
+    trkf = ls-tree -r master --name-only
+    trkf1 = ls-files
+    trkXf = status --ignored
+    trkX = "!f_trkx() { git check-ignore **/*; }; f_trkx"
+
     ; list of user modified the file or folder
     authors1 = shortlog -n -s --
     authors2 = log --pretty=format:"%an%x09"
