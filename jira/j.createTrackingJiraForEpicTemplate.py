@@ -60,7 +60,8 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
     payload = fields
 
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(url, headers=headers,
+                                 data=json.dumps(payload), timeout=20)
         response.raise_for_status()  # Raise HTTPError for bad responses
         issue = response.json()
         print(f"Jira story created successfully with key: {issue['key']}")
@@ -84,7 +85,7 @@ def add_watcher_group(jira_url, api_token, issue_key, watcher_group):
     payload = json.dumps(watcher_group)
 
     try:
-        response = requests.post(url, headers=headers, data=payload)
+        response = requests.post(url, headers=headers, data=payload, timeout=20)
         response.raise_for_status()  # Raise HTTPError for bad responses
         print(f"Watcher group '{watcher_group}' added to issue {issue_key}")
     except requests.exceptions.HTTPError as http_err:
@@ -102,7 +103,7 @@ def create_multiple_stories(project_key, watcher_group, stories):
         create_jira_story(project_key, summary, description, watcher_group, epic_link)
 
 
-stories = [
+generate_stories = [
     {
         'summary': '[Tracking] Update Version and Request Production Build Enablement',
         'description': 'This task is to track the code changes required to update the version.\n\nRequest the production build enablement after the changes.',
@@ -168,13 +169,8 @@ stories = [
         'description': 'This task is to track the demo recording progress.',
         'epic_link': JIRA_EPIC_LINK
     },
-    {
-        'summary': '[Tracking] OSRB Approval for this release',
-        'description': 'This task is to track the BlackDuck scan activity and obtain OSRB approval.',
-        'epic_link': JIRA_EPIC_LINK
-    },
     # Add more stories as needed
 ]
 
 
-create_multiple_stories(JIRA_PROJECT_KEY, JIRA_WATCHER_GROUP, stories)
+create_multiple_stories(JIRA_PROJECT_KEY, JIRA_WATCHER_GROUP, generate_stories)
