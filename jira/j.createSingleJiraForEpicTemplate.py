@@ -1,8 +1,8 @@
 #!/usr/bin/env python3.12
 import os
 import argparse
-import requests
 import json
+import requests
 from dotenv import load_dotenv
 
 # Load the environment variables configured on the system
@@ -16,13 +16,15 @@ JIRA_WATCHER_GROUP  = os.getenv('JIRA_WATCHER_GROUP')
 JIRA_WATCHERS_LIST  = os.getenv('JIRA_WATCHERS_LIST')
 
 parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
-parser.add_argument('jira_epic_id', type=str, help='The ID of the Epic')
-parser.add_argument('jira_release_ver', type=str, help='The release version of the Epic')
-parser.add_argument('story_file', type=str, help='The file containing the story details')
+parser.add_argument('--epic_id', type=str, required=True, help='The ID of the Epic')
+parser.add_argument('--release_ver', type=str, required=True, help='The release version of the Epic')
+parser.add_argument('--story_file', type=str, required=True, help='The file containing the story details')
+parser.add_argument('--tool_name', type=str, required=True, help='tool name used for label creation')
 
 args = parser.parse_args()
-JIRA_EPIC_LINK      = args.jira_epic_id
-JIRA_RELEASE        = args.jira_release_ver
+EPIC_LINK      = args.epic_id
+RELEASE_VER    = args.release_ver
+TOOL_NAME      = args.tool_name
 
 
 def create_jira_story(project_key, summary, description, watcher_group, epic_link=None):
@@ -41,7 +43,7 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
             },
             "summary": summary,
             "description": description,
-            "labels": ["TOOL_NAME", f"TOOL_NAME_{JIRA_RELEASE}", "Tracking"],
+            "labels": [f"{TOOL_NAME}", f"{TOOL_NAME}_{RELEASE_VER}", "Tracking"],
             "priority": {
                 "name": "P3"
             },
@@ -51,7 +53,7 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
         }
     }
 
-     # Add Epic link if provided
+    # Add Epic link if provided
     if epic_link:
         fields["fields"]["customfield_10001"] = epic_link  # Change customfield_10008 to your instance's Epic Link field ID
 
@@ -117,7 +119,7 @@ def generate_json_structure(file_path):
             story = {
                 'summary': summary,
                 'description': description,
-                'epic_link': JIRA_EPIC_LINK
+                'epic_link': EPIC_LINK
             }
             stories.append(story)
     return stories
