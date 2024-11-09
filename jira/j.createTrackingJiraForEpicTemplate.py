@@ -16,12 +16,14 @@ JIRA_WATCHER_GROUP  = os.getenv('JIRA_WATCHER_GROUP')
 JIRA_WATCHERS_LIST  = os.getenv('JIRA_WATCHERS_LIST')
 
 parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
-parser.add_argument('jira_epic_id', type=str, help='The ID of the Epic')
-parser.add_argument('jira_release_ver', type=str, help='The release version of the Epic')
+parser.add_argument('--epic_id', type=str, Required=True, help='The ID of the Epic')
+parser.add_argument('--release_ver', type=str, Required=True, help='The release version of the Epic')
+parser.add_argument('--tool_name', type=str, Required=True, help='The tool name of the Epic used for label creation')
 
 args = parser.parse_args()
-JIRA_EPIC_LINK      = args.jira_epic_id
-JIRA_RELEASE        = args.jira_release_ver
+JIRA_EPIC_LINK      = args.epic_id
+JIRA_RELEASE        = args.release_ver
+JIRA_TOOL_NAME      = args.tool_name
 
 
 def create_jira_story(project_key, summary, description, watcher_group, epic_link=None):
@@ -40,7 +42,7 @@ def create_jira_story(project_key, summary, description, watcher_group, epic_lin
             },
             "summary": summary,
             "description": description,
-            "labels": ["TOOL_NAME", f"TOOL_NAME_{JIRA_RELEASE}", "Tracking"],
+            "labels": [f"{TOOL_NAME}", f"{TOOL_NAME}_{JIRA_RELEASE}", "Tracking"],
             "priority": {
                 "name": "P3"
             },
@@ -115,17 +117,17 @@ generate_stories = [
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Threat Modeling and Threat analysis for TOOL_NAME',
+        'summary': f"[Tracking] Threat Modeling and Threat analysis for {TOOL_NAME}",
         'description': 'Please check whether any new threats are being introduced.\nAdditionally, verify that the current models address all the newly discovered threats.',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Check EULA Year for TOOL_NAME',
+        'summary': f"[Tracking] Check EULA Year for {TOOL_NAME}",
         'description': 'This Jira ticket is to track the work regarding the EULA Year of this release.',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] TechNote for TOOL_NAME',
+        'summary': f"[Tracking] TechNote for {TOOL_NAME}",
         'description': 'This Jira ticket is to track the work regarding TechNotes of this release.',
         'epic_link': JIRA_EPIC_LINK
     },
@@ -135,17 +137,17 @@ generate_stories = [
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Documentation for TOOL_NAME',
+        'summary': f"[Tracking] Documentation for {TOOL_NAME}",
         'description': 'This ticket is intended to track the work related to the documentation for this release.',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] TOOL_NAME GA build testing',
+        'summary': f"[Tracking] {TOOL_NAME} GA build testing",
         'description': 'This ticket has been created to track testing activities for the GA build.',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Validate TOOL_NAME bundle is available for download from the Download Centre.',
+        'summary': f"[Tracking] Validate {TOOL_NAME} bundle is available for download from the Download Centre.",
         'description': 'To validate that the correct NBServerMigrtator binaries are uploaded to Download centre (DC).',
         'epic_link': JIRA_EPIC_LINK
     },
