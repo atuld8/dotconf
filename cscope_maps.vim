@@ -30,12 +30,14 @@
 
        """"""""""""" Standard cscope/vim boilerplate
 
+       set cscopequickfix=s+,c+,d+,i+,t+,e+
+
        " use both cscope and ctag for 'ctrl-]', ':ta', and 'vim -t'
        set cscopetag
 
        " check cscope for definition of a symbol before checking ctags: set to 1
        " if you want the reverse search order.
-       set csto=0
+       set csto=1
 
        " add any cscope database in current directory
        if filereadable("cscope.out")
@@ -50,8 +52,9 @@
    endif
 
    " show msg when any other cscope db added
-   "set cscopeverbose
-   set nocscopeverbose
+   set cscopeverbose
+   " set nocscopeverbose
+
 
    """"""""""""" My cscope/vim key mappings
    "
