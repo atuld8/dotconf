@@ -340,9 +340,11 @@ alias del="rm -i"
 alias l='ls -CF'
 alias la='ls -A'
 alias ll='ls -l'
+alias l1='ls -1'
 alias ls='ls -hF --color'
 alias l.='ls -d .* --color=auto'
 alias lld='ls --color=always -al | grep --color=never "^d"'
+alias lll='ls -la | less -X'
 alias dir='ls -l'
 alias grep='grep --color'
 
