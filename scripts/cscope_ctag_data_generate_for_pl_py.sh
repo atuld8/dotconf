@@ -1,6 +1,6 @@
-#!/bin/env bash
+#!/usr//bin/env bash
 
-cd $1
+cd ${1:-.}
 
 # Generate the ctags for specific path
 ctags -R --languages=Python,Perl --exclude=.git --exclude=node_modules .

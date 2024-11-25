@@ -123,6 +123,8 @@
     dff ="!dffm() { git diff --no-ext-diff --diff-filter=$@;}; dffm"
     dfWrxSp1f ="!dffm() { git diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\" --diff-filter=$@;}; dffm"
     dfWrxSpf ="!dffm() { git diff --no-ext-diff --word-diff-regex=. --diff-filter=$@;}; dffm"
+    dfu = diff -U0
+    ; this is using tools
     dt = difftool
     ; git diff in patch format. Expects cmtid
     dfPatch = diff-tree -p
