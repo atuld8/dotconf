@@ -113,6 +113,16 @@ def generate_json_structure(file_path):
         # Skip lines starting with #
         lines = [line for line in lines if not line.strip().startswith('#')]
 
+        filtered_lines = []
+        non_empty_found = False
+
+        for line in lines:
+            if not non_empty_found and not line.strip():  # Skip empty lines initially
+                continue
+            non_empty_found = True
+            filtered_lines.append(line)
+        lines = filtered_lines
+
         if lines:
             summary = lines[0].strip()
             description = ''.join(lines[1:]).strip()
@@ -122,6 +132,11 @@ def generate_json_structure(file_path):
                 'epic_link': EPIC_LINK
             }
             stories.append(story)
+
+            # Print each key-value pair
+            for key, value in story.items():
+                print(f"{key}: {value}")
+
     return stories
 
 
