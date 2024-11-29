@@ -275,8 +275,8 @@ alias a.qk="alias   | grep ' q\..*='"
 alias a.set="alias  | grep ' set\..*='"
 alias a.tmp="alias   | grep ' t\..*='"
 alias a..="alias   | grep '\..*\..*='"
-alias a..1.2='function af.a12() { alias | grep "$1\.$2\..*="; }; af.a12'
-alias a..1='function af.a1() { alias | grep "$1\..*="; }; af.a1'
+alias a..1.2='function af.a12() { alias | grep " $1\.$2.*="; }; af.a12'
+alias a..1='function af.a1() { alias | grep " $1\..*="; }; af.a1'
 alias a.="alias   | grep '^alias \..*='"
 alias a.?="alias | grep '^alias [a-z]='"
 alias a.??='alias | egrep "alias\s+\w?\w\>="'
