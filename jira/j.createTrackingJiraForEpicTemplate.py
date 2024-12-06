@@ -107,12 +107,12 @@ def create_multiple_stories(project_key, watcher_group, stories):
 
 generate_stories = [
     {
-        'summary': '[Tracking] Update Version and Request Production Build Enablement',
+        'summary': f"[Tracking] Update Version and Request Production Build Enablement for {JIRA_TOOL_NAME}",
         'description': 'This task is to track the code changes required to update the version.\n\nRequest the production build enablement after the changes.',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Update Confluence page and Technote for \"How to perform migration\"',
+        'summary': f"[Tracking] Update Confluence page and Technote for {JIRA_TOOL_NAME}",
         'description': 'This Jira ticket is to track the work regarding TechNote update task for this release.',
         'epic_link': JIRA_EPIC_LINK
     },
@@ -132,7 +132,7 @@ generate_stories = [
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Remove Beta Tag for Release',
+        'summary': f"[Tracking] Remove Beta Tag for Release of {JIRA_TOOL_NAME}",
         'description': 'The Beta tag needs to be removed when the binaries are release-ready.',
         'epic_link': JIRA_EPIC_LINK
     },
@@ -152,22 +152,22 @@ generate_stories = [
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Horizon Test plan and report.',
+        'summary': f"[Tracking] Horizon Test plan and report for {JIRA_TOOL_NAME}.",
         'description': 'This ticket is to generate the Horizon test plan and report to meet 100/100/0 criteria.',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] OSRB Approval for this release',
+        'summary': f"[Tracking] OSRB Approval for {JIRA_TOOL_NAME}",
         'description': 'This task is to track the BlackDuck scan activity and obtain OSRB approval.',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] CSTS Enablement Document Update',
+        'summary': f"[Tracking] CSTS Enablement Document Update for {JIRA_TOOL_NAME}",
         'description': 'This task is to track the CSTS Enablement document update related progress',
         'epic_link': JIRA_EPIC_LINK
     },
     {
-        'summary': '[Tracking] Demo Recording for current Epic.',
+        'summary': f"[Tracking] Demo Recording for {JIRA_TOOL_NAME}.",
         'description': 'This task is to track the demo recording progress.',
         'epic_link': JIRA_EPIC_LINK
     },
