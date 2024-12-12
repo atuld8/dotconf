@@ -101,20 +101,17 @@
 
     dg = difftool --gui --no-prompt
     df = -c diff.wsErrorHighlight=all diff --no-ext-diff
-    dfnw = diff --no-ext-diff
-    dfl = diff --no-ext-diff .
     ; this will check for error like trailing spaces and report
     dfChk = diff --no-ext-diff --check
     dfICr = diff --no-ext-diff --ignore-cr-at-eol
     dfICrSpc = diff --no-ext-diff --ignore-cr-at-eol --ignore-all-space
     dfR = diff --no-ext-diff -R
-    dN = diff --no-ext-diff --name-only
-    dNRel= diff --no-ext-diff --name-only --relative
-    dC = diff --cached
+    dfN = diff --no-ext-diff --name-only
+    dfNR= diff --no-ext-diff --name-only --relative
     dfC = diff --cached --no-ext-diff
     dfCR = diff --cached --no-ext-diff -R
-    dfCNmo = diff --cached --no-ext-diff --name-only
-    dfCNmoCwd = diff --cached --no-ext-diff --name-only --relative
+    dfCN = diff --cached --no-ext-diff --name-only
+    dfCNR = diff --cached --no-ext-diff --name-only --relative
     dfCw = diff --no-ext-diff --color-words
     dfCwd = diff --no-ext-diff --color-words=.
     dfWrx = diff --no-ext-diff --word-diff-regex=. --color-words=.
