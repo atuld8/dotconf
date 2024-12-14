@@ -8,7 +8,7 @@ alias mc.worknotes='tag -f worknotes'
 alias mc.eclipse='$HOME/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse'
 alias mc.as='open -a "Android Studio.app"'
 alias mc.outlook='open -a /Applications/Microsoft\ Outlook.app'
-alias mc.nano='/usr/local/bin/nano'
+alias mc.nano='/opt/homebrew/bin/nano'
 alias mc.vsc='open -a /Applications/Visual\ Studio\ Code.app'
 
 export MAC_DEF_BROWSER='Safari'

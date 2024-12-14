@@ -262,8 +262,9 @@
     ; list of files tracked by git
     trkf = ls-tree -r master --name-only
     trkf1 = ls-files
+    trkX = ls-files -o --exclude-standard
     trkXf = status --ignored
-    trkX = "!f_trkx() { git check-ignore **/*; }; f_trkx"
+    trkIg = "!f_trkx() { git check-ignore **/*; }; f_trkx"
 
     ; list of user modified the file or folder
     authors1 = shortlog -n -s --
