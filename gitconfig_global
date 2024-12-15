@@ -265,6 +265,7 @@
     trkX = ls-files -o --exclude-standard
     trkXf = status --ignored
     trkIg = "!f_trkx() { git check-ignore **/*; }; f_trkx"
+    istrk= ls-files --error-unmatch
 
     ; list of user modified the file or folder
     authors1 = shortlog -n -s --
