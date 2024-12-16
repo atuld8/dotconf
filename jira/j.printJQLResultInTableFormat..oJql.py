@@ -65,7 +65,8 @@ def get_issues_by_jql(jql):
                        'priority',
                        'issuetype',
                        'labels',
-                       'customfield_16006']  # Adjust based on required fields
+                       'customfield_16006',
+                       'customfield_10001']  # Adjust based on required fields
         }
 
         response = requests.get(url, headers=headers, params=params, timeout=20)
@@ -95,6 +96,7 @@ def print_issues_in_table_format(issues, excludeCols):
         severity = issue['fields']['customfield_16006']['value'] if issue['fields']['customfield_16006']['value'] else 'NA'
         issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
         labels = ', '.join(issue['fields']['labels']) if issue['fields']['labels'] else '-'
+        epic_link = issue['fields']['customfield_10001'] if issue['fields']['customfield_10001'] else '-'
 
         unfiltered_entry = {
             'Sr.': index,
@@ -106,7 +108,8 @@ def print_issues_in_table_format(issues, excludeCols):
             'Priority': priority,
             'Severity': severity,
             'IssueType': issuetype,
-            'Labels': labels
+            'Labels': labels,
+            'Epic': epic_link
         }
 
         # Filter the entry to exclude any key that is in the exclude_keys list
