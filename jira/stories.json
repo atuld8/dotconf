@@ -1,20 +1,23 @@
 {
     "Generic_field": {
-        "issue_type" :  "story",
+        "issue_type" :  "Story",
         "labels" : ["label1", "label2"],
         "priority": "P2",
         "epic_link" : "epic_link",
-        "watcher_group": ["watcher_group1"]
+        "watcher_group": "watcher_group1"
     },
     "Multiple_entrie": [
         { "summary" : "summary1",
-          "description": "description1"
+          "description": "description1",
+          "assignee": "user1"
         },
         { "summary" : "summary2",
-          "description": "description2"
+          "description": "description2",
+          "assignee": "user2"
         },
         { "summary" : "summary3",
-          "description": "description3"
+          "description": "description3",
+          "assignee": ""
         }
     ]
 }

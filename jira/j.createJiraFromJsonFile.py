@@ -17,7 +17,7 @@ JIRA_WATCHERS_LIST  = os.getenv('JIRA_WATCHERS_LIST')
 
 
 
-def create_jira_story(project_key, summary, description, generic_data):
+def create_jira_story(project_key, summary, description, assignee, generic_data):
 
     url = f'{JIRA_URL}/rest/api/2/issue'
     headers = {
@@ -50,6 +50,9 @@ def create_jira_story(project_key, summary, description, generic_data):
             ]
         }
     }
+
+    if assignee:
+        fields["fields"]["assignee"] = {"name": assignee}
 
     # Add Epic link if provided
     if epic_link:
@@ -105,7 +108,8 @@ def create_multiple_stories(project_key, stories, generic_data):
     for story in stories:
         summary = story['summary']
         description = story['description']
-        create_jira_story(project_key, summary, description, generic_data)
+        assignee = story['assignee']
+        create_jira_story(project_key, summary, description, assignee, generic_data)
 
 
 
