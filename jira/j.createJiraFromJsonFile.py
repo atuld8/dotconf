@@ -15,6 +15,7 @@ JIRA_PROJECT_KEY    = os.getenv('JIRA_PROJECT_KEY')
 JIRA_WATCHER_GROUP  = os.getenv('JIRA_WATCHER_GROUP')
 JIRA_WATCHERS_LIST  = os.getenv('JIRA_WATCHERS_LIST')
 
+DRY_RUN = False
 
 
 def create_jira_story(project_key, summary, description, assignee, generic_data):
@@ -67,6 +68,8 @@ def create_jira_story(project_key, summary, description, assignee, generic_data)
     payload = fields
 
     print(payload)
+    if DRY_RUN:
+        return
 
     try:
         response = requests.post(url, headers=headers,
@@ -112,14 +115,17 @@ def create_multiple_stories(project_key, stories, generic_data):
         create_jira_story(project_key, summary, description, assignee, generic_data)
 
 
-
 def main():
+    global DRY_RUN
+
     parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
-    parser.add_argument('--json_file', type=str, required=True, help='Json file \
+    parser.add_argument('--json-file', type=str, required=True, help='Json file \
                         which has all the story related details')
+    parser.add_argument('--dry-run', action="store_true", help='Skip calling of Rest API')
 
     args = parser.parse_args()
     json_file = args.json_file
+    DRY_RUN = args.dry_run
 
     # Read the JSON file
     with open(json_file, "r") as file:
