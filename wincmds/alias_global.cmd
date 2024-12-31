@@ -34,6 +34,7 @@
 
 @DOSKEY macros=%DOSKEY_ALL_MACROS% $*
 @DOSKEY d=gvim -d $*
+@DOSKEY c=cls
 @DOSKEY a.cd=%DOSKEY_ALL_MACROS% ^| findstr "cd\..*=" $*
 @DOSKEY a.x=%DOSKEY_ALL_MACROS% ^| findstr "\<x\..*=" $*
 @DOSKEY a.cat=%DOSKEY_ALL_MACROS% ^| findstr "cat\..*=" $*
