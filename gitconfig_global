@@ -54,6 +54,8 @@
     brbyAuthColor = for-each-ref --format='%(color:cyan)%(authordate:format:%m/%d/%Y %I:%M %p)    %(align:25,left)%(color:yellow)%(authorname)%(end) %(color:reset)%(refname:strip=3)' --sort=authordate refs/remotes
     brbyme ="!f() { git branch -a --format=\"%(committerdate:iso8601), %(color:bold blue)%(committerdate:relative)%(color:reset), %(color:magenta)%(authorname)%(color:reset), %(refname:short), %(contents:subject)\"  | grep \"$(git config user.name)\" | sort -r | head -20 | column -t -s \",\"; }; f"
     brbymewin ="!f() { git branch -a --format=\"%(committerdate:iso8601), %(color:bold blue)%(committerdate:relative)%(color:reset), %(color:magenta)%(authorname)%(color:reset), %(refname:short), %(contents:subject)\"  | sort -r | head -20 | column -t -s \",\"; }; f"
+    ; list branches with creation date
+    brcdt = for-each-ref --sort=creatordate --format '%(refname:short) %(creatordate)' refs/heads refs/remotes
 
     chpk = cherry-pick
     chpke = cherry-pick -e
