@@ -157,6 +157,7 @@
     lstatsh = log --stat --abbrev-commit
     l1sh = log --pretty=oneline --abbrev-commit
     l1 = log --pretty=oneline
+    l1x = log --pretty=oneline -10
     l1diff = log --pretty=oneline --abbrev-commit -p
     lfmt1 = log --pretty=tformat:'%h - %an,  %ar : %s'
     lstat = log --stat
