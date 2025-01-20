@@ -15,7 +15,7 @@
 
 \timing
 
-\set HISTFILE ~/.psql_history
+\set HISTFILE ~/.psqlHistory/psql_history- :HOST - :DBNAME
 \set HISTSIZE 2000
 
 \x auto
@@ -44,8 +44,12 @@
 
 \echo '\tDevelopment queries:\n'
 \echo '\t\t\t:sp\t\t-- Current Search Path'
-\echo '\t\t\t:clear\t\t-- Clear screen'
+\echo '\t\t\t:c\t\t-- Clear screen'
 \echo '\t\t\t:ll\t\t-- List\n'
+
+\echo '\tMisc settings:\n'
+\echo '\t\t\tON_ERROR_STOP\t-- ' :ON_ERROR_STOP
+\echo '\t\t\tVERBOSITY\t-- ' :VERBOSITY
 
 -- Administration queries
 
@@ -75,5 +79,5 @@
 -- Development queries:
 
 \set sp 'SHOW search_path;'
-\set clear '\\! clear;'
+\set c '\\! clear;'
 \set ll '\\! ls -lrt;'
