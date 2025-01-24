@@ -9,6 +9,7 @@ iabbrev HTTPl Hypertext Transfer Protocol
 iabbrev HTTPSe Hypertext Transfer Protocol Secure
 
 iabbrev nbsmr NBServerMigrator
+iabbrev nbpsmr NetBackup Server Migrator
 iabbrev nbp   NetBackup
 iabbrev pgSql PostgreSQL
 iabbrev prsr primary server
@@ -33,6 +34,7 @@ iabbrev x1. 10.1.1
 iabbrev x0. 10.0.0.1
 iabbrev x. 10.
 iabbrev aio all-in-one
+iabbrev bdh Black Duck Hub
 "iabbrev
 "iabbrev
 "iabbrev
