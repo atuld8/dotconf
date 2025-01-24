@@ -42,6 +42,7 @@ fi
 
 OSName=`uname -s`
 
+alias mcd.bldmnt='mkdir /newbuilds /public /extsrc /builds'
 alias m.bld..rf='function af.bld.ls() { ls -dl /newbuilds/NB/$1/* | awk '"'"'{ printf $NF "\n" }'"'"'; }; af.bld.ls'
 alias m.bld..rs9='function af.bld.ls() { ls -dl /newbuilds/NB/`echo $1| sed '"'"'s/./&./g'"'"' | sed '"'"'s/.$//g'"'"'`/* | awk '"'"'{ printf $NF "\n" }'"'"'; }; af.bld.ls'
 alias m.bld..rs10='function af.bld.ls() { ls -dl /newbuilds/NB/`echo $1| sed '"'"'s/./&./g'"'"' | sed '"'"'s/.$//g'"'"'| sed '"'"'s/\.//'"'"'`/* | awk '"'"'{ printf $NF "\n" }'"'"'; }; af.bld.ls'
