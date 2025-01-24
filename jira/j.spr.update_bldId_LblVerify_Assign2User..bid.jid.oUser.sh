@@ -13,7 +13,7 @@ fi
 
 # Update the Target Build
 echo "Updating the $JIRA_ISSUE_ID ticket with build id $TARGET_BLD_ID"
-$(dirname "${BASH_SOURCE[0]}")/j.updateFieldWithValue_id_field_value.sh $JIRA_ISSUE_ID Solution \"*Target_Build:* {{$TARGET_BLD_ID}}\"
+$(dirname "${BASH_SOURCE[0]}")/j.updateFldVal_id_fldname_value.sh $JIRA_ISSUE_ID Solution \"*Target_Build:* {{$TARGET_BLD_ID}}\"
 
 # Add Verify label to Labels
 echo "Setting Verify Label in Ticket"

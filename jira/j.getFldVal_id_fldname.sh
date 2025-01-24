@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ex: j.updateFieldWithValue_id_field_value.sh NBU-189147 Solution "This solution is available in the build " <Build_ID> 
+# Ex: j.updateFldVal_id_fldname_value.sh NBU-189147 Solution "This solution is available in the build " <Build_ID>
 
 #Set below env before using it
 #export JIRA_ACC_TOKEN='tkn'
