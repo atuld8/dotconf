@@ -119,9 +119,9 @@ def main():
     global DRY_RUN
 
     parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
-    parser.add_argument('--json-file', type=str, required=True, help='Json file \
+    parser.add_argument('-j', '--json-file', type=str, required=True, help='Json file \
                         which has all the story related details')
-    parser.add_argument('--dry-run', action="store_true", help='Skip calling of Rest API')
+    parser.add_argument('-d', '--dry-run', action="store_true", help='Skip calling of Rest API')
 
     args = parser.parse_args()
     json_file = args.json_file

@@ -35,6 +35,8 @@ alias v='vim'
 alias view='vim -R '
 alias v++='vim -c "set tags+=tags" -c "cs add cscope.out"'
 alias vgrk='function af.vimgrok() { cmd=`echo $1 | awk -F'"'"'#'"'"' '"'"'{ print "vim "$1" +"$2 }'"'"'`;$cmd;}; af.vimgrok'
+alias hx='head -10'
+alias tx='tail -10'
 
 if [ -z $SCP_HOSTNAME ]; then export SCP_HOSTNAME=`hostname`; fi
 
