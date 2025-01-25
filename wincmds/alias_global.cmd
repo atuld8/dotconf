@@ -34,6 +34,8 @@
 @DOSKEY l1=dir /b $*
 @DOSKEY la=dir /A /b $*
 @DOSKEY lf=dir /A /D $*
+@DOSKEY lr=dir /A /S /B $*
+@DOSKEY ld=dir /A:D /B $*
 
 @DOSKEY macros=%DOSKEY_ALL_MACROS% $*
 @DOSKEY d=gvim -d $*
