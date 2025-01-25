@@ -47,7 +47,7 @@ fi
 
 alias du='du -h'
 alias l='ls -CF'
-alias la='ls -A'
+alias la='ls -ACF'
 alias ll='ls -l'
 alias l1='ls -1F'
 alias l1a='ls -1Fa'
