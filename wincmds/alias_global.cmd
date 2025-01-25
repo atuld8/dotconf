@@ -30,7 +30,10 @@
 @DOSKEY v=gvim $*
 @DOSKEY v++=gvim -c "set tags+=tags" -c "cs add cscope.out" $*
 @DOSKEY clr=cls^&dir /P /D $*
-@DOSKEY l=dir /D $*
+@DOSKEY l=dir $*
+@DOSKEY l1=dir /b $*
+@DOSKEY la=dir /A /b $*
+@DOSKEY lf=dir /A /D $*
 
 @DOSKEY macros=%DOSKEY_ALL_MACROS% $*
 @DOSKEY d=gvim -d $*
