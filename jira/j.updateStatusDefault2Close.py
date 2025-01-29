@@ -157,8 +157,8 @@ def main(ticket_id, status, resolution):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Update labels for a Jira ticket")
     parser.add_argument("ticket_id", help="Jira ticket ID (e.g., JIR-123)")
-    parser.add_argument("--status", default="Close", help="The status value. Default is Closed.")
-    parser.add_argument("--resolution", default="Fixed", help="The resolution value. Default is Fixed.")
+    parser.add_argument("-s", "--status", default="Close", help="The status value. Default is Closed.")
+    parser.add_argument("-r", "--resolution", default="Fixed", help="The resolution value. Default is Fixed.")
 
     args = parser.parse_args()
 
