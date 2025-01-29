@@ -36,7 +36,7 @@ alias j.getDetCmtJson='function af.jira_get_issue() { j.2.get issue/$1 | jq .; }
 alias j.getDetCmt='function af.jira_get_issue() { j.2.get issue/$1 | jq.fmt.issue_basic_details; j.getCmts $1; }; af.jira_get_issue'
 alias j.updateBldDetInSolution..bld.Jid='function af.jira_update_solution() { [[ "$1" =~ ^(NBSM|NBSVRUP)_[0-9.]+_[0-9]{4}$ ]] && [[ "$2" =~ ^NBU-[0-9]+$ ]] && echo "Updating the $2 ticket with build id $1" && j.updateFieldWithValue_id_field_value.sh $2 Solution \"*Target_Build:* {{$1}} \"; }; af.jira_update_solution'
 alias j.getFldList='function af.jira_get_fields() { j.2.get field | jq ".[].name"; }; af.jira_get_fields'
-alias j.getFldNameId='function af.jira_get_field.id_name() { j.2.get field | jq ".[] | {ID: .id, Name: .name}"; }; af.jira_get_field.id_name'
+alias j.getFldNameId='function af.jira_get_field.id_name() { j.2.get field | jq "[.[] | {ID: .id, Name: .name}]"; }; af.jira_get_field.id_name'
 alias j.getFldForName='function af.jira_get_fields_for_name() { j.2.get field | jq ".[] | select(.name==\"$@\")"; }; af.jira_get_fields_for_name'
 alias j.getCmtsJsn='function af.jira_get_comments() { j.2.get issue/$1/comment | jq ".comments[] | {author: .author.displayName, created: .created, Comment: .body}"; }; af.jira_get_comments'
 alias j.getCmts='function af.jira_get_comments() { j.2.get issue/$1/comment | jq -r '"'"'.comments[] | "\n> > > > -------- \(.author.displayName) : \(.created) -------- < < < <\n\n\(.body)\n"'"'"';}; af.jira_get_comments'
