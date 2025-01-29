@@ -30,10 +30,10 @@ def main(jira_json_file, field_mapping_file, output_file=None):
     """Main function to process the Jira JSON file."""
     field_mapping = load_field_mapping(field_mapping_file)
 
-    if jira_json_source == "-":
+    if jira_json_file == "-":
         jira_data = json.load(sys.stdin)
     else:
-        with open(jira_json_source, 'r', encoding='utf-8') as f:
+        with open(jira_json_file, 'r', encoding='utf-8') as f:
             jira_data = json.load(f)
 
     processed_data = process_jira_json(jira_data, field_mapping)
