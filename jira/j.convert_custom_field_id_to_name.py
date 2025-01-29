@@ -1,3 +1,7 @@
+#!/bin/env python3.12
+
+import os
+import sys
 import json
 
 
@@ -22,23 +26,35 @@ def process_jira_json(jira_json, field_mapping):
     return processed
 
 
-def main(jira_json_file, field_mapping_file, output_file):
+def main(jira_json_file, field_mapping_file, output_file=None):
     """Main function to process the Jira JSON file."""
     field_mapping = load_field_mapping(field_mapping_file)
 
-    with open(jira_json_file, 'r', encoding='utf-8') as f:
-        jira_data = json.load(f)
+    if jira_json_source == "-":
+        jira_data = json.load(sys.stdin)
+    else:
+        with open(jira_json_source, 'r', encoding='utf-8') as f:
+            jira_data = json.load(f)
 
     processed_data = process_jira_json(jira_data, field_mapping)
 
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(processed_data, f, indent=2)
+    if output_file:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(processed_data, f, indent=2)
+    else:
+        json.dump(processed_data, sys.stdout, indent=2)
 
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) != 4:
-        print("Usage: python script.py <jira_json_file> <field_mapping_file> <output_file>")
-        sys.exit(1)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_mapping_file = os.path.join(script_dir, "jira_field_id_name_map.json")
 
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    if len(sys.argv) < 2 or len(sys.argv) > 4:
+        print("Usage: python script.py <jira_json_file|-> [field_mapping_file] [output_file]")
+        sys.exit(1)
+    
+    jira_json_source = sys.argv[1]
+    field_mapping_file = sys.argv[2] if len(sys.argv) > 2 else default_mapping_file
+    output_file = sys.argv[3] if len(sys.argv) > 3 else None
+    
+    main(jira_json_source, field_mapping_file, output_file)
