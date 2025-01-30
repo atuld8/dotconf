@@ -200,7 +200,8 @@
 @DOSKEY .hlp=$* 2^>^&1^| vim -R -
 @DOSKEY .as="C:\Program Files\Android\Android Studio\bin\studio64.exe"
 @DOSKEY .vsc="C:\Users\atul.das1\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd"
-@DOSKEY .mr=more /E /C /T4 $*
+@DOSKEY .mr=more /E /T4 $*
+@DOSKEY .mrr=more /E /C /T4 $*
 
 @DOSKEY cp.vp=echo^|set /p=%%VIMPASS%%^|clip
 @DOSKEY cp.accTkn=echo^|set /p=%%ACCESS_TOKEN%%^|clip
