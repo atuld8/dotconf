@@ -25,7 +25,7 @@ headers = {
 
 
 # Main function to setup a relation between Jira ids
-def link_Jira_ids_with_relation(src_id, dest_id, link_type):
+def link_Jira_ids_with_relation(src_id, dest_id, relation):
     url = f"{issue_url}"
 
     if src_id is None:
@@ -34,11 +34,11 @@ def link_Jira_ids_with_relation(src_id, dest_id, link_type):
     if dest_id is None:
         return
 
-    if link_type is None:
+    if relation is None:
         return
 
     payload = {
-        "type": {"name": link_type},
+        "type": {"name": relation},
         "inwardIssue": {"key": src_id},
         "outwardIssue": {"key": dest_id}
     }
@@ -46,20 +46,20 @@ def link_Jira_ids_with_relation(src_id, dest_id, link_type):
     response = requests.post(url, headers=headers, json=payload, timeout=20)
 
     if response.status_code == 201:
-        print(f"Updated relation between {src_id} and {dest_id} with {link_type}")
+        print(f"Updated relation between {src_id} and {dest_id} with {relation}")
     else:
-        print(f"Failed to update relation between {src_id} and {dest_id} with {link_type} : {response.status_code} - {response.text}")
+        print(f"Failed to update relation between {src_id} and {dest_id} with {relation} : {response.status_code} - {response.text}")
 
 
 # Command-line argument parser
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Link the Jira issues with relations",
-                                     usage="%(prog)s [-h] --src_id <id> --dest_id <id> --link_type [Relates|Duplicate|Blocks|Cloners]")
-    parser.add_argument("--src_id", help="Source Jira ticket ID (e.g., JIR-123)")
-    parser.add_argument("--dest_id", help="Destination Jira ticket ID (e.g.  JIR-789)")
-    parser.add_argument("--link_type", help="Relation between source and destination Jira tickets")
+                                     usage="%(prog)s [-h] --src_id <id> --dest_id <id> --relation [Relates|Duplicate|Blocks|Cloners]")
+    parser.add_argument("-s", "--src_id", help="Source Jira ticket ID (e.g., JIR-123)")
+    parser.add_argument("-d", "--dest_id", help="Destination Jira ticket ID (e.g.  JIR-789)")
+    parser.add_argument("-r", "--relation", help="Relation between source and destination Jira tickets")
 
     args = parser.parse_args()
 
     # Perform relation setting
-    link_Jira_ids_with_relation(args.src_id, args.dest_id, args.link_type)
+    link_Jira_ids_with_relation(args.src_id, args.dest_id, args.relation)
