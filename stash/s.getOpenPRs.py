@@ -44,7 +44,7 @@ def get_pull_request_list(repo_name):
 
             print(f"Found {len(pr_list)} open PR(s):")
             for pr in pr_list:
-                print(f"- PR #{pr['id']}: {pr['title']} (Created by {pr['author']['user']['displayName']})")
+                print(f"- PR #{pr['id']}: {pr['title']} (Created by {pr['author']['user']['displayName']})\n\t\t{pr['links']['self'][0]['href']}")
 
             return pr_list
 
