@@ -39,23 +39,26 @@ def get_pull_request_details(repo_name, pr_num):
                 print("No open pull requests found.")
                 return []
 
-            print(f"PR Title: {pr_data['title']}")
-            print(f"Author: {pr_data['author']['user']['name']}")
-            print(f"Source Branch: {pr_data['fromRef']['displayId']}")
-            print(f"Target Branch: {pr_data['toRef']['displayId']}")
-            print(f"Status: {pr_data['state']}")
+            print(f"PR Repo:        {pr_data['fromRef']['repository']['name']}")
+            print(f"PR Hash:        {pr_data['fromRef']['latestCommit']}")
+            print(f"PR Title:       {pr_data['title']}")
+            print(f"Author:         {pr_data['author']['user']['name']}")
+            print(f"Source Branch:  {pr_data['fromRef']['displayId']}")
+            print(f"Target Branch:  {pr_data['toRef']['displayId']}")
+            print(f"Status:         {pr_data['state']}")
 
             # Get the list of files in the PR
             files_url = f"{url}/diff"
-            print(f"PR links: {files_url}")
+            print(f"PR links:       {files_url}")
             files_response = requests.get(files_url, headers=headers, timeout=20)
 
             if files_response.status_code == 200:
                 files_data = files_response.json()
                 print("\nFiles Changed:")
                 for file in files_data.get("diffs", []):
-                    print(f"- Source: {file.get('source', {}).get('toString', 'N/A')}")
-                    print(f"\t\t- destination: {file.get('destination', {}).get('toString', 'N/A')}")
+                    #print(f"- Source: {file.get('source', {}).get('toString', 'N/A')}\t\t- destination: {file.get('destination', {}).get('toString', 'N/A')}")
+                    print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
+
             else:
                 print("Error fetching files.")
 
