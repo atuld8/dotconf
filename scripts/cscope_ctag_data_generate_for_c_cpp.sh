@@ -26,7 +26,7 @@ echo "" > ${CSCOPE_PATH}/cscope.files
 
 find $CSCOPE_PATH -iname "*.c" -o -iname "*.cpp" -o -iname "*.h" -o -iname "*.hpp" > ${CSCOPE_PATH}/cscope.files 2>/dev/null
 
-find $CSCOPE_PATH -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" >> ${CSCOPE_PATH}/cscope.files 2>/dev/null
+find $CSCOPE_PATH -iname "*.c" -o -iname "*.cpp" -o -iname "*.h" -o -iname "*.hpp" >> ${CSCOPE_PATH}/cscope.files 2>/dev/null
 
 awk '{ print "\""$0"\""; }' ${CSCOPE_PATH}/cscope.files > ${CSCOPE_PATH}/cscope.files.tmp
 
