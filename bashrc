@@ -31,7 +31,7 @@ MANPATH=$MANPATH:/usr/dt/man:/usr/man:/usr/openwin/share/man:/usr/openv/man/shar
 export MANPATH
 
 
-PATH=$PATH:~/scripts:~/.vim/bin:~/.vim/scripts:~/.vim/jira:
+PATH=$PATH:~/scripts:~/.vim/bin:~/.vim/scripts:~/.vim/jira:~/.vim/stash:
 export PATH
 fi
 
