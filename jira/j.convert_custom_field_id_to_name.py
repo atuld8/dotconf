@@ -52,9 +52,9 @@ if __name__ == "__main__":
     if len(sys.argv) < 2 or len(sys.argv) > 4:
         print("Usage: python script.py <jira_json_file|-> [field_mapping_file] [output_file]")
         sys.exit(1)
-    
+
     jira_json_source = sys.argv[1]
     field_mapping_file = sys.argv[2] if len(sys.argv) > 2 else default_mapping_file
     output_file = sys.argv[3] if len(sys.argv) > 3 else None
-    
+
     main(jira_json_source, field_mapping_file, output_file)

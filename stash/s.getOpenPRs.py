@@ -60,7 +60,7 @@ def get_pull_request_list(repo_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get list of open PR for mentioned repository",
                                      usage="%(prog)s [-h] --repo_name <name>")
-    parser.add_argument("-r", "--repo_name", default="src", help="repository name to get the list")
+    parser.add_argument("-r", "--repo_name", default="src", help="repository name to get the list. Defaut is src")
 
     args = parser.parse_args()
 

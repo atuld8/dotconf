@@ -13,3 +13,5 @@ alias j.fmt.addsr='awk '"'"' BEGIN {FS="|"; OFS="|"; } NR == 1 || NR == 3 { SEPE
 function j.fmt.grep() { grep --color=never -E "^(\+|.*Sr\..*|.*$1.*)"; }
 function fmt.et()  { grep --color=never -i -E "^(\+|\------|.*Incident.*|.*$1.*)"; }
 
+alias fmt.xml='xmllint --pretty 1 -'
+alias fmt.json='jq .'

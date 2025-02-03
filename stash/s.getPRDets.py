@@ -57,7 +57,14 @@ def get_pull_request_details(repo_name, pr_num):
                 print("\nFiles Changed:")
                 for file in files_data.get("diffs", []):
                     #print(f"- Source: {file.get('source', {}).get('toString', 'N/A')}\t\t- destination: {file.get('destination', {}).get('toString', 'N/A')}")
-                    print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
+                    #print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
+                    #print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
+
+                    source = file.get('source') or {'toString': 'N/A'}
+                    destination = file.get('destination') or {'toString': 'N/A'}
+
+                    print(f"- Source: {source.get('toString', 'N/A').ljust(50)}\t- Destination: {destination.get('toString', 'N/A')}")
+
 
             else:
                 print("Error fetching files.")
@@ -73,9 +80,9 @@ def get_pull_request_details(repo_name, pr_num):
 # Command-line argument parser
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get list of open PR for mentioned repository",
-                                     usage="%(prog)s [-h] --repo_name <name>")
-    parser.add_argument("-r", "--repo_name", default="src", help="repository name to get the list")
-    parser.add_argument("-p", "--pr_num", default="1", help="PR request ID")
+                                     usage="%(prog)s [-h] --repo_name <name> --pr_num #")
+    parser.add_argument("-r", "--repo_name", default="src", help="repository name to get the list. Default is src")
+    parser.add_argument("-p", "--pr_num", required=True, help="PR request ID")
 
     args = parser.parse_args()
 
