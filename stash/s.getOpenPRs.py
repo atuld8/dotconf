@@ -28,6 +28,7 @@ headers = {
 # Param
 params = {"state": "OPEN"}
 
+
 # Function to get the current labels of a Jira issue
 def get_pull_request_list(repo_name):
     url = f"{repos_url}/{repo_name}/pull-requests"
@@ -42,7 +43,7 @@ def get_pull_request_list(repo_name):
                 print("No open pull requests found.")
                 return []
 
-            print(f"Found {len(pr_list)} open PR(s):")
+            print(f"Found {len(pr_list)} open PR(s) for repository -- {repo_name} --:")
             for pr in pr_list:
                 print(f"- PR #{pr['id']}: {pr['title']} (Created by {pr['author']['user']['displayName']})\n\t\t{pr['links']['self'][0]['href']}")
 
