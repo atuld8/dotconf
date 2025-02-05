@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[[ "$1" =~ ^(NBSM|NBSVRUP)_[0-9.]+_[0-9]{4}$ ]] && [[ "$2" =~ ^NBU-[0-9]+$ ]] || (echo "Error. Please enter Build_ID & Jira_ID Build_ID correctly in this order..." & exit 1)
+[[ "$1" =~ ^((NBSM|NBSVRUP)_[0-9.]+_[0-9]{4})(, ((NBSM|NBSVRUP)_[0-9.]+_[0-9]{4}))*$ ]] && [[ "$2" =~ ^NBU-[0-9]+$ ]] || { echo "Error. Please enter Build_ID & Jira_ID Build_ID correctly in this order..." && exit 1; }
 
 TARGET_BLD_ID=$1
 JIRA_ISSUE_ID=$2
