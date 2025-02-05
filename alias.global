@@ -168,6 +168,8 @@ alias g.gh.user.name='git config  --local user.name "atuld8"'
 alias g.dlnmorel='git diff --name-only $1 | xargs -I '"'"'{}'"'"' realpath --relative-to=. $(git rev-parse --show-toplevel)/'"'"'{}'"'"''
 alias g.shwDiffCmtidHead..cmtid='function af.sh_diff_cmtid_head() { export gbase=`git rev-parse --show-toplevel`; for f in `g shfincmt ${1}`; do read -p "Do you check for $f file?" -n 1 -r; echo;  if [[ $REPLY =~ ^[Yy]$ ]]; then  vimdiff ${gbase}/${f} <(g show ${1}:${f}); fi; done; }; af.sh_diff_cmtid_head'
 alias g.l1x='function af.l1x() { git log --color --pretty=format:"%h - %an - %ar - %s %d" -n 10 $1 | awk -F'"'"' - |; | : '"'"' '"'"'{printf "%-7s - %-20s %-14s : %s\n", $1, $2, $3, $4}'"'"' ${*:2}; }; af.l1x'
+alias g.l1xh='git log --pretty=format:"%C(auto)%h%Creset %C(green)%s%Creset %C(bold blue)(%cr)%Creset %C(yellow)- %an%Creset" -10 | awk '"'"'{if (NR==1) $1="HEAD"; else if (NR==2) $1="HEAD~1"; else if (NR==3) $1="HEAD~2"; else if (NR==4) $1="HEAD~3"; else if (NR==5) $1="HEAD~4"; else if (NR==6) $1="HEAD~5"; else if (NR==7) $1="HEAD~6"; else if (NR==8) $1="HEAD~7"; else if (NR==9) $1="HEAD~8"; else if (NR==10) $1="HEAD~9"} 1'"'"''
+
 
 # to get quick help docs
 alias h.doc='vim --cmd "set key=$VIMPASS" -c ":let g:nerdtreefindexec=1" -c ":NERDTree" ~/.vim/doc/*.txt'
