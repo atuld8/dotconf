@@ -28,6 +28,12 @@ find $CSCOPE_PATH -iname "*.c" -o -iname "*.cpp" -o -iname "*.h" -o -iname "*.hp
 
 find $CSCOPE_PATH -iname "*.c" -o -iname "*.cpp" -o -iname "*.h" -o -iname "*.hpp" >> ${CSCOPE_PATH}/cscope.files 2>/dev/null
 
+# Generate the list of scripts
+find . -iname "*.sh" -o  -iname "*.bat" -o -iname "*.cmd" >> cscope.files
+
+# Generate the list of other files
+find . -iname "*.txt" -o -iname "*.md" -o -iname "*.json" -o -iname "*.ini" -o -iname "*.xml" -o -iname "*.html" >> cscope.files
+
 awk '{ print "\""$0"\""; }' ${CSCOPE_PATH}/cscope.files > ${CSCOPE_PATH}/cscope.files.tmp
 
 mv ${CSCOPE_PATH}/cscope.files.tmp ${CSCOPE_PATH}/cscope.files
