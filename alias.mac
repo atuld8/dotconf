@@ -3,7 +3,8 @@ alias mc.lockscreen='/System/Library/Frameworks/ScreenSaver.framework/Resources/
 alias mc.edit='open -a MacVim.app $*'
 alias mc.notesmv='open -a MacVim.app  $HOME/.notes_flist --args -n'
 alias mc.tags='cat ~/.tagfiles | grep Tag= | grep -v ".tagfiles" | sed -e"s/Tag=//"'
-alias mc.worknotes='tag -f worknotes'
+alias mc.worknotes='(cd ~/workspace/worknotes.links/ && fzf --preview "bat --color=always {}" --prompt "Search Code: " --border --layout=reverse --bind "enter:execute(vim {})")'
+
 
 alias mc.eclipse='$HOME/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse'
 alias mc.as='open -a "Android Studio.app"'

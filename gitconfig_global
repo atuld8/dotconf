@@ -35,7 +35,7 @@
     apChk = apply --check --stat
 
     ; delete local branches which are merged into Master; The default value setting works with ${1:-master} and ${1-master}
-    bClean = "!f() { git branch --merged ${1:-master} | grep -v \" ${1:-master}$\" | xargs -r  git branch -d; }; f"
+    brDelMrgd = "!f() { git branch --merged ${1:-master} | grep -v \" ${1:-master}$\" | xargs -r  git branch -d; }; f"
     ; list branches from local repo
     br = branch
     ; list branches from local with summary like sh, rmt br, cmtmsg of top
@@ -113,6 +113,7 @@
     dfC = diff --cached --no-ext-diff
     dfCR = diff --cached --no-ext-diff -R
     dfCN = diff --cached --no-ext-diff --name-only
+    dfcs = diff --compact-summary
     dfCNR = diff --cached --no-ext-diff --name-only --relative
     dfCw = diff --no-ext-diff --color-words
     dfCwd = diff --no-ext-diff --color-words=.
