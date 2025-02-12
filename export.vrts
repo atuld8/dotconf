@@ -20,3 +20,7 @@
 # export EXTSRC_ROOT=''
 
 # export JIRA_SERVER_NAME=""
+
+# export PGPORT=""
+# export PGUSER=""
+# export PGPASSWORD=""
