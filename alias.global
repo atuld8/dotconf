@@ -208,6 +208,7 @@ alias .jq.keys='jq '"'"'path(..) | map(tostring) | join(".")'"'"''
 
 .jq.keysHasSubValue() { jq -r --arg search "$1" 'paths(scalars) as $p | select(getpath($p) | tostring | contains($search)) | $p | join(".")'; }
 
+alias .dymd='date "+%Y-%m-%d"|tr -d "\n"'
 alias .d='date "+%d-%b-%Y"|tr -d "\n"'
 alias .t='date "+%H:%M:%S"|tr -d "\n"'
 alias .dt='function af() { date "+%d-%b-%Y${1:- }%H:%M:%S"|tr -d "\n"; }; af'
