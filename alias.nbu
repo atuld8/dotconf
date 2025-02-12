@@ -186,8 +186,8 @@ alias .bmr.num2ip..num='function af.num2ip { echo -n $(($(($(($((${1}/256))/256)
 alias .bmr.genbndl='bmrsavecfg -infoonly'
 
 # PostgreSQL
-alias .nb.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] &&  psql -h localhost -p $PGPORT -U $PGUSER -d NBDB -t -A -c '
-alias .bmr.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB -t -A -c '
+alias .nb.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] &&  psql -h localhost -p $PGPORT -U $PGUSER -d NBDB -t -A '
+alias .bmr.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB -t -A '
 alias .bmr.psql.tbl=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB -t -A -c "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('"'"'pg_catalog'"'"', '"'"'information_schema'"'"');"'
 
 alias bp.kill_all='bp.kill_all -v -f'
