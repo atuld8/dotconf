@@ -186,9 +186,12 @@ alias .bmr.num2ip..num='function af.num2ip { echo -n $(($(($(($((${1}/256))/256)
 alias .bmr.genbndl='bmrsavecfg -infoonly'
 
 # PostgreSQL
-alias .nb.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] &&  psql -h localhost -p $PGPORT -U $PGUSER -d NBDB -t -A '
-alias .bmr.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB -t -A '
-alias .bmr.psql.tbl=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB -t -A -c "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('"'"'pg_catalog'"'"', '"'"'information_schema'"'"');"'
+alias .nb.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] &&  psql -h localhost -p $PGPORT -U $PGUSER -d NBDB  -A '
+alias .bmr.psql=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB -A '
+alias .nb.psqlc=' [[ ! -z $PGPORT && ! -z $PGUSER ]] &&  psql -h localhost -p $PGPORT -U $PGUSER -d NBDB --no-psqlrc --pset border=2 --pset format=aligned -c'
+alias .bmr.psqlc=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB --no-psqlrc --pset border=2 --pset format=aligned -c '
+alias .bmr.psql.tbl=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d BMRDB --pset border=2 --pset format=aligned -t -A --no-psqlrc -c "SELECT schemaname || '"'"'.'"'"' || tablename FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('"'"'pg_catalog'"'"', '"'"'information_schema'"'"');"'
+alias .nb.psql.tbl=' [[ ! -z $PGPORT && ! -z $PGUSER ]] && psql -h localhost -p $PGPORT -U $PGUSER -d NBDB --pset border=2 --pset format=aligned -t -A --no-psqlrc -c "SELECT schemaname || '"'"'.'"'"' || tablename FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('"'"'pg_catalog'"'"', '"'"'information_schema'"'"');"'
 
 alias bp.kill_all='bp.kill_all -v -f'
 alias bp.start_all='bp.start_all -v -f'
