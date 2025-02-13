@@ -1,0 +1,6 @@
+alias alias eprint='ssh $NIS_USER@${NIS_SERVER} eprint'
+alias alias equery='ssh $NIS_USER@${NIS_SERVER} equery'
+alias alias eset='ssh $NIS_USER@${NIS_SERVER} eset'
+alias ecom.et.echomsg='function f() { ssh $NIS_USER@${NIS_SERVER} "echo \"${@:2}\" | ecom -B -i $1"; }; f'
+alias alias euserls='ssh $NIS_USER@${NIS_SERVER} euserls'
+alias alias x.eq='function af.equery_runner() { ssh $NIS_USER@${NIS_SERVER} equery $* | egrep "^INCIDENT|^[0-9]" |  awk -F"\t" -f ~/.vim/scripts/et_data_in_col.awk -v cols=*; }; af.equery_runner'
