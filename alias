@@ -24,6 +24,7 @@ source ~/.vim/alias.global
 #source ~/.vim/wincmds/alias_cygwin
 #source ~/.vim/wincmds/alias_nbu_cygwin
 #source ~/.vim/alias.mac
+#source ~/.vim/alias.remote
 
 
 if [ -f ~/.alias.tmp ]; then
