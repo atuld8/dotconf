@@ -39,7 +39,7 @@ alias vgrk='function af.vimgrok() { cmd=`echo $1 | awk -F'"'"'#'"'"' '"'"'{ prin
 alias hx='head -10'
 alias tx='tail -10'
 
-if [ -z $SCP_HOSTNAME ]; then export SCP_HOSTNAME=`hostname`; fi
+if [ -z $SCP_HOSTNAME ]; then export SCP_HOSTNAME=`hostname -f`; fi
 
 alias @vim='function af.atvim() { (cd ~/.vim && $@;); }; af.atvim'
 
