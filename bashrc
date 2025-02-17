@@ -148,13 +148,22 @@ GetNBUData ()
 
 GetNBUData
 
-nbuver ()
+.nb.ver ()
 {
     GetNBUData
     if [ "$OSName" = "SunOS" ]; then
         printf "$NBU_DATA_TERMINAL\n" | col
     else
         printf "$NBU_DATA_TERMINAL\n" | column -s ':' -t
+    fi
+}
+
+.nb.path ()
+{
+    if [ -f /usr/openv/netbackup/bin/bpcd ]; then
+        realpath /usr/openv/
+    else
+        echo "NetBackup is not installed."
     fi
 }
 
