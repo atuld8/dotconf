@@ -202,6 +202,8 @@
 @DOSKEY .vsc="C:\Users\atul.das1\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd"
 @DOSKEY .mr=more /E /T4 $*
 @DOSKEY .mrr=more /E /C /T4 $*
+@DOSKEY .psa=powershell -Command "Start-Process powershell -Verb RunAs"
+@DOSKEY .cmda=powershell -Command "Start-Process cmd -Verb RunAs"
 
 @DOSKEY cp.vp=echo^|set /p=%%VIMPASS%%^|clip
 @DOSKEY cp.accTkn=echo^|set /p=%%ACCESS_TOKEN%%^|clip
