@@ -114,7 +114,7 @@ GetNBUData
 .nb.path ()
 {
     if [ -f /usr/openv/netbackup/bin/bpcd ]; then
-        realpath /usr/openv/
+        echo "NetBackup installed path: " `realpath /usr/openv/`
     else
         echo "NetBackup is not installed."
     fi
