@@ -102,7 +102,7 @@
 @DOSKEY e.l.vimrc=%%CFG_EDITOR%% "%userprofile%\_vimrc"
 @DOSKEY e.hosts=%%CFG_EDITOR%% %SystemRoot%\System32\drivers\etc\hosts
 @DOSKEY e.rme=%%CFG_EDITOR%% %~dp0..\README.md
-@DOSKEY e.scratch=%%CFG_EDITOR%% "%userprofile%\scratch.txt"
+@DOSKEY e.spd=%%CFG_EDITOR%% "%userprofile%\scratchpad.txt"
 @DOSKEY e.key=%%CFG_EDITOR%% "%userprofile%\keyfile.txt"
 @DOSKEY e.enc=gvim --cmd "set key=%%VIMPASS%%" $*
 @DOSKEY e.tmp..x=%%CFG_EDITOR%% "%%temp%%\tmp$*.txt"
