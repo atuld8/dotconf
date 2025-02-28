@@ -202,7 +202,7 @@
 @DOSKEY .mr=more /E /T4 $*
 @DOSKEY .mrr=more /E /C /T4 $*
 @DOSKEY .psa=powershell -Command "Start-Process powershell -Verb RunAs"
-@DOSKEY .cmda=powershell -Command "Start-Process cmd -Verb RunAs"
+@DOSKEY .cmda=powershell -Command "Start-Process cmd -Verb RunAs -ArgumentList '/k cd /d %userprofile% & qcmd'"
 @DOSKEY .paths=cmd /v:on /c "for %%p in ("!path:;=" "!") do @echo %%~p | findstr /V /C:"ECHO is on""
 
 @DOSKEY cp.vp=echo^|set /p=%%VIMPASS%%^|clip
