@@ -26,7 +26,6 @@
 @DOSKEY history=Doskey /history $*
 @DOSKEY pushd=%~dp0pushd.cmd $*
 @DOSKEY popd=%~dp0pushd.cmd popd
-@DOSKEY paths=cmd /v:on /c "for %%p in ("!path:;=" "!") do @echo %%~p | findstr /V /C:"ECHO is on""
 @DOSKEY v=gvim $*
 @DOSKEY v++=gvim -c "set tags+=tags" -c "cs add cscope.out" $*
 @DOSKEY clr=cls^&dir /P /D $*
@@ -204,6 +203,7 @@
 @DOSKEY .mrr=more /E /C /T4 $*
 @DOSKEY .psa=powershell -Command "Start-Process powershell -Verb RunAs"
 @DOSKEY .cmda=powershell -Command "Start-Process cmd -Verb RunAs"
+@DOSKEY .paths=cmd /v:on /c "for %%p in ("!path:;=" "!") do @echo %%~p | findstr /V /C:"ECHO is on""
 
 @DOSKEY cp.vp=echo^|set /p=%%VIMPASS%%^|clip
 @DOSKEY cp.accTkn=echo^|set /p=%%ACCESS_TOKEN%%^|clip

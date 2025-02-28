@@ -19,7 +19,7 @@ cp.cwd=echo|set /p=%CD%$*|clip
 g=git $*
 e=gvim $*
 mcd=mkdir $* && cd /d $*
-paths=cmd /v:on /c "for %p in ("!path:;=" "!") do @echo %~p | findstr /V /C:"ECHO is on""
+.paths=cmd /v:on /c "for %p in ("!path:;=" "!") do @echo %~p | findstr /V /C:"ECHO is on""
 
 e.clink=notepad "%SYSTEMDRIVE%\Program Files (x86)\clink\0.4.9\clink.bat"
 e.l.apdk=notepad %userprofile%\alias_perm.doskey
