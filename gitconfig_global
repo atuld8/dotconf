@@ -167,6 +167,7 @@
     lstat = log --stat
     lnmo = log --name-only
     lgrp = log --all --grep
+    lgrp1 = !"git log --all --color --pretty=format:'%x1b[31m%h%x1b[0m %s (%x1b[32m%an%x1b[0m, %x1b[33m%cr%x1b[0m)' --grep" 
     lgrh0 = !"git lg1"
     lgrh1 = !"git lg1-specific --all"
     lgrh2 = !"git lg2-specific --all"
