@@ -300,4 +300,5 @@ alias a.?="alias | grep '^alias [a-z]='"
 alias a.??='alias | egrep "alias\s+\w?\w\>="'
 alias a.??l='alias | egrep "alias\s+\w*\w\>="'
 alias a.s='function af.a1() { alias | cut -d"=" -f1 | cut -d" " -f2 | grep "^$1"; }; af.a1'
+alias a.list='alias | sed -E "s/^alias ([^=]+)=.*/\1/"'
 
