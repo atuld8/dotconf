@@ -257,8 +257,8 @@ alias set.a.loc='. ~/.alias.loc'
 alias set.a.inst='. ~/.vim/scripts/definstallpathsaliases.sh'
 
 alias set.p..p='function af.set.p() { export PATH=$PATH:$@; }; af.set.p'
-alias set.p.list='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' '
-alias set.p.list.sort='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' | sort -u'
+alias .paths.list='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' '
+alias .paths.list.sort='echo $PATH | sed -e '"'"'s/:/\n/g'"'"' | sort -u'
 
 alias set.ps1='trap DEBUG; function af.set.ps1() { trap DEBUG; export PS1=$@ ; }; af.set.ps1'
 

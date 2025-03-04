@@ -253,9 +253,9 @@
 @DOSKEY set.p.dcbin=SET PATH=%~dp0bin;%~dp0..\scripts;%%PATH%%
 @DOSKEY set.p.py=SET PATH=%%LOCALAPPDATA%%\Programs\Python\Python310\;%%PATH%%
 
-@DOSKEY set.p.list=for /f "tokens=* delims=;" %%l in ('set /p ".=%path:"=%"^^^<NUL') do @SET pathlist=%%~l ^& cmd /v:on /c "for %%p in ("!pathlist:;=" "!") do @IF NOT ""%%~p"" == """" ( @IF NOT ""%%~p"" == "" "" @echo %%~p)"
-@DOSKEY set.p.list=cmd /v:on /c "SET PATHWithoutDQ=%%PATH:""=%% & for %%p in ("!PATHWithoutDQ:;=" "!") do @IF NOT ""%%~p"" == "" "" (@IF NOT ""%%~p"" == """" @echo %%~p| findstr /V /C:"ECHO is on")"
-@DOSKEY set.p.listdq=cmd /v:on /c "SET PATHWithoutDQ=%%PATH:""=%% & for %%p in ("!PATHWithoutDQ:;=" "!") do @IF NOT ""%%~p"" == "" "" (@IF NOT ""%%~p"" == ""  "" (@IF NOT ""%%~p"" == """" @echo "%%~p"))"
+@DOSKEY .paths.list=for /f "tokens=* delims=;" %%l in ('set /p ".=%path:"=%"^^^<NUL') do @SET pathlist=%%~l ^& cmd /v:on /c "for %%p in ("!pathlist:;=" "!") do @IF NOT ""%%~p"" == """" ( @IF NOT ""%%~p"" == "" "" @echo %%~p)"
+@DOSKEY .paths.list=cmd /v:on /c "SET PATHWithoutDQ=%%PATH:""=%% & for %%p in ("!PATHWithoutDQ:;=" "!") do @IF NOT ""%%~p"" == "" "" (@IF NOT ""%%~p"" == """" @echo %%~p| findstr /V /C:"ECHO is on")"
+@DOSKEY .paths.listdq=cmd /v:on /c "SET PATHWithoutDQ=%%PATH:""=%% & for %%p in ("!PATHWithoutDQ:;=" "!") do @IF NOT ""%%~p"" == "" "" (@IF NOT ""%%~p"" == ""  "" (@IF NOT ""%%~p"" == """" @echo "%%~p"))"
 
 @DOSKEY set.pmpt.cmdsep=SET MY_PROMPT_SHOULD_BE_SIMPLE=9^&SET PROMPT=--------- --------- --------- --------- --------- --------- --------- ---------$_Cmd$$$$$S
 
