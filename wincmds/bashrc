@@ -60,7 +60,7 @@ alias ...='af.cd () { cd ../../$1; }; af.cd'
 alias ....='af.cd () { cd ../../../$1; }; af.cd'
 alias .....='af.cd () { cd ../../../../$1; }; af.cd'
 alias clr="clear; pwd; ls -lrth"
-alias paths='echo -e ${PATH//:/\\n}'
+alias .paths='echo -e ${PATH//:/\\n}'
 
 # Define this before calling current file into bash
 #export PUNIN=''
