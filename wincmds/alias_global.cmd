@@ -192,10 +192,10 @@
 @DOSKEY .7z="%SYSTEMDRIVE%\Program Files\7-Zip\7z.exe" $*
 @DOSKEY .st3="%SYSTEMDRIVE%\Program Files\Sublime Text 3\sublime_text.exe" $*
 @DOSKEY .ff=FORFILES /S /C "cmd /c echo @path" $*
-@DOSKEY .mbxtrm.cwd="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -openfolder "%%cd%%" $*
-@DOSKEY .mbxtrm.tb="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -newtab $*
-@DOSKEY .mbxtrm.cmd="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -bookmark Cmd $*
-@DOSKEY .mbxtrm="%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" $*
+@DOSKEY .mbxtrm.cwd=IF EXIST "%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" ("%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -openfolder "%%cd%%" $*) ELSE ("%USERPROFILE%\bin\MobaXterm_Portable\MobaXterm.exe" -openfolder "%%cd%% $*)
+@DOSKEY .mbxtrm.tb=IF EXIST "%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" ("%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -newtab $*) ELSE ("%USERPROFILE%\bin\MobaXterm_Portable\MobaXterm.exe" -newtab $*)
+@DOSKEY .mbxtrm.cmd=IF EXIST "%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" ("%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" -bookmark Cmd $*) ELSE ("%USERPROFILE%\bin\MobaXterm_Portable\MobaXterm.exe" -bookmark Cmd $*)
+@DOSKEY .mbxtrm=IF EXIST "%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" ("%SYSTEMDRIVE%\Program Files (x86)\Mobatek\MobaXterm\MobaXterm.exe" $*) ELSE ("%USERPROFILE%\bin\MobaXterm_Portable\MobaXterm.exe" $*)
 @DOSKEY .hlp=$* 2^>^&1^| vim -R -
 @DOSKEY .as="C:\Program Files\Android\Android Studio\bin\studio64.exe"
 @DOSKEY .vsc="C:\Users\atul.das1\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd"
