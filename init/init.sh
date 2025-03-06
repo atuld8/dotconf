@@ -26,8 +26,12 @@ cp ~/.vim/psqlrc ~/.psqlrc
 source ~/.alias
 chmod 700 ~/.alias ~/.vimrc ~/.emacs ~/.vim ~/.ssh ~/.gitconfig ~/.tmux.conf ~/.screenrc ~/.bashrc ~/.export.var ~/.export.vrts ~/.alias.loc ~/.alias.tmp
 
-echo source ~/.vim/bashrc >>  ~/.bashrc
-#echo "echo source ~/.vim/wincmds/bashrc >>  ~/.bashrc for cygwin "
+if [[ "$OSTYPE" == "cygwin" ]]; then
+    echo "Running on Cygwin"
+    echo source ~/.vim/wincmds/bashrc >> ~/.bashrc
+else
+    echo source ~/.vim/bashrc >>  ~/.bashrc
+fi
 echo SetBasicTrap >> ~/.bashrc
 
 vim -c ":PluginInstall"
