@@ -8,6 +8,7 @@
 @REM echo off && call %userprofile%\.vim\wincmds\alias_bldbx.cmd %*
 
 @REM echo off && call %userprofile%\.vim\wincmds\alias_nbu.cmd %*
+@REM echo off && call %userprofile%\.vim\wincmds\alias_postgres.cmd %*
 @REM echo off && call %userprofile%\.vim\wincmds\alias_bmr.cmd %*
 @REM echo off && call %userprofile%\.vim\wincmds\alias_nbu_special.cmd %*
 @REM echo off && call %userprofile%\.vim\scripts\definstallpathsmacro.cmd %*

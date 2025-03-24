@@ -58,7 +58,7 @@
 @DOSKEY cd.oc=%~dp0cd.cmd "%%OC_INST_PATH%%"\OpsCenter\$*
 @DOSKEY cd.nb.volmgr=%~dp0cd.cmd "%%NBU_INST_PATH%%"volmgr\bin\$*
 @DOSKEY cd.nb.odb=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\$*
-@DOSKEY cd.nb.odb.bin=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\WIN64\$*
+@DOSKEY cd.nb.odb.bin=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\bin\$*
 @DOSKEY cd.nb.odb.conf.clust.loc=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\Conf\$*
 @DOSKEY cd.nb.odb.conf=%~dp0cd.cmd "%%NBU_CONF_PATH%%"NetBackupDB\Conf\$*
 @DOSKEY cd.nb.odb.log=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\log\$*
@@ -182,9 +182,9 @@
 REG query "HKEY_LOCAL_MACHINE\SOFTWARE\Veritas\NetBackup\CurrentVersion" >NUL 2>NUL
 IF %ERRORLEVEL% EQU 0 CALL :SET_NBU_PATHS
 
-@DOSKEY set.p.nb=@SET PATH=%%PATH%%;%%NBU_INST_PATH%%NetBackup\bin;%%NBU_INST_PATH%%NetBackup\bin\admincmd;%%NBU_INST_PATH%%NetBackup\bin\goodies;%%NBU_INST_PATH%%NetBackupDB\WIN64;%%NBU_INST_PATH%%Volmgr\bin;%%NBU_INST_PATH%%pdde;%%NBU_INST_PATH%%NetBackup\bin\support;%%NBU_INST_PATH%%NetBackup\wmc\bin;%%NBU_INST_PATH%%NetBackup\sec\at\bin;%%NBU_INST_PATH%%NetBackup\sec\az\bin;%%NBU_INST_PATH%%NetBackup\jre\bin;
+@DOSKEY set.p.nb=@SET PATH=%%PATH%%;%%NBU_INST_PATH%%NetBackup\bin;%%NBU_INST_PATH%%NetBackup\bin\admincmd;%%NBU_INST_PATH%%NetBackup\bin\goodies;%%NBU_INST_PATH%%NetBackupDB\WIN64;%%NBU_INST_PATH%%NetBackupDB\bin;%%NBU_INST_PATH%%Volmgr\bin;%%NBU_INST_PATH%%pdde;%%NBU_INST_PATH%%NetBackup\bin\support;%%NBU_INST_PATH%%NetBackup\wmc\bin;%%NBU_INST_PATH%%NetBackup\sec\at\bin;%%NBU_INST_PATH%%NetBackup\sec\az\bin;%%NBU_INST_PATH%%NetBackup\jre\bin;
 
-@IF NOT DEFINED ALREADY_SET_THE_NBU_PATH @SET PATH=%PATH%;%NBU_INST_PATH%NetBackup\bin;%NBU_INST_PATH%NetBackup\bin\admincmd;%NBU_INST_PATH%NetBackup\bin\goodies;%NBU_INST_PATH%NetBackupDB\WIN64;%NBU_INST_PATH%Volmgr\bin;%NBU_INST_PATH%pdde;%NBU_INST_PATH%NetBackup\bin\support;%NBU_INST_PATH%NetBackup\wmc\bin;%NBU_INST_PATH%NetBackup\sec\at\bin;%NBU_INST_PATH%NetBackup\sec\az\bin;%NBU_INST_PATH%NetBackup\jre\bin; && @SET ALREADY_SET_THE_NBU_PATH=1
+@IF NOT DEFINED ALREADY_SET_THE_NBU_PATH @SET PATH=%PATH%;%NBU_INST_PATH%NetBackup\bin;%NBU_INST_PATH%NetBackup\bin\admincmd;%NBU_INST_PATH%NetBackup\bin\goodies;%NBU_INST_PATH%NetBackupDB\WIN64;%NBU_INST_PATH%NetBackupDB\bin;%NBU_INST_PATH%Volmgr\bin;%NBU_INST_PATH%pdde;%NBU_INST_PATH%NetBackup\bin\support;%NBU_INST_PATH%NetBackup\wmc\bin;%NBU_INST_PATH%NetBackup\sec\at\bin;%NBU_INST_PATH%NetBackup\sec\az\bin;%NBU_INST_PATH%NetBackup\jre\bin; && @SET ALREADY_SET_THE_NBU_PATH=1
 
 @SET nb="%NBU_INST_PATH%NetBackup"
 @SET nbin="%NBU_INST_PATH%NetBackup\bin"
