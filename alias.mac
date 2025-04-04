@@ -4,6 +4,8 @@ alias mc.edit='open -a MacVim.app $*'
 alias mc.notesmv='open -a MacVim.app  $HOME/.notes_flist --args -n'
 alias mc.tags='cat ~/.tagfiles | grep Tag= | grep -v ".tagfiles" | sed -e"s/Tag=//"'
 alias mc.worknotes='(cd ~/workspace/worknotes.links/ && fzf --preview "bat --color=always {}" --prompt "Search Code: " --border --layout=reverse --bind "enter:execute(vim {})")'
+#alias mc.ps='ps -eo pid,ppid,args | grep "[v]im"' This will exclude the grep vim command from filter.
+alias mc.ps='ps -eo pid,ppid,args'
 
 
 alias mc.eclipse='$HOME/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse'
