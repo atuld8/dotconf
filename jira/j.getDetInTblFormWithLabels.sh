@@ -9,8 +9,7 @@ grep -E "^JiraID|^Summary|^Assignee|^Reporter|^IssueType|^IssueStatus|^Labels" |
 /^Reporter:/    { reporter = $2 }
 /^IssueType:/   { type = $2 }
 /^IssueStatus:/ { status = $2 }
-/^Labels:/      {
-    labels = ($0 == "" ? "No" : "Yes")
+/^Labels:/      { { sub(/^Labels:[ \t]*/, "", $0); labels = $0 }
     data[entry++] = id "|" summary "|" assignee "|" reporter "|" type "|" status "|" labels
     if (length(id) > max_id) max_id = length(id)
     if (length(summary) > max_summary) max_summary = length(summary)
@@ -28,7 +27,7 @@ END {
     header_reporter = length("Reporter")
     header_type     = length("Type")
     header_status   = length("Status")
-    header_labels   = length("HasLabels")
+    header_labels   = length("Labels")
 
     # Adjust final column widths
     max_id      = (max_id      > header_id      ? max_id      : header_id)
@@ -47,7 +46,7 @@ END {
     # Print header
     printf("| %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s |\n", \
         max_id, "JiraID", max_summary, "Summary", max_assignee, "Assignee", max_reporter, "Reporter", \
-        max_type, "Type", max_status, "Status", max_labels, "HasLabels")
+        max_type, "Type", max_status, "Status", max_labels, "Labels")
 
     # Print separator after header
     printf("|-%s-|-%s-|-%s-|-%s-|-%s-|-%s-|-%s-|\n", \
