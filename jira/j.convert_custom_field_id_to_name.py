@@ -47,7 +47,7 @@ def main(jira_json_file, field_mapping_file, output_file=None):
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    default_mapping_file = os.path.join(script_dir, "jira_field_id_name_map.json")
+    default_mapping_file = os.path.join(script_dir, "trkX/trkX.jira_field_id_name_map.json")
 
     if len(sys.argv) < 2 or len(sys.argv) > 4:
         print("Usage: python script.py <jira_json_file|-> [field_mapping_file] [output_file]")
