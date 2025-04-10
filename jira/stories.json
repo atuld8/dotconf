@@ -6,7 +6,7 @@
         "epic_link" : "epic_link",
         "watcher_group": "watcher_group1"
     },
-    "Multiple_entrie": [
+    "Multiple_entries": [
         { "summary" : "summary1",
           "description": "description1",
           "assignee": "user1"

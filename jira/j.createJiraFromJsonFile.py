@@ -133,7 +133,7 @@ def main():
 
     # Extract generic fields and multiple entries
     generic_data = data["Generic_field"]
-    multiple_entries = data["Multiple_entrie"]
+    multiple_entries = data["Multiple_entries"]
 
     create_multiple_stories(JIRA_PROJECT_KEY, multiple_entries, generic_data)
 
