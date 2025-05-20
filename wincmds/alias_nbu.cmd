@@ -61,7 +61,7 @@
 @DOSKEY cd.nb.odb.bin=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\bin\$*
 @DOSKEY cd.nb.odb.conf.clust.loc=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\Conf\$*
 @DOSKEY cd.nb.odb.conf=%~dp0cd.cmd "%%NBU_CONF_PATH%%"NetBackupDB\Conf\$*
-@DOSKEY cd.nb.odb.log=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\log\$*
+@DOSKEY cd.nb.odb.log=IF EXIST "%%NBU_INST_PATH%%"NetBackupDB\data\instance\log\ ( %~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\data\instance\log\$* ) ELSE ( %~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\log\$* )
 @DOSKEY cd.nb.odb.data.clust.loc=%~dp0cd.cmd "%%NBU_INST_PATH%%"NetBackupDB\data\$*
 @DOSKEY cd.nb.odb.data=%~dp0cd.cmd "%%NBU_CONF_PATH%%"NetBackupDB\data\$*
 @DOSKEY cd.nb.bkpcomp=%~dp0cd.cmd "%%NBU_INST_PATH%%"bkpcomp\$*
