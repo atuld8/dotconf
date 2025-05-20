@@ -33,6 +33,7 @@
 @DOSKEY l1=dir /b $*
 @DOSKEY la=dir /A /b $*
 @DOSKEY l=dir /A /D /N $*
+@DOSKEY ls=dir /A /D /N $*
 @DOSKEY lr=dir /A /S /B $*
 @DOSKEY ld=dir /A:D /B $*
 @DOSKEY lart=dir /A /O:D /B $*
