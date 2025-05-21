@@ -261,7 +261,7 @@
 @DOSKEY set.pmpt.cmdsep=SET MY_PROMPT_SHOULD_BE_SIMPLE=9^&SET PROMPT=--------- --------- --------- --------- --------- --------- --------- ---------$_Cmd$$$$$S
 
 @DOSKEY set.a=@echo off ^&^& @call %userprofile%\alias.cmd $* ^& @echo on
-@DOSKEY set.aqa=@echo off ^&^& @call %userprofile%\alias.cmd QUICK_ACCESS $* ^& @echo on
+@DOSKEY set.a..qa=@echo off ^&^& @call %userprofile%\alias.cmd QUICK_ACCESS $* ^& @echo on
 @DOSKEY set.a.dc=@echo off ^&^& @call %~dp0alias_dotconf.cmd $* ^& @echo on
 @DOSKEY set.a.doskey=@DOSKEY /MACROFILE=%userprofile%\alias.doskey
 @DOSKEY set.a.odd=@echo off ^&^& @call %~dp0alias_odd.cmd $* ^& @echo on

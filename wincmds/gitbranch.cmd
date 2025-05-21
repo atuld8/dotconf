@@ -23,6 +23,11 @@ IF %errorlevel%==0 (
     )
 )
 
+SET COMPUTERDETAILS=%COMPUTERNAME%
+IF "%USE_IP_IN_PROMPT%" == "1" (
+   FOR /f "tokens=2 delims=:" %%I in ('ipconfig ^| findstr /c:"IPv4 Address"') do @SET "COMPUTERDETAILS=%COMPUTERNAME%%%I"
+)
+
 @IF NOT DEFINED GIT_STATUS_LEVEL @SET GIT_STATUS_LEVEL=0
 
 IF %GIT_STATUS_LEVEL% LSS 0 GOTO END_OF_SCRIPT
@@ -80,30 +85,30 @@ set FINAL_GITBRANCH=%REPONAME% @%GITBRANCH% T:+%TRACKED_CHANGE% UT:+%UNTRACKED_C
 @IF "%MY_PROMPT_SHOULD_BE_SIMPLE%" == "9" GOTO END_OF_SCRIPT
 
 @IF "%MY_PROMPT_SHOULD_BE_SIMPLE%" == "1" (
-    prompt $C$D$S$T$F$S$M[%COMPUTERNAME%]$S$P$S$_%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S
+    prompt $C$D$S$T$F$S$M[%COMPUTERDETAILS%]$S$P$S$_%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S
 ) ELSE (
     @IF "%GITBRANCH%" == "" (
         @IF defined ConEmuDir (
-            prompt $C$D$S$T$F$S$E[m$E[32m$E]9;8;"USERNAME"$E\@$E]9;8;"COMPUTERNAME"$E\$S$P$S$E[0m$_Cmd$S$$$S
-            prompt $C$D$F$S$M[%COMPUTERNAME%]$S$P$S$_$T$SCmd$+$$$S
+            prompt $C$D$S$T$F$S$E[m$E[32m$E]9;8;"USERNAME"$E\@$E]9;8;"COMPUTERDETAILS"$E\$S$P$S$E[0m$_Cmd$S$$$S
+            prompt $C$D$F$S$M[%COMPUTERDETAILS%]$S$P$S$_$T$SCmd$+$$$S
         ) ELSE (
 
             @IF defined CLINK_DIR (
-                prompt $E[33m$C$D$S$T$F$S$E[32m$M$E[m$E[36m[%COMPUTERNAME%]$E[32m$S$P$S$_$E[33m%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S$E[0m
+                prompt $E[33m$C$D$S$T$F$S$E[32m$M$E[m$E[36m[%COMPUTERDETAILS%]$E[32m$S$P$S$_$E[33m%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S$E[0m
             ) ELSE (
-                prompt $C$D$S$T$F$S$M[%COMPUTERNAME%]$S$P$S$_%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S
+                prompt $C$D$S$T$F$S$M[%COMPUTERDETAILS%]$S$P$S$_%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S
             )
         )
     ) ELSE (
 
         @IF defined ConEmuDir (
             prompt $C$D$S$T$F$S$P$S$C$E[1;7;32;47m%FINAL_GITBRANCH%$E[0m$F $G
-            prompt $C$D$S$T$F$S$E[m$E[32m$E]9;8;"USERNAME"$E\@$E]9;8;"COMPUTERNAME"$E\$S$E[92m$P$S$C$E[1;7;32;47m%FINAL_GITBRANCH%$E[0m$F$_%SPECIAL_PRMPT_DATA_EX%$SCmd$S$$$S
+            prompt $C$D$S$T$F$S$E[m$E[32m$E]9;8;"USERNAME"$E\@$E]9;8;"COMPUTERDETAILS"$E\$S$E[92m$P$S$C$E[1;7;32;47m%FINAL_GITBRANCH%$E[0m$F$_%SPECIAL_PRMPT_DATA_EX%$SCmd$S$$$S
         ) ELSE (
         @IF defined CLINK_DIR (
-            prompt $E[33m$C$D$S$T$F$S$E[32m$M$E[m$E[36m[%COMPUTERNAME%]$E[32m$S$P$S$E[33m$C%FINAL_GITBRANCH%$F$_$E[33m%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S$E[0m
+            prompt $E[33m$C$D$S$T$F$S$E[32m$M$E[m$E[36m[%COMPUTERDETAILS%]$E[32m$S$P$S$E[33m$C%FINAL_GITBRANCH%$F$_$E[33m%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S$E[0m
         ) ELSE (
-            prompt $C$D$S$T$F$S$M[%COMPUTERNAME%]$S$P$S$C%FINAL_GITBRANCH%$F$_%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S
+            prompt $C$D$S$T$F$S$M[%COMPUTERDETAILS%]$S$P$S$C%FINAL_GITBRANCH%$F$_%SPECIAL_PRMPT_DATA_EX%Cmd$+$$$S
             )
         )
     )
