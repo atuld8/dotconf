@@ -178,6 +178,8 @@
     llg = log --color --graph --pretty=format:'%C(bold white)%H %d%Creset%n%s%n%+b%C(bold blue)%an <%ae>%Creset %C(bold green)%cr (%ci)' --abbrev-commit
     lnomrgd = "!git log \"$(git rev-parse --abbrev-ref HEAD)\" -not master --stat"
     lcmtbyme = !"git log --author=$GIT_USER"
+    lnoc = log  --no-merges -i --invert-grep --grep=copyright
+    lnocdt = log --no-merges -i --invert-grep --grep=copyright --pretty=format:'%ad [%h] (%an): %s' --date=short
 
     lg1-specific = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(bold yellow)%d%C(reset)'
     lg2-specific = log --graph --abbrev-commit --decorate --format=format:'%C(bold blue)%h%C(reset) - %C(bold cyan)%aD%C(reset) %C(bold green)(%ar)%C(reset)%C(bold yellow)%d%C(reset)%n''          %C(white)%s%C(reset) %C(dim white)- %an%C(reset)'
@@ -228,6 +230,8 @@
     rborgon2br= "!f_rborgbr() { git fetch origin ${2:-master} && git rebase --onto $1 origin/${2:-master}; }; f_rborgbr"
     rbsftorgbr= "!f_rbsftrp() { git diff --cached && git reset --soft `git merge-base HEAD origin/${1:-master}` && git diff --cached --name-only; }; f_rbsftrp"
 
+    sl = shortlog
+    slnoc = shortlog  --no-merges -i --invert-grep --grep=copyright
     st = status
     stSB = status --short --branch
     stuall = status -u
@@ -278,3 +282,4 @@
     ; list of user modified the file or folder
     authors1 = shortlog -n -s --
     authors2 = log --pretty=format:"%an%x09"
+    authors3 = shortlog -s -n --no-merges -i --invert-grep --grep="copyright" --pretty="%an"
