@@ -67,7 +67,8 @@ alias ..='af.cd1 () { cd ../$1; }; af.cd1'
 alias ...='af.cd2 () { cd ../../$1; }; af.cd2'
 alias ....='af.cd3 () { cd ../../../$1; }; af.cd3'
 alias .....='af.cd4 () { cd ../../../../$1; }; af.cd4'
-alias clr="clear; pwd; ls -lrth"
+alias clr="clear; pwd; ls -rth"
+alias cllr="clear; pwd; ls -lrth"
 alias .paths='echo -e ${PATH//:/\\n}'
 
 # User specific aliases and functions
