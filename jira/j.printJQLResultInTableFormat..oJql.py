@@ -93,7 +93,7 @@ def print_issues_in_table_format(issues, excludeCols):
         assignee = issue['fields']['assignee']['displayName'] if issue['fields']['assignee'] else 'Unassigned'
         reporter = issue['fields']['reporter']['displayName'] if issue['fields']['reporter'] else 'Unknown'
         priority = issue['fields']['priority']['name'] if issue['fields']['priority']['name'] else 'NA'
-        severity = issue['fields']['customfield_16006']['value'] if issue['fields']['customfield_16006']['value'] else 'NA'
+        severity = issue['fields']['customfield_16006']['value'] if issue['fields']['customfield_16006'] and issue['fields']['customfield_16006']['value'] else 'NA'
         issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
         labels = ', '.join(issue['fields']['labels']) if issue['fields']['labels'] else '-'
         epic_link = issue['fields']['customfield_10001'] if issue['fields']['customfield_10001'] else '-'
