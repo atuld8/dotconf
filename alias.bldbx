@@ -11,6 +11,7 @@ alias x.epreebdet='function af.eprint_eebdet() { eprint -c $1  | awk '"'"'/This 
 alias x.eprsuper='function af.eprint_super() { eprint -vdK $1 | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -i eprint -vdK  {}; }; af.eprint_super'
 alias x.eprlastCmt='function af.eprint_lastcmt() { eprint -c $1 | tac | awk '"'"'! flag; /\([0-9]*\) @ /{flag = 1};'"'"' | tac; }; af.eprint_lastcmt'
 alias x.eqls='equery | column -t -s ","'
+alias x.eqpr='equery -p '
 alias x.eq='function af.equery_runner() { COLS="cols=*"; EQ_EXTRA_ARGS=""; if [[ $2 == cols* ]] ; then COLS="$2"; fi; if [ "$2" == "-u" ] ; then EQ_EXTRA_ARGS="$2 $3"; fi; equery $EQ_EXTRA_ARGS $1 | egrep "^INCIDENT|^[0-9]" |  awk -F"\t" -f ~/.vim/scripts/et_data_in_col.awk -v $COLS; }; af.equery_runner'
 alias x.eqlmtclm='function af.x.eqlim() {  x.eq $1 cols=INCIDENT,ABSTRACT,VERSION,TYPE,STATE; }; af.x.eqlim'
 alias x.geteebverfrombin='function af.geteebver () { for f in `find $1  -iname $2 -o -iname $2.exe -o -iname $2.dll -o -iname $2.so`; do echo $f; strings -a $f | grep EEB;done; }; af.geteebver'
