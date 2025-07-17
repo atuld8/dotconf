@@ -357,7 +357,7 @@ alias lld='ls --color=always -al | grep --color=never "^d"'
 alias lll='ls -la | less -X'
 alias lart='ls -ACFrt'
 alias lrt='ls -CFrt'
-alias llrt='ls -lCFrt'
+alias llrt='ls -lFrt'
 alias dir='ls -l'
 alias grep='grep --color'
 
