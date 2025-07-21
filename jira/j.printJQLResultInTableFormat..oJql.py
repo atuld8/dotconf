@@ -51,7 +51,14 @@ args = parser.parse_args()
 
 # Function to get issues by JQL
 def get_issues_by_jql(jql):
+    """Fetches issues from Jira based on the provided JQL query.
 
+    Args:
+        jql (str): The JQL query to execute.
+
+    Returns:
+        list: A list of issues returned by the JQL query, or an empty list if an error occurs.
+    """
     try:
         url = f'{JIRA_URL}/rest/api/2/search'
         params = {
@@ -80,9 +87,13 @@ def get_issues_by_jql(jql):
         return []
 
 
-# Function to get issues by JQL
 def print_issues_in_table_format(issues, excludeCols):
+    """Prints the issues in a table format.
 
+    Args:
+        issues (list): The list of issues to display.
+        excludeCols (list): The list of columns to exclude from the display.
+    """
     # Extract the relevant data into a list of dictionaries
     data = []
 
@@ -141,9 +152,8 @@ def print_issues_in_table_format(issues, excludeCols):
     # print(table.get_html_string())
 
 
-# Main function
 def main():
-
+    """ Main function """
     issues = get_issues_by_jql(args.jql)
 
     if not issues:
