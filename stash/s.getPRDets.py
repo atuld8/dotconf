@@ -66,16 +66,19 @@ def get_pull_request_details(repo_name, pr_num):
             if files_response.status_code == 200:
                 files_data = files_response.json()
                 print("\nFiles Changed:")
+                max_length = 10
                 for file in files_data.get("diffs", []):
-                    #print(f"- Source: {file.get('source', {}).get('toString', 'N/A')}\t\t- destination: {file.get('destination', {}).get('toString', 'N/A')}")
-                    #print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
-                    #print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
+                    source = file.get('source') or {'toString': 'N/A'}
+                    max_length = max(max_length, len(source.get('toString', '')))
+                for file in files_data.get("diffs", []):
+                    # print(f"- Source: {file.get('source', {}).get('toString', 'N/A')}\t\t- destination: {file.get('destination', {}).get('toString', 'N/A')}")
+                    # print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
+                    # print(f"- Source: {file.get('source', {}).get('toString', 'N/A').ljust(50)}\t- Destination: {file.get('destination', {}).get('toString', 'N/A')}")
 
                     source = file.get('source') or {'toString': 'N/A'}
                     destination = file.get('destination') or {'toString': 'N/A'}
 
-                    print(f"- Source: {source.get('toString', 'N/A').ljust(50)}\t- Destination: {destination.get('toString', 'N/A')}")
-
+                    print(f"- Source: {source.get('toString', 'N/A').ljust(max_length)}\t- Destination: {destination.get('toString', 'N/A')}")
 
             else:
                 print("Error fetching files.")
