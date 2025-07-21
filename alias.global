@@ -231,7 +231,7 @@ alias set.gst.full='export GIT_STATUS_LEVEL=3'
 alias set.gbase='export gbase=`git rev-parse --show-toplevel`'
 alias set.histrydata='export HISTTIMEFORMAT="%d/%m/%y %T "'
 alias set.es='export es='"'"'echo -e \n-------------------------------------- -------------------------------------- --------------------------------------\n '"'"''
-alias set.sthtkn='function af.sthtkn() { export GIT_TOKEN="$@"; echo "echo `date`" > ~/.accessSthTkn; echo "export GIT_TOKEN=\"$GIT_TOKEN\"" >> ~/.accessSthTkn; cat ~/.accessSthTkn; }; af.sthtkn'
+alias set.sthtkn..tkn='function af.sthtkn() { export GIT_TOKEN="$@"; echo "echo `date`" > ~/.accessSthTkn; echo "export GIT_TOKEN=\"$GIT_TOKEN\"" >> ~/.accessSthTkn; cat ~/.accessSthTkn; }; af.sthtkn'
 
 if [ -z "$CFG_EDITOR" ]; then export CFG_EDITOR=vim; fi;
 
