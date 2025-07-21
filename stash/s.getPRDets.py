@@ -47,9 +47,20 @@ def get_pull_request_details(repo_name, pr_num):
             print(f"Target Branch:  {pr_data['toRef']['displayId']}")
             print(f"Status:         {pr_data['state']}")
 
+            reviewers = ""
+            for reviewer in pr_data.get("reviewers", []):
+                reviewers = reviewers + reviewer['user']['name'] + ", "
+            print(f"Reviewers:      {reviewers}")
+
+            print(f"WebPR Links:    {pr_data['links']['self'][0]['href']}")
+
             # Get the list of files in the PR
             files_url = f"{url}/diff"
             print(f"PR links:       {files_url}")
+            print("Descriptions:   ")
+            print("--------------------------------------")
+            print(f"{pr_data['description']}")
+            print("--------------------------------------")
             files_response = requests.get(files_url, headers=headers, timeout=20)
 
             if files_response.status_code == 200:
