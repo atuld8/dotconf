@@ -1,5 +1,8 @@
 #!/bin/bash
-# Ex: for j in ABC-242332, ABC-241401, ABC-242929, ABC-241522, ABC-241528, ABC-241533; do echo $j | tr ',' ' ' | while read f; do j.getDet $f; done; done | ./j.getDetInTblForm.sh
+#
+# Ex: for j in ABC-242332, ABC-241401, ABC-242929, ABC-241522, ABC-241528, ABC-241533; \
+# do echo $j | tr ',' ' ' | while read f; do j.getDet $f; done; done | ./j.getDetInTblForm.sh
+#
 # Ex: j.getDet ABC-242332  | ./j.getDetInTblForm.sh
 
 grep -E "^JiraID|^Summary|^Assignee|^Reporter|^IssueType|^IssueStatus|^Labels" | awk '
