@@ -1,5 +1,22 @@
 #!/bin/bash
 #
+# This script provides functionality for <describe what the script does>.
+#
+# Usage:
+#   ./<script_name> [options]
+#
+# Options:
+#   -h, --help    Show this usage message and exit.
+#
+# Example:
+#   ./<script_name> -h
+#
+# To print the usage on screen, call the usage method:
+#   usage
+#
+# The 'usage' method displays this help message and exits the script.
+# Function
+#
 
 #Set below env before using it
 #export JIRA_ACC_TOKEN='tkn'
@@ -9,12 +26,45 @@
 
 # Arguments
 JIRA_ID=$1
-NEW_EPIC_ID=$2
+NEW_EPIC_ID=${2:-$JIRA_EPIC_LINK}
+
+echo "JIRA_ID set to: $JIRA_ID"
+if [[ -n "$2" ]]; then
+    echo "NEW_EPIC_ID set to (from argument): $NEW_EPIC_ID"
+else
+    echo "NEW_EPIC_ID set to (from JIRA_EPIC_LINK env): $NEW_EPIC_ID"
+fi
 
 
-#
-# Function
-#
+usage() {
+    echo "Usage: $0 <JIRA_ID> [EPIC_ID]"
+    echo ""
+    echo "Sets the Epic Link for a given Jira ticket."
+    echo ""
+    echo "Arguments:"
+    echo "  JIRA_ID      The Jira issue ID to update."
+    echo "  EPIC_ID      (Optional) The Epic issue ID to set as the Epic Link."
+    echo ""
+    echo "Environment Variables:"
+    echo "  JIRA_ACC_TOKEN     Jira API access token."
+    echo "  JIRA_SERVER_NAME   Jira server domain (e.g., yourcompany.atlassian.net)."
+    echo "  JIRA_PROJECT_NAME  Jira project key."
+    echo "  JIRA_EPIC_LINK     Default Epic issue ID."
+    echo ""
+    echo "Example:"
+    echo "  $0 PROJ-1234 EPIC-5678"
+    exit 0
+}
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+fi
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+    echo "Error: Invalid number of arguments."
+    usage
+fi
+
 generatePostDataToUpdateEpicLink() {
   _JIRA_FIELD_ID=$1
   shift
@@ -87,29 +137,29 @@ set_epic_link_to_jira_ticket() {
 
 
 #
-# Main start here
-#
-if [ "$JIRA_ACC_TOKEN" == "" ]; then
-    echo "JIRA_ACC_TOKEN not defined"
-    exit 1
-fi
+# Main starts here
 
-if [ "$JIRA_SERVER_NAME" == "" ]; then
-    echo "JIRA_SERVER_NAME not defined"
-    exit 1
-fi
+# Function to check required environment variables and arguments
+check_required_vars() {
+    local missing_vars=()
 
+    [[ -z "$JIRA_ACC_TOKEN" ]] && missing_vars+=("JIRA_ACC_TOKEN")
+    [[ -z "$JIRA_SERVER_NAME" ]] && missing_vars+=("JIRA_SERVER_NAME")
+    [[ -z "$JIRA_ID" ]] && missing_vars+=("JIRA_ID argument")
+    [[ -z "$NEW_EPIC_ID" ]] && missing_vars+=("EPIC_ID argument")
 
-if [ "$JIRA_ID" == "" ]; then
-    echo "Please pass the JIRA_ID with this script"
-    exit 1
-fi
+    if (( ${#missing_vars[@]} )); then
+        echo "Error: Missing required value(s): ${missing_vars[*]}"
+        usage
+        exit 1
+    fi
+}
 
-if [ "$NEW_EPIC_ID" == "" ]; then
-    echo "Please pass the EPIC_ID with this script"
-    exit 1
-fi
+# Function to run the main logic
+main() {
+    check_required_vars
+    set_epic_link_to_jira_ticket
+}
 
-
-# set the epic link
-set_epic_link_to_jira_ticket
+# Run main
+main
