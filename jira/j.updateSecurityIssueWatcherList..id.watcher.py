@@ -10,9 +10,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
-JIRA_PROJECT_KEY    = os.getenv('JIRA_PROJECT_KEY')
+JIRA_SERVER_NAME = os.getenv('JIRA_SERVER_NAME')
+JIRA_API_TOKEN   = os.getenv('JIRA_ACC_TOKEN')
+JIRA_PROJECT_KEY = os.getenv('JIRA_PROJECT_KEY')
+
+if not JIRA_SERVER_NAME or not JIRA_API_TOKEN or not JIRA_PROJECT_KEY:
+    raise EnvironmentError(
+        "One or more required environment variables are missing: "
+        "JIRA_SERVER_NAME, JIRA_ACC_TOKEN, JIRA_PROJECT_KEY"
+    )
+
+JIRA_URL = f"https://{JIRA_SERVER_NAME}"
 
 JIRA_SEC_ISSUE_WATCHER_CUST_ID = "customfield_15901"
 
@@ -182,7 +190,21 @@ def update_ticket_with_final_list(ticket_id, final_watcher_list):
 
 
 # Function to update the security watchers list for the Jira id
-def update_watchers(ticket_id, add_list, remove_list, dry_run):
+def update_watchers(args):
+    """
+    Update the security watchers for a Jira issue.
+
+    Args:
+        args (Namespace): Command-line arguments containing:
+            - jira_id (str): The ID of the Jira issue.
+            - add (list of str): List of users to add as watchers.
+            - remove (list of str): List of users to remove from watchers.
+            - dry_run (bool): Flag to skip calling the update method (dry run).
+    """
+    ticket_id = args.jira_id
+    add_list = args.add
+    remove_list = args.remove
+    dry_run = args.dry_run
 
     original_watcher_list = get_current_sec_issue_watcher_list(ticket_id)
 
@@ -196,23 +218,43 @@ def update_watchers(ticket_id, add_list, remove_list, dry_run):
     final_watcher_names = [watcher["name"] for watcher in watcher_list_after_add]
     print(f"List of watchers after update  : {final_watcher_names}")
 
-    if dry_run == False:
-       if set(original_watchers_name) != set(final_watcher_names):
+    if not dry_run:
+        if set(original_watchers_name) != set(final_watcher_names):
             update_ticket_with_final_list(ticket_id, watcher_list_after_add)
-       else:
+        else:
             print("\nNothing to update as both list are identicals.")
 
 
 
-# Main
-def print_watchers(get_current_sec_issue_watcher_list, args):
+def print_watchers(args):
+    """
+    Prints the list of current security watchers for a specified JIRA issue.
+
+    Args:
+        args (Namespace):
+            An object containing command-line arguments, expected to have a 'jira_id' attribute.
+
+    Returns:
+        None
+    """
     current_watchers = get_current_sec_issue_watcher_list(args.jira_id)
     watcher_names = [watcher["name"] for watcher in current_watchers]
     print(f"Current security watchers for {args.jira_id}: {watcher_names}")
 
-if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='Get Jira Epic details by ID. <script> XXX-1234 -a add.user3 add.user4 -r remove.user1 remove.user2 -d -l') 
+def parse_jira_watchers_args():
+    """
+    Parses command-line arguments for managing Jira issue watchers.
+
+    Returns:
+        argparse.Namespace: Parsed arguments containing:
+            jira_id (str): The ID of the Jira issue.
+            add (list of str): List of users to add as watchers.
+            remove (list of str): List of users to remove from watchers.
+            list (bool): Flag to display the list of existing watchers.
+            dry_run (bool): Flag to skip calling the update method (dry run).
+    """
+    parser = argparse.ArgumentParser(description='Get Jira Epic details by ID. <script> XXX-1234 -a add.user3 add.user4 -r remove.user1 remove.user2 -d -l')
     parser.add_argument('jira_id', type=str, help='The ID of the Jira')
     parser.add_argument('-a', "--add", nargs="*", default=[], help="List of Users to add")
     parser.add_argument("-r", "--remove", nargs="*", default=[], help="List of Users to remove")
@@ -220,8 +262,14 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dry-run", action="store_true", help="Skip calling the update method")
 
     args = parser.parse_args()
+    return args
+
+# Main function to execute the script
+if __name__ == "__main__":
+
+    args = parse_jira_watchers_args()
 
     if args.list:
-        print_watchers(get_current_sec_issue_watcher_list, args)
+        print_watchers(args)
     else:
-        update_watchers(args.jira_id, args.add, args.remove, args.dry_run)
+        update_watchers(args)
