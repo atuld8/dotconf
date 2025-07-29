@@ -25,6 +25,21 @@ headers = {
 
 # Function to get the securirty watchers list for the Jira id
 def get_current_sec_issue_watcher_list(ticket_id):
+    """
+    Fetches the current list of security issue watchers for a given Jira ticket.
+
+    Args:
+        ticket_id (str): The ID of the Jira ticket to retrieve watcher information for.
+
+    Returns:
+        list: A list of current watchers associated with the security issue custom field.
+
+    Raises:
+        SystemExit: If the request to the Jira API fails (non-200 status code).
+
+    Side Effects:
+        Prints status messages indicating success or failure of the API request.
+    """
 
     # Jira API endpoint for updating assignee
     issue_url = f'{JIRA_URL}/rest/api/2/issue/{ticket_id}'
@@ -47,6 +62,18 @@ def get_current_sec_issue_watcher_list(ticket_id):
 
 # Function to get the user details
 def get_user_details(user):
+    """
+    Fetches the details of a specified user from the JIRA API.
+
+    Args:
+        user (str): The username of the user whose details are to be retrieved.
+
+    Returns:
+        dict: A dictionary containing the user's details as returned by the JIRA API.
+
+    Raises:
+        SystemExit: If the API request fails (i.e., response status code is not 200).
+    """
 
     user_url  = f'{JIRA_URL}/rest/api/2/user?username={user}'
 
@@ -57,7 +84,11 @@ def get_user_details(user):
     if response.status_code == 200:
         print(f'Successfully received data for the user {user}')
     else:
-        print(f'Failed to receive data for the user {user}. Status code: {response.status_code}, Response: {response.text}')
+        print(
+            f'Failed to receive data for the user {user}. '
+            f'Status code: {response.status_code}, '
+            f'Response: {response.text}'
+        )
         sys.exit()
 
     user_details = response.json()
@@ -67,9 +98,22 @@ def get_user_details(user):
 
 # Function to update watcher list by removing entries
 def delete_watchers_from_list(watcher_list, remove_list):
+    """
+    Removes watchers from the given watcher list based on a list of users to remove.
+
+    Args:
+        watcher_list (list): A list of watcher dictionaries, each containing at least 'self' and 'name' keys.
+        remove_list (list): A list of user identifiers (e.g., usernames) to be removed from the watcher list.
+
+    Returns:
+        list: The updated watcher list with specified users removed.
+
+    Note:
+        This function relies on an external function `get_user_details(user)` that should return a dictionary
+        with at least 'self' and 'name' keys for the given user.
+    """
     # Check if the new watcher is already in the list
     watcher_urls = [watcher['self'] for watcher in watcher_list]
-    watcher_updated_list = []
 
     for user in remove_list:
         user_details = get_user_details(user)
@@ -87,6 +131,20 @@ def delete_watchers_from_list(watcher_list, remove_list):
 
 # Function to update watcher list by adding entries
 def add_watchers_to_list(watcher_list, add_list):
+    """
+    Adds new watchers to the existing watcher list if they are not already present.
+
+    Args:
+        watcher_list (list): A list of dictionaries representing current watchers. Each dictionary must contain a 'self' key with the watcher's unique URL.
+        add_list (list): A list of user identifiers (e.g., usernames) to be added as watchers.
+
+    Returns:
+        list: The updated watcher list including any new watchers added.
+
+    Notes:
+        - Uses the get_user_details(user) function to retrieve user details for each user in add_list.
+        - Prints a message for each user indicating whether they were added or already present.
+    """
     # Check if the new watcher is already in the list
     watcher_urls = [watcher['self'] for watcher in watcher_list]
 
@@ -147,14 +205,23 @@ def update_watchers(ticket_id, add_list, remove_list, dry_run):
 
 
 # Main
+def print_watchers(get_current_sec_issue_watcher_list, args):
+    current_watchers = get_current_sec_issue_watcher_list(args.jira_id)
+    watcher_names = [watcher["name"] for watcher in current_watchers]
+    print(f"Current security watchers for {args.jira_id}: {watcher_names}")
+
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='Get Jira Epic details by ID. <script> XXX-1234 -a add.user3 add.user4 -r remove.user1 remove.user2 -d') 
+    parser = argparse.ArgumentParser(description='Get Jira Epic details by ID. <script> XXX-1234 -a add.user3 add.user4 -r remove.user1 remove.user2 -d -l') 
     parser.add_argument('jira_id', type=str, help='The ID of the Jira')
     parser.add_argument('-a', "--add", nargs="*", default=[], help="List of Users to add")
     parser.add_argument("-r", "--remove", nargs="*", default=[], help="List of Users to remove")
+    parser.add_argument("-l", "--list", action="store_true", help="Display the list of existing watchers")
     parser.add_argument("-d", "--dry-run", action="store_true", help="Skip calling the update method")
 
     args = parser.parse_args()
 
-    update_watchers(args.jira_id, args.add, args.remove, args.dry_run)
+    if args.list:
+        print_watchers(get_current_sec_issue_watcher_list, args)
+    else:
+        update_watchers(args.jira_id, args.add, args.remove, args.dry_run)
