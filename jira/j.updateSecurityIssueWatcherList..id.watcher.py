@@ -59,7 +59,11 @@ def get_current_sec_issue_watcher_list(ticket_id):
     if response.status_code == 200:
         print(f'Successfully received data for the issue {ticket_id}')
     else:
-        print(f'Failed to receive data for the issue. Status code: {response.status_code}, Response: {response.text}')
+        print(
+            f'Failed to receive data for the issue. '
+            f'Status code: {response.status_code}, '
+            f'Response: {response.text}'
+        )
         sys.exit()
 
     issue_details = response.json()
@@ -160,10 +164,16 @@ def add_watchers_to_list(watcher_list, add_list):
         user_details = get_user_details(user)
 
         if user_details['self'] in watcher_urls:
-            print(f"{user_details['name']} : {user_details['self']} is already in the security watcher list.")
+            print(
+                f"{user_details['name']} : {user_details['self']} "
+                "is already in the security watcher list."
+            )
             continue
 
-        print(f"Adding {user_details['name']} : {user_details['self']} to the security watcher list.")
+        print(
+            f"Adding {user_details['name']} : {user_details['self']} "
+            "to the security watcher list."
+        )
         # Add the new watcher to the list
         watcher_list.append(user_details)
 
@@ -254,15 +264,41 @@ def parse_jira_watchers_args():
             list (bool): Flag to display the list of existing watchers.
             dry_run (bool): Flag to skip calling the update method (dry run).
     """
-    parser = argparse.ArgumentParser(description='Get Jira Epic details by ID. <script> XXX-1234 -a add.user3 add.user4 -r remove.user1 remove.user2 -d -l')
-    parser.add_argument('jira_id', type=str, help='The ID of the Jira')
-    parser.add_argument('-a', "--add", nargs="*", default=[], help="List of Users to add")
-    parser.add_argument("-r", "--remove", nargs="*", default=[], help="List of Users to remove")
-    parser.add_argument("-l", "--list", action="store_true", help="Display the list of existing watchers")
-    parser.add_argument("-d", "--dry-run", action="store_true", help="Skip calling the update method")
+    parser = argparse.ArgumentParser(
+        description=(
+            'Get Jira Epic details by ID. '
+            '<script> XXX-1234 '
+            '-a add.user3 add.user4 '
+            '-r remove.user1 remove.user2 '
+            '-d -l'
+        )
+    )
+    parser.add_argument(
+        "jira_id",
+        type=str,
+        help="The ID of the Jira")
+    parser.add_argument(
+        "-a", "--add",
+        nargs="*",
+        default=[],
+        help="List of Users to add")
+    parser.add_argument(
+        "-r", "--remove",
+        nargs="*",
+        default=[],
+        help="List of Users to remove")
+    parser.add_argument(
+        "-l", "--list",
+        action="store_true",
+        help="Display the list of existing watchers")
+    parser.add_argument(
+        "-d", "--dry-run",
+        action="store_true",
+        help="Skip calling the update method")
 
-    args = parser.parse_args()
-    return args
+    parsed_args = parser.parse_args()
+
+    return parsed_args
 
 # Main function to execute the script
 if __name__ == "__main__":
