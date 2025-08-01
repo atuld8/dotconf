@@ -41,4 +41,5 @@ alias d.gc='vim -d ~/.gitconfig ~/.vim/gitconfig'
 alias d.awa='vim -c "vsp ~/.vim/alias" ~/.vim/wincmds/alias.cmd'
 alias d.awag='vim -c "vsp ~/.vim/alias" -c "vsp ~/.vim/gitconfig_global" ~/.vim/wincmds/alias_global.cmd'
 alias d.bwbsb='vim -c "vsp ~/.vim/bashrc" -c "vsp ~/.vim/scripts/.bashrc.sh" ~/.vim/wincmds/bashrc'
+alias d.exprts='for f in export.var export.vrts; do vim -d ~/.$f ~/.vim/$f; done;'
 
