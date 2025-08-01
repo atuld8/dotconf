@@ -9,4 +9,5 @@
 # export DOTCONF_HOSTNAME=
 # export SPECIAL_PRMPT_DATA='T/B/L/E '
 # export CSCOPE_EDITOR=vim
+# export op="$HOME/op"
 
