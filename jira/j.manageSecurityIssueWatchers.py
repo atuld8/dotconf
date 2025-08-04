@@ -298,6 +298,10 @@ def parse_jira_watchers_args():
 
     parsed_args = parser.parse_args()
 
+    # If no operation flags are passed, default to --list
+    if not (parsed_args.add or parsed_args.remove or parsed_args.list):
+        parsed_args.list = True
+
     return parsed_args
 
 # Main function to execute the script
