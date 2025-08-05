@@ -3,6 +3,7 @@ return {
   "tpope/vim-fugitive",
   "vim-scripts/perl-support.vim",
   "vim-scripts/ZoomWin",
+  { "ascenator/L9", name = "L9" },
   "haya14busa/incsearch-fuzzy.vim",
   "vim-scripts/TaskList.vim",
   "sjl/gundo.vim",
@@ -44,7 +45,11 @@ return {
   "othree/html5.vim",
   "godlygeek/tabular",
   "junegunn/vim-easy-align",
-  "vim-scripts/Align",
+  { "vim-scripts/Align",
+  config = function()
+	  vim.cmd("unmap \\tt") -- or redefine it
+  end,
+  },
   "scrooloose/nerdcommenter",
   "tomtom/tcomment_vim",
   "mbbill/undotree",
