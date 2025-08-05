@@ -209,10 +209,10 @@ alias .dushlog='function af.dushlog() { date +"%Y.%m.%d %H.%M.%S" | tee du.sh.lo
 alias .json='python -mjson.tool'
 alias .json.paths='jq -r '"'"' paths(scalars) as $p | [ ( [ $p[] | tostring ] | join(".") ) , ( getpath($p) | tojson ) ] | join(": ")'"'"''
 alias .jq.keys='jq '"'"'path(..) | map(tostring) | join(".")'"'"''
-alias .fzf="fzf --border --preview 'command -v bat &>/dev/null && bat --style=numbers --color=always --line-range=:100 {} || less -R {}' \
+alias .fzf="fzf --border --preview 'command -v bat &>/dev/null && bat --style=header,numbers --color=always --line-range=:100 {} || less -R {}' \
     --bind 'enter:execute(vim {})' \
-        --bind 'ctrl-o:execute(command -v bat &>/dev/null && bat --style=numbers --color=always {} || less -I -g -r {})'"
-alias .bt='bat --style=numbers --color=always --paging=always --tabs=4 --wrap=auto'
+        --bind 'ctrl-o:execute(command -v bat &>/dev/null && bat --style=header,numbers --color=always {} || less -I -g -r {})'"
+alias .bt='bat --style=header,numbers --color=always --paging=always --tabs=4 --wrap=auto'
 
 .jq.keysHasSubValue() { jq -r --arg search "$1" 'paths(scalars) as $p | select(getpath($p) | tostring | contains($search)) | $p | join(".")'; }
 

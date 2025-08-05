@@ -156,6 +156,14 @@ git config credential.helper cache
 git config credential.helper 'cache --timeout=999999'
 ```
 
+#### Setup nvim data
+```
+mkdir ~/.config/nvim/
+mkdir ~/.config/nvim/lua/plugins/
+cp ~/.vim/nvim/.config/nvim/init.lua ~/.config/nvim
+cp ~/.vim/nvim/.config/nvim/lua/plugins/init.lua ~/.config/nvim/lua/plugins/
+```
+
 ###### Markdown setting used
 * used duble space to add new line charactor
 * 3 backquotes to make it code snippet
