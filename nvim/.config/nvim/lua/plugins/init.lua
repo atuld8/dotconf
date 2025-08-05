@@ -4,6 +4,9 @@ return {
   -- Plugin manager can manage itself
   { "folke/lazy.nvim" },
 
+  -- Required shared library
+  { "xolox/vim-misc" },
+
   -- UI
   { "vim-airline/vim-airline" },
   { "altercation/vim-colors-solarized" },
@@ -55,6 +58,12 @@ return {
   -- Markdown
   { "gabrielelana/vim-markdown" },
   { "shime/vim-livedown" },
+  { "dhruvasagar/vim-table-mode",
+      ft = { "markdown", "text", "org" },
+      keys = {
+          { "<leader>tm", ":TableModeToggle<CR>", desc = "Toggle Table Mode" }
+      }
+  },
 
   -- Misc
   { "tpope/vim-eunuch" },
@@ -64,5 +73,7 @@ return {
   { "christoomey/vim-tmux-navigator" },
   { "MattesGroeger/vim-bookmarks" },
   { "andrewradev/linediff.vim" },
+  { "preservim/tagbar" },
+
 }
 
