@@ -162,6 +162,11 @@ mkdir ~/.config/nvim/
 mkdir ~/.config/nvim/lua/plugins/
 cp ~/.vim/nvim/.config/nvim/init.lua ~/.config/nvim
 cp ~/.vim/nvim/.config/nvim/lua/plugins/init.lua ~/.config/nvim/lua/plugins/
+
+Another method is
+ln -s ~/.vim/nvim/.config/nvim/init.lua $HOME/.config/nvim/init.lua
+ln -s ~/.vim/nvim/.config/nvim/lua/plugins/init.lua $HOME/.config/nvim/lua/plugins/init.lua
+ln -s ~/.vim/nvim/.config/nvim/lua/plugins/lazy_plugin_list.lua $HOME/.config/nvim/lua/plugins/lazy_plugin_list.lua
 ```
 
 ###### Markdown setting used

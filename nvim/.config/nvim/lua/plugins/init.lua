@@ -53,7 +53,10 @@ return {
   -- Syntax and Formatting
   { "elzr/vim-json" },
   { "godlygeek/tabular" },
-  { "junegunn/vim-easy-align" },
+  { "junegunn/vim-easy-align",
+  keys = {
+    { "ga", "<Plug>(EasyAlign)", mode = { "n", "x" } }
+  } },
 
   -- Markdown
   { "gabrielelana/vim-markdown" },
@@ -68,7 +71,14 @@ return {
   -- Misc
   { "tpope/vim-eunuch" },
   { "tyru/transbuffer.vim" },
-  { "xolox/vim-session" },
+  {
+      "xolox/vim-misc",  -- required by vim-session
+      lazy = true,
+  },
+  {
+      "xolox/vim-session",
+      dependencies = { "xolox/vim-misc" },
+  },
   { "ntpeters/vim-better-whitespace" },
   { "christoomey/vim-tmux-navigator" },
   { "MattesGroeger/vim-bookmarks" },
