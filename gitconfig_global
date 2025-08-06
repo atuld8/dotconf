@@ -52,10 +52,11 @@
     brbyAuth = for-each-ref --format='%(authorname) %09 %(refname)' --sort=authorname
     brbyAuthOn = for-each-ref --format='%(committerdate) %09 %(authorname) %09 %(refname)' --sort=committerdate
     brbyAuthColor = for-each-ref --format='%(color:cyan)%(authordate:format:%m/%d/%Y %I:%M %p)    %(align:25,left)%(color:yellow)%(authorname)%(end) %(color:reset)%(refname:strip=3)' --sort=authordate refs/remotes
-    brbyme ="!f() { git branch -a --format=\"%(committerdate:iso8601), %(color:bold blue)%(committerdate:relative)%(color:reset), %(color:magenta)%(authorname)%(color:reset), %(refname:short), %(contents:subject)\"  | grep \"$(git config user.name)\" | sort -r | head -20 | column -t -s \",\"; }; f"
+    brbyme ="!f() { git branch -a --format=\"%(committerdate:iso8601) | (%(color:bold blue)%(committerdate:relative)%(color:reset)) | %(color:magenta)%(authorname)%(color:reset) | %(refname:short) | %(contents:subject)\"  | grep \"$(git config user.name)\" | sort -r | head -20| column -t -s \"|\"; }; f"
+    brbyauth ="!f() { git branch -a --format=\"%(committerdate:iso8601) | (%(color:bold blue)%(committerdate:relative)%(color:reset)) | %(color:magenta)%(authorname)%(color:reset) | %(refname:short) | %(contents:subject)\"  | grep \"${1:-$GIT_USER}\" | sort -r | head -20| column -t -s \"|\"; }; f"
     brbymewin ="!f() { git branch -a --format=\"%(committerdate:iso8601), %(color:bold blue)%(committerdate:relative)%(color:reset), %(color:magenta)%(authorname)%(color:reset), %(refname:short), %(contents:subject)\"  | sort -r | head -20 | column -t -s \",\"; }; f"
     ; list branches with creation date
-    brcdt = for-each-ref --sort=creatordate --format '%(refname:short) %(creatordate)' refs/heads refs/remotes
+    brcdt = ! git for-each-ref --sort=creatordate --format '%(refname:short) | %(creatordate) | %(authorname)' refs/heads refs/remotes | tail -n 20  | awk  -F\"|\" '{printf \"%-40s | %-20s | %s\\n\", $1, $3, $2}'
 
     chpk = cherry-pick
     chpke = cherry-pick -e
@@ -236,6 +237,11 @@
 
     sl = shortlog
     slnoc = shortlog  --no-merges -i --invert-grep --grep=copyright
+    slauths ="!f() { git log --all --author=\"${1:-$GIT_USER}\" --pretty=format:\"%h | %ad | %an | %s\" --date=iso; }; f"
+    slauthscol ="!f() { git log --all --author=\"${1:-$GIT_USER}\" --pretty=format:\"%C(yellow)%h %C(green)%ad %C(cyan)%an %C(reset)%s\" --date=iso; }; f"
+    sl4auth ="!f() { git shortlog --all --author=\"${1:-$GIT_USER}\" -n ; }; f"
+    sl4auth20="!f() { git log --all --author=\"${1:-$GIT_USER}\" --pretty=format:\"%h | %ad | %an | %s\" --date=short --reverse | tail -20; }; f"
+
     st = status
     stSB = status --short --branch
     stuall = status -u
