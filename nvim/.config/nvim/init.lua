@@ -1,4 +1,5 @@
 -- init.lua
+vim.g.python3_host_prog="/opt/homebrew/bin/python3.12"
 
 -- Load lazy.nvim plugin manager
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"

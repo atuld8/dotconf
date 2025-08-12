@@ -13,6 +13,7 @@ alias mc.as='open -a "Android Studio.app"'
 alias mc.outlook='open -a /Applications/Microsoft\ Outlook.app'
 alias mc.nano='/opt/homebrew/bin/nano'
 alias mc.vsc='open -a /Applications/Visual\ Studio\ Code.app'
+alias mc.pgadmin='open -a "pgAdmin 4.app"'
 
 export MAC_DEF_BROWSER='Safari'
 alias mc.setBrow=' function f() { if [ "$1" == "c" ]; then MAC_DEF_BROWSER="Google Chrome"; else MAC_DEF_BROWSER="Safari"; fi; }; f'
