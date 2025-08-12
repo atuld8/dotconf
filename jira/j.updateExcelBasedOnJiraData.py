@@ -4,6 +4,7 @@ import argparse
 import os
 import requests
 import openpyxl
+from datetime import datetime
 
 
 def get_jira_issues(jira_ids, token):
@@ -119,6 +120,14 @@ def update_excel_with_jira(excel_path, sheet_name, token):
     if sheet_name not in wb.sheetnames:
         print(f"Sheet '{sheet_name}' not found. Please choose from: {wb.sheetnames}")
         return
+
+    # Create a backup copy of the sheet before updating
+    backup_time = datetime.now().strftime("%d-%b-%y.%H-%M")
+    backup_sheet = wb.copy_worksheet(wb[sheet_name])
+    backup_sheet.title = f"{sheet_name}_{backup_time}"
+    wb.save(excel_path)
+    print(f"Backup worksheet '{backup_sheet.title}' created inside workbook '{excel_path}'.")
+
     ws = wb[sheet_name]
 
     field_id_map = build_field_id_map(token)
