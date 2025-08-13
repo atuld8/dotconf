@@ -36,10 +36,11 @@ def main():
     parser.add_argument('-o', '--only-headers', action='store_true', help='Print only headers in vertical order')
     parser.add_argument('-m', '--formula-mode', choices=['print', 'convert'], default='print', help='Choose to print formula as text or convert to value (default: print)')
     parser.add_argument('-e', '--skip-if-empty', help='Skip row if the value of cell is empty for this header column')
+    parser.add_argument('--data-only', action='store_true', help='Load workbook with data_only=True to get cell values instead of formulas')
     args = parser.parse_args()
 
     try:
-        wb = openpyxl.load_workbook(args.file)
+        wb = openpyxl.load_workbook(args.file, data_only=args.data_only)
     except Exception as e:
         print(f'Error loading workbook: {e}', file=sys.stderr)
         sys.exit(1)
