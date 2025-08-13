@@ -26,9 +26,6 @@ def create_jira_issue(summary, description, token):
         "fields": summary  # summary here is actually the full fields dict
     }
 
-    print(url)
-    print(data)
-
     response = requests.post(url, headers=headers, json=data, timeout=10)
     if response.ok:
         print(f"Created Jira issue: {response.json()['key']}")
@@ -57,6 +54,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", required=True, help="Excel file path")
     parser.add_argument("-s", "--sheet", required=True, help="Sheet name")
+    parser.add_argument("-d", "--dry-run", action="store_true", help="Print data only, do not create Jira issues")
     args = parser.parse_args()
 
     token = prompt_for_token()
@@ -102,11 +100,16 @@ def main():
             fields["customfield_21603"] = {"name": fields["customfield_21603"]}
             fields["customfield_21601"] = {"name": fields["customfield_21601"]}
             fields["customfield_12671"] = {"value": fields["customfield_12671"]}
-            issue_key = create_jira_issue(fields, None, token)
-            if issue_key:
-                row[1].value = issue_key  # Update B column with new issue key
 
-    wb.save(args.file)
+            if not args.dry_run:
+                issue_key = create_jira_issue(fields, None, token)
+                if issue_key:
+                    row[1].value = issue_key  # Update B column with new issue key
+            else:
+                print(f"Dry run: Would create Jira issue with fields: \n{fields}")
+
+    if not args.dry_run:
+        wb.save(args.file)
 
 if __name__ == "__main__":
     main()

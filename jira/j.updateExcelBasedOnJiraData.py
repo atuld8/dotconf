@@ -85,7 +85,7 @@ def clean_value(value):
     return str(value).replace('\n', '').strip()
 
 
-def update_excel_with_jira(excel_path, sheet_name, token):
+def update_excel_with_jira(excel_path, sheet_name, token, dry_run):
     """
     Updates an Excel workbook with data fetched from Jira issues.
 
@@ -166,13 +166,18 @@ def update_excel_with_jira(excel_path, sheet_name, token):
                         nested.get("displayName") or
                         nested.get("value") or ""
                     )
-                ws.cell(row=row[0].row, column=col_idx+1).value = field_value
+                if not dry_run:
+                    ws.cell(row=row[0].row, column=col_idx+1).value = field_value
+                else:
+                    print(f"Would update row {row[0].row}, column {col_idx+1} ('{header_name}') with value: {field_value}")
         else:
             print(f"Could not retrieve data for Jira ID: {jira_id}")
 
-    wb.save(excel_path)
-    print(f"\n\n{excel_path} Excel file updated successfully.")
-
+    if not dry_run:
+        wb.save(excel_path)
+        print(f"\n\n{excel_path} Excel file updated successfully.")
+    else:
+        print(f"Dry run: No changes made to {excel_path}.")
 
 def main():
     """ Update an Excel sheet with data from Jira. """
@@ -181,10 +186,11 @@ def main():
     )
     parser.add_argument("-f", "--file", required=True, help="Path to Excel file")
     parser.add_argument("-s", "--sheet", required=True, help="Sheet name to update")
+    parser.add_argument("-d", "--dry-run", action="store_true", help="Print data only, do not create Jira issues")
     args = parser.parse_args()
 
     token = prompt_for_token()
-    update_excel_with_jira(args.file, args.sheet, token)
+    update_excel_with_jira(args.file, args.sheet, token, args.dry_run)
 
 
 if __name__ == "__main__":
