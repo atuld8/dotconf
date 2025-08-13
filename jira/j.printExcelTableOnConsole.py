@@ -33,6 +33,7 @@ def main():
     parser.add_argument('-s', '--sheet', help='Sheet name')
     parser.add_argument('-t', '--header', default="A1", help='Header start cell, e.g. B2')
     parser.add_argument('-p', '--print-headers', help='Comma-separated list of headers to print (case-sensitive, matches Excel header values)')
+    parser.add_argument('-x', '--exclude-headers', help='Comma-separated list of headers to exclude from output (case-sensitive, matches Excel header values)')
     parser.add_argument('-o', '--only-headers', action='store_true', help='Print only headers in vertical order')
     parser.add_argument('-m', '--formula-mode', choices=['print', 'convert'], default='print', help='Choose to print formula as text or convert to value (default: print)')
     parser.add_argument('-e', '--skip-if-empty', help='Skip row if the value of cell is empty for this header column')
@@ -93,6 +94,14 @@ def main():
         headers_to_print = requested_headers
     else:
         headers_to_print = headers
+
+    # Exclude headers if specified
+    if args.exclude_headers:
+        exclude_headers = [h.strip() for h in args.exclude_headers.split(',') if h.strip()]
+        headers_to_print = [h for h in headers_to_print if h not in exclude_headers]
+        if not headers_to_print:
+            print('All headers excluded, nothing to print.', file=sys.stderr)
+            sys.exit(1)
 
     if args.only_headers:
         print("Headers:")
