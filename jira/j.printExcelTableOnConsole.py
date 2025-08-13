@@ -1,5 +1,6 @@
 import argparse
 import openpyxl
+import openpyxl.worksheet.formula
 import sys
 
 def clean_cell(val):
@@ -31,8 +32,10 @@ def main():
     parser.add_argument('-f', '--file', required=True, help='Excel file path')
     parser.add_argument('-s', '--sheet', help='Sheet name')
     parser.add_argument('-t', '--header', default="A1", help='Header start cell, e.g. B2')
-    parser.add_argument('-p','--print-headers', help='Comma-separated list of headers to print (case-sensitive, matches Excel header values)')
+    parser.add_argument('-p', '--print-headers', help='Comma-separated list of headers to print (case-sensitive, matches Excel header values)')
     parser.add_argument('-o', '--only-headers', action='store_true', help='Print only headers in vertical order')
+    parser.add_argument('-m', '--formula-mode', choices=['print', 'convert'], default='print', help='Choose to print formula as text or convert to value (default: print)')
+    parser.add_argument('-e', '--skip-if-empty', help='Skip row if the value of cell is empty for this header column')
     args = parser.parse_args()
 
     try:
@@ -95,13 +98,36 @@ def main():
         sys.exit(0)
 
     # Collect data rows for selected headers
+    # import already at top
     data_rows = []
     col_indices = [header_col_map[h] for h in headers_to_print]
+    skip_col_idx = None
+    found_formula = False
+    if args.skip_if_empty:
+        if args.skip_if_empty not in headers_to_print:
+            print(f"Skip column header '{args.skip_if_empty}' not found in selected headers.", file=sys.stderr)
+            sys.exit(1)
+        skip_col_idx = headers_to_print.index(args.skip_if_empty)
     for row in ws.iter_rows(min_row=row_num+1, max_row=ws.max_row):
-        data_row = [row[col_idx-1].value for col_idx in col_indices]
+        data_row = []
+        for i, col_idx in enumerate(col_indices):
+            cell = row[col_idx-1]
+            val = cell.value
+            # Formula handling
+            if isinstance(val, openpyxl.worksheet.formula.ArrayFormula):
+                found_formula = True
+                if args.formula_mode == 'print':
+                    val = getattr(cell.value, 'formula', str(cell.value))
+                else:
+                    val = cell.internal_value if hasattr(cell, 'internal_value') else getattr(cell.value, 'formula', str(cell.value))
+            data_row.append(val)
+        if skip_col_idx is not None and (data_row[skip_col_idx] is None or str(data_row[skip_col_idx]).strip() == ""):
+            continue
         data_rows.append(data_row)
 
     print_table(headers_to_print, data_rows)
+    if found_formula:
+        print("Note: One or more cells contain formulas. Formula values may not be calculated by openpyxl.")
 
 if __name__ == '__main__':
     main()
