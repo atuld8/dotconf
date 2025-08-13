@@ -34,8 +34,11 @@ def get_jira_resource(jira_url, token, cache):
     if jira_url in cache:
         return cache[jira_url]
     headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(jira_url, headers=headers, timeout=10)
-    data = response.json() if response.ok else None
+    try:
+        response = requests.get(jira_url, headers=headers, timeout=10)
+        data = response.json() if response.ok else None
+    except Exception:
+        data = None
     cache[jira_url] = data
     return data
 
@@ -136,23 +139,40 @@ def update_excel_with_jira(excel_path, sheet_name, token, dry_run):
     # Collect all Jira IDs to batch fetch
     jira_ids = []
     row_map = {}
-    print("\n\nCollecting Jira IDs for batch fetching...")
+    # Collect Jira IDs for batch fetching (no per-row print)
     for row in ws.iter_rows(min_row=3, max_row=ws.max_row):
-        print(f"Row {row[0].row} is processing to get the Jira ID...")
         jira_id = clean_value(row[1].value)
         if jira_id and str(jira_id).startswith("ROSTER-") and str(jira_id)[7:].isdigit():
             jira_ids.append(jira_id)
             row_map[jira_id] = row
-        else:
-            print(f"Row {row[0].row}: Invalid Jira ID format.")
 
     # Batch fetch issues
-    print("\n\nFetching Jira issues from server...")
     issues = get_jira_issues(jira_ids, token)
 
-    print("\n\nUpdating Excel sheet with Jira data...")
+    # Gather all nested URLs to fetch in parallel
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    nested_urls = set()
     for jira_id, row in row_map.items():
-        print(f"Row {row[0].row} update is in processing...")
+        issue = issues.get(jira_id)
+        if issue:
+            for col_idx in range(2, 20):
+                header_name = ws.cell(row=2, column=col_idx+1).value
+                field_id = field_id_map.get(header_name, "")
+                field_value = get_field_value(issue.get("fields", {}), field_id)
+                if isinstance(field_value, dict) and "self" in field_value:
+                    nested_urls.add(field_value["self"])
+
+    # Fetch all nested resources in parallel (cache avoids duplicate calls)
+    def fetch_nested(url):
+        return url, get_jira_resource(url, token, nested_cache)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(fetch_nested, url): url for url in nested_urls}
+        for future in as_completed(futures):
+            url, _ = future.result()
+            pass  # cache is updated in get_jira_resource
+
+    # Now update Excel
+    for jira_id, row in row_map.items():
         issue = issues.get(jira_id)
         if issue:
             for col_idx in range(2, 20):  # C to T
@@ -160,17 +180,23 @@ def update_excel_with_jira(excel_path, sheet_name, token, dry_run):
                 field_id = field_id_map.get(header_name, "")
                 field_value = get_field_value(issue.get("fields", {}), field_id)
                 if isinstance(field_value, dict) and "self" in field_value:
-                    nested = get_jira_resource(field_value["self"], token, nested_cache)
+                    nested = nested_cache.get(field_value["self"]) or {}
                     field_value = (
                         nested.get("name") or
                         nested.get("displayName") or
                         nested.get("value") or ""
                     )
                 if not dry_run:
-                    ws.cell(row=row[0].row, column=col_idx+1).value = field_value
-                else:
-                    print(f"Would update row {row[0].row}, column {col_idx+1} ('{header_name}') with value: {field_value}")
-        else:
+                    cell = ws.cell(row=row[0].row, column=col_idx+1)
+                    # If value is a long number, set format to scientific
+                    if (isinstance(field_value, int) or isinstance(field_value, float)) and len(str(field_value)) >= 10:
+                        cell.value = field_value
+                        cell.number_format = '0.00E+00'
+                    else:
+                        cell.value = field_value
+                # Only print summary if dry_run
+        # Only print summary if dry_run
+        elif dry_run:
             print(f"Could not retrieve data for Jira ID: {jira_id}")
 
     if not dry_run:
