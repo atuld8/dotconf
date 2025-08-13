@@ -37,6 +37,8 @@ def main():
     parser.add_argument('-m', '--formula-mode', choices=['print', 'convert'], default='print', help='Choose to print formula as text or convert to value (default: print)')
     parser.add_argument('-e', '--skip-if-empty', help='Skip row if the value of cell is empty for this header column')
     parser.add_argument('--data-only', action='store_true', help='Load workbook with data_only=True to get cell values instead of formulas')
+    parser.add_argument('--max-row', type=int, help='Maximum row number to process (inclusive)')
+    parser.add_argument('--max-col', type=int, help='Maximum column number to process (inclusive, Excel column number, e.g. 10 for J)')
     args = parser.parse_args()
 
     try:
@@ -68,7 +70,7 @@ def main():
     start_col = openpyxl.utils.column_index_from_string(col_letter)
 
     # Find max column in header row
-    max_col = ws.max_column
+    max_col = args.max_col if args.max_col else ws.max_column
     headers = []
     header_col_map = {}
     for col in range(start_col, max_col + 1):
@@ -109,7 +111,8 @@ def main():
             print(f"Skip column header '{args.skip_if_empty}' not found in selected headers.", file=sys.stderr)
             sys.exit(1)
         skip_col_idx = headers_to_print.index(args.skip_if_empty)
-    for row in ws.iter_rows(min_row=row_num+1, max_row=ws.max_row):
+    max_data_row = args.max_row if args.max_row else ws.max_row
+    for row in ws.iter_rows(min_row=row_num+1, max_row=max_data_row):
         data_row = []
         for i, col_idx in enumerate(col_indices):
             cell = row[col_idx-1]
