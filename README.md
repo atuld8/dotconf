@@ -158,8 +158,8 @@ git config credential.helper 'cache --timeout=999999'
 
 #### Setup nvim data
 ```
-mkdir ~/.config/nvim/
-mkdir ~/.config/nvim/lua/plugins/
+mkdir -p ~/.config/nvim/
+mkdir -p ~/.config/nvim/lua/plugins/
 cp ~/.vim/nvim/.config/nvim/init.lua ~/.config/nvim
 cp ~/.vim/nvim/.config/nvim/lua/plugins/init.lua ~/.config/nvim/lua/plugins/
 
