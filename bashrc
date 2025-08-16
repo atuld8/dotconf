@@ -71,7 +71,7 @@ alias .....='af.cd4 () { cd ../../../../$1; }; af.cd4'
 alias clr="clear; pwd; ls -rth"
 alias cllr="clear; pwd; ls -lrth"
 alias .paths='echo -e ${PATH//:/\\n}'
-alias vimonly='/usr/bin/vim -u NONE --noplugin'
+alias vbase='/usr/bin/vim -u NONE --noplugin'
 
 # User specific aliases and functions
 #required by screen and tmux
