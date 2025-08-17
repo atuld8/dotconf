@@ -815,4 +815,4 @@ vim.g.ctrlp_cmd = "CtrlPBuffer"
 F_include_project_specific_vimrc()
 
 vim.g.session_autoload = "no"
-
+vim.g.session_autosave = "no"
