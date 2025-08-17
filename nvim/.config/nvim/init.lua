@@ -813,3 +813,6 @@ vim.g.ctrlp_cmd = "CtrlPBuffer"
 -- Load project-specific vimrc (must be last)
 --- Call it once on startup
 F_include_project_specific_vimrc()
+
+vim.g.session_autoload = "no"
+
