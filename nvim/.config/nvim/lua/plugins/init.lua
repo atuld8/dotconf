@@ -39,7 +39,32 @@ return {
   -- Completion and Linting
   { "ervandew/supertab" },
   { "Shougo/neocomplcache.vim" },
-  { "w0rp/ale" },
+  {
+    "dense-analysis/ale",
+    config = function()
+      -- Linters
+      vim.g.ale_linters = {
+        python = { "flake8", "pycodestyle", "pylint" },
+        cpp = { "gcc", "clang" },
+        c   = { "gcc", "clang" },
+      }
+
+      -- Python options
+      vim.g.ale_python_flake8_options =
+        "--ignore=E501,E221,D100,D101,D102,D103"
+      vim.g.ale_python_pycodestyle_options =
+        "--ignore=E221,E226,E302,E71,E501,W12,D100,D101,D102,D103"
+
+      -- Compiler flags
+      vim.g.ale_cpp_gcc_options = "-Wall"
+      vim.g.ale_c_gcc_options   = "-Wall"
+
+      -- UI
+      vim.g.ale_sign_error = "✘"
+      vim.g.ale_sign_warning = "⚠"
+      vim.g.ale_fix_on_save = 1
+    end,
+  },
 
   -- Undo Tree
   { "mbbill/undotree" },
