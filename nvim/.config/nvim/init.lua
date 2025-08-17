@@ -465,7 +465,12 @@ vim.keymap.set("i", "<C-j>u", function()
 end, { expr = true, desc = "Insert uppercase UUID" })
 
 -- Toggle paste mode with F2 (useful for copy-paste without autoindent messing up)
-vim.opt.pastetoggle = "<F2>"
+-- Toggle "paste mode" manually in Neovim
+vim.keymap.set("n", "<F2>", function()
+  vim.opt.paste = not vim.opt.paste:get()
+  print("Paste mode: " .. tostring(vim.opt.paste:get()))
+end, { desc = "Toggle paste mode" })
+
 
 -- Better copy-paste: if not inside tmux, use system clipboard
 if vim.env.TMUX == nil or vim.env.TMUX == "" then
@@ -491,7 +496,8 @@ end
 -- Menu support when not in GUI (terminal mode)
 if vim.fn.has("gui_running") == 0 then
   vim.cmd("runtime! menu.vim") -- load menu support
-  vim.opt.wildcharm = vim.keycode("<C-]>") -- use <C-]> for expanding menus
+  -- wildcharm needs a keycode number, not a string
+  vim.opt.wildcharm = vim.api.nvim_replace_termcodes("<C-]>", true, true, true):byte()
 
   -- Keymaps for accessing menu with <C-Z>
   vim.keymap.set("n", "<C-Z>", ":emenu <C-]>", { silent = true, desc = "Open menu" })
@@ -805,5 +811,5 @@ end, { nargs = 1 })
 vim.g.ctrlp_cmd = "CtrlPBuffer"
 
 -- Load project-specific vimrc (must be last)
--- Assuming F_include_project_speicific_vimrc is defined somewhere
-vim.cmd("call F_include_project_speicific_vimrc()")
+--- Call it once on startup
+F_include_project_specific_vimrc()

@@ -97,12 +97,12 @@ return {
   { "tpope/vim-eunuch" },
   { "tyru/transbuffer.vim" },
   {
-      "xolox/vim-misc",  -- required by vim-session
-      lazy = true,
-  },
-  {
       "xolox/vim-session",
       dependencies = { "xolox/vim-misc" },
+  },
+  {
+      "xolox/vim-misc",  -- required by vim-session
+      lazy = true,
   },
   { "ntpeters/vim-better-whitespace" },
   { "christoomey/vim-tmux-navigator" },
