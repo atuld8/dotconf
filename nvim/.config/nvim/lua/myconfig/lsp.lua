@@ -24,7 +24,7 @@ lspconfig.lua_ls.setup({
   capabilities = capabilities,
   settings = {
     Lua = {
-      diagnostics = { globals = { "vim" } },
+      diagnostics = { globals = { "vim" }, disable = { "large-file-warning" }, },
       workspace = {
         library = vim.api.nvim_get_runtime_file("", true),
       },
