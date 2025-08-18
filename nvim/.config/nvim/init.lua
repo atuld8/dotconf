@@ -7,12 +7,24 @@ if not vim.loop.fs_stat(lazypath) then
   vim.fn.system({
     "git", "clone", "--filter=blob:none",
     "https://github.com/folke/lazy.nvim.git",
-    lazypath
+    "--branch=stable", lazypath
   })
 end
 vim.opt.rtp:prepend(lazypath)
 
 require("lazy").setup("plugins")
+require("lazy").setup("myconfig.plugins")
+
+-- Load basic configs
+require("myconfig.options")
+require("myconfig.keymaps")
+
+-- Load plugins (using lazy.nvim)
+require("myconfig.plugins")
+
+-- Load extras
+require("myconfig.lsp")
+require("myconfig.cscope")
 
 -- Basic Neovim settings
 vim.opt.number = true
@@ -240,7 +252,8 @@ else
 end
 
 -- Source external vimscript files (Neovim still supports :source)
-vim.cmd("source ~/.vim/cscope_maps.vim")
+-- vim.cmd("source ~/.vim/cscope_maps.vim")
+
 vim.cmd("source ~/.vim/et.vim")
 
 

@@ -167,6 +167,8 @@ Another method is
 mkdir -p ~/.config/nvim/
 mkdir -p ~/.config/nvim/lua/plugins/
 ln -s ~/.vim/syntax ~/.config/nvim/
+ln -s ~/.vim/nvim/.config/nvim/lua/myconfig $HOME/.config/nvim/lua
+ln -s ~/.vim/nvim/.config/nvim/.luarc.json $HOME/.config/nvim/.luarc.json
 ln -s ~/.vim/nvim/.config/nvim/init.lua $HOME/.config/nvim/init.lua
 ln -s ~/.vim/nvim/.config/nvim/lua/plugins/init.lua $HOME/.config/nvim/lua/plugins/init.lua
 ln -s ~/.vim/nvim/.config/nvim/lua/plugins/lazy_plugin_list.lua $HOME/.config/nvim/lua/plugins/lazy_plugin_list.lua
