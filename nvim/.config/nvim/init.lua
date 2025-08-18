@@ -316,47 +316,6 @@ vim.keymap.set("n", "<leader>bp", ":bprev<CR>", { silent = true })
 
 
 
-
-
--- Function to add cscope and ctags (relative to current script path)
-local function F_ctag_cscope_add()
-  local path = vim.fn.fnamemodify(vim.fn.resolve(vim.fn.expand("<sfile>:p")), ":h")
-  local srcpath = string.gsub(path, "/src/.*$", "/src/")
-  local cscope_out = string.gsub(srcpath, "/src/.*$", "/src/cscope.out")
-  local ctags_file = string.gsub(srcpath, "/src/.*$", "/src/vtags")
-
-  if vim.fn.filereadable(cscope_out) == 1 then
-    vim.cmd("cscope add " .. cscope_out)
-  end
-
-  if vim.fn.filereadable(ctags_file) == 1 then
-    vim.cmd("set tags+=" .. ctags_file)
-  end
-end
-
-F_ctag_cscope_add()
-
--- Function to add cscope/ctags relative to git root
-local function F_ctag_cscope_add_wrt_git()
-  local rootpath = vim.fn.system("git rev-parse --show-toplevel")
-  local cscope_out = string.gsub(rootpath, "\n$", "/cscope.out")
-  local ctags_file = string.gsub(rootpath, "\n$", "/tags")
-
-  if vim.fn.filereadable(cscope_out) == 1 then
-    if vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1 then
-      vim.cmd("cscope.exe add " .. cscope_out)
-    else
-      vim.cmd("cscope add " .. cscope_out)
-    end
-  end
-
-  if vim.fn.filereadable(ctags_file) == 1 then
-    vim.cmd("set tags+=" .. ctags_file)
-  end
-end
-
-F_ctag_cscope_add_wrt_git()
-
 -- Function to include project-specific .vimrc if exists
 local function F_include_project_specific_vimrc()
   local rootpath = vim.fn.system("git rev-parse --show-toplevel")
