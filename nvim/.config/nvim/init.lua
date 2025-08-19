@@ -20,6 +20,11 @@ vim.opt.rtp:prepend(lazypath)
 vim.g.mapleader = " "      -- Space as leader
 vim.g.maplocalleader = " " -- Optional, for local mappings
 
+-- Get current Neovim version
+local v = vim.version()
+
+-- Check if version is at least 0.10.0
+if v.major > 0 or (v.major == 0 and v.minor >= 10) then
 require("lazy").setup("plugins")
 require("lazy").setup("myconfig.plugins")
 
@@ -33,6 +38,7 @@ require("myconfig.plugins")
 -- Load extras
 require("myconfig.lsp")
 require("myconfig.cscope")
+end
 
 -- Basic Neovim settings
 vim.opt.number = true
