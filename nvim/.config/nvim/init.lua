@@ -1,6 +1,9 @@
 -- init.lua
 vim.g.python3_host_prog="/opt/homebrew/bin/python3.12"
 
+vim.g.session_autoload = "no"
+vim.g.session_autosave = "no"
+
 -- Load lazy.nvim plugin manager
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
@@ -791,5 +794,3 @@ vim.g.ctrlp_cmd = "CtrlPBuffer"
 --- Call it once on startup
 F_include_project_specific_vimrc()
 
-vim.g.session_autoload = "no"
-vim.g.session_autosave = "no"
