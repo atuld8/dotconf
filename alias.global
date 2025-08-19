@@ -213,6 +213,22 @@ alias .fzf="fzf --border --preview 'command -v bat &>/dev/null && bat --style=he
     --bind 'enter:execute(vim {})' \
         --bind 'ctrl-o:execute(command -v bat &>/dev/null && bat --style=header,numbers --color=always {} || less -I -g -r {})'"
 alias .bt='bat --style=header,numbers --color=always --paging=always --tabs=4 --wrap=auto'
+alias .btp='bat --style=plain --color=always --paging=always --tabs=4 --wrap=auto'
+alias .btd='bat --style=header,numbers,changes --color=always --paging=always --tabs=4 --wrap=auto'
+
+.btstdin() {
+local cmd="$1"   # first arg is the command
+shift            # drop the first arg, keep the rest as its arguments
+
+# Run the command with its args, pipe to bat
+"$cmd" "$@" | bat \
+--style=header,numbers \
+--color=always \
+--paging=always \
+--tabs=4 \
+--wrap=auto \
+--file-name "$cmd $@"
+}
 
 .jq.keysHasSubValue() { jq -r --arg search "$1" 'paths(scalars) as $p | select(getpath($p) | tostring | contains($search)) | $p | join(".")'; }
 
