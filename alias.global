@@ -260,6 +260,7 @@ alias set.e.vimsvrtab='CFG_EDITOR="vim --servername CFG_EDITOR --remote-tab-sile
 alias set.e.gvimsvr='CFG_EDITOR="gvim --servername CFG_EDITOR --remote-silent"'
 alias set.e.gvimsvrtab='CFG_EDITOR="gvim --servername CFG_EDITOR --remote-tab-silent"'
 alias set.e.emacs='CFG_EDITOR=emacs -nw'
+alias set.e.nvim='CFG_EDITOR=nvim'
 alias set.e='function af.set.e () { export CFG_EDITOR=$1; }; af.set.e'
 alias set.e.multiCfgEditor='MULTI_CFG_EDITOR=$CFG_EDITOR'
 

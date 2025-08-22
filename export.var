@@ -3,7 +3,7 @@
 # export GIT_PROJECT=
 # export GIT_TOKEN=
 # export VIMPASS=
-# export CFG_EDITOR=vim/gvim/cat
+# export CFG_EDITOR=vim/gvim/cat/nvim
 # export GIT_STATUS_LEVEL=0/1/2/3
 # export SCP_HOSTNAME=`hostname`.`domainname`
 # export DOTCONF_HOSTNAME=
