@@ -40,7 +40,7 @@ if [ "$OSName" = "AIX" ]; then OSVer=`oslevel | cut -d'.' -f1-2``oslevel -s | cu
 if [ "$OSName" = "Linux" -a -f /etc/lsb-release ]; then OSVer="Ubuntu_"`lsb_release -r | cut -f2`; PROCName=`uname -p`; fi
 if [ "$OSName" = "Linux" -a -f /etc/redhat-release ]; then lsb_release > /dev/null 2>/dev/null; if [ $? -eq 0 ]; then OSVer="RHEL_"`lsb_release -r | cut -f2`; else OSVer="RHEL_"`awk '{print $(NF-1)}' /etc/redhat-release`; fi; PROCName=`uname -p`; fi
 if [ "$OSName" = "Linux" -a -f /etc/redhat-release -a -f /etc/oracle-release ]; then lsb_release > /dev/null 2>/dev/null; if [ $? -eq 0 ]; then OSVer="OEL_"`lsb_release -r | cut -f2`; else OSVer="OEL_"`awk '{print $(NF-1)}' /etc/redhat-release`; fi; PROCName=`uname -p`; fi
-if [ "$OSName" = "Linux" -a -f /etc/redhat-release -a -f /etc/centos-release ]; then lsb_release > /dev/null 2>/dev/null; if [ $? -eq 0 ]; then OSVer="CentOS_"`lsb_release -r | cut -f2 | awk -F'.' ' '{ printf $1"."$2 }'`; else OSVer="CentOS_"`awk '{print $(NF-1)}' /etc/redhat-release`; fi; PROCName=`uname -p`; fi
+if [ "$OSName" = "Linux" -a -f /etc/redhat-release -a -f /etc/centos-release ]; then lsb_release > /dev/null 2>/dev/null; if [ $? -eq 0 ]; then OSVer="CentOS_"`lsb_release -r | cut -f2 | awk -F'.' '{ printf $1"."$2 }'`; else OSVer="CentOS_"`awk '{print $(NF-1)}' /etc/redhat-release`; fi; PROCName=`uname -p`; fi
 if [ "$OSName" = "Linux" -a -f /etc/SuSE-release ]; then OSVer="SuSE_"`lsb_release -r | cut -f2`; PROCName=`uname -p`; fi
 if [ "$OSName" = "HP-UX" ]; then OSVer=`uname -r | sed -e's/B.//g'`; PROCName=`uname -m`; USER=$LOGNAME;fi
 if [ "$OSName" = "FreeBSD" ]; then OSVer=`uname -r | sed -e's/-RELEASE//g'`; PROCName=`uname -m`; fi
