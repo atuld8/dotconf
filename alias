@@ -26,6 +26,7 @@ source ~/.vim/alias.global
 #source ~/.vim/alias.mac
 #source ~/.vim/alias.remote
 
+source ~/.vim/fzf.func
 
 if [ -f ~/.alias.tmp ]; then
     source ~/.alias.tmp

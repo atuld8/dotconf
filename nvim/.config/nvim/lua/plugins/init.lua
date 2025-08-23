@@ -119,6 +119,7 @@ return {
   { "L3MON4D3/LuaSnip" },
   { "saadparwaiz1/cmp_luasnip" },
 
+  { "github/copilot.vim", event = "VeryLazy", },
   -- Optional helper
   { "nvim-lua/plenary.nvim" },
 }

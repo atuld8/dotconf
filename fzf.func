@@ -1,0 +1,106 @@
+# generic functions:
+# git        - look for files known to git in the current repo.
+# find       - look at files in directory provided
+# _exec      - executes the command provided with the chosen file as the last argument
+# _exec_dir  - executes the command provided with the directory of the chosen files as the last argument
+
+function git_fzf {
+    gd=$(git rev-parse --show-toplevel)
+
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    f=$(git ls-files --full-name "$gd" | fzf)
+
+    if [ "$f" ]; then
+        echo "$gd/$f"
+    fi
+}
+export -f git_fzf
+
+function find_fzf {
+    find "$1" | fzf
+}
+export -f find_fzf
+
+function git_fzf_exec {
+    f=$(git_fzf)
+
+    if [ "$1" ]; then
+        echo "$f"
+        "$@" "$f"
+    fi
+}
+export -f git_fzf_exec
+
+function find_fzf_exec {
+    f=$(find_fzf "$1")
+    shift
+
+    if [ "$f" ]; then
+        echo "$f"
+        "$@" "$f"
+    fi
+}
+
+export -f find_fzf_exec
+
+function git_fzf_exec_dir {
+    f=$(git_fzf)
+
+    if [ ! "$f" ]; then
+        return 1
+    fi
+
+    if [ ! -d "$f" ]; then
+        f=$(dirname "$f")
+    fi
+
+    echo "$f"
+    "$@" "$f"
+}
+export -f git_fzf_exec_dir
+
+function find_fzf_exec_dir {
+    f=$(find_fzf "$1")
+    shift
+
+    if [ ! "$f" ]; then
+        return 1
+    fi
+
+    if [ ! -d "$f" ]; then
+        f=$(dirname "$f")
+    fi
+
+    echo "$f"
+    "$@" "$f"
+}
+export -f find_fzf_exec_dir
+
+
+
+# vim into the picked file in a git repository
+function gvim {
+    # send the picked file to vim
+    if [ -f $(which nvim) ]; then
+        git_fzf_exec nvim
+    else
+        git_fzf_exec vim
+    fi
+
+}
+export -f gvim
+
+# cd to the directory of a file in a netbackup install
+function nbcd {
+    # send the directory of the picked file to cd
+    find_fzf_exec_dir /usr/openv cd
+}
+export -f nbcd
+
+function wnotes {
+    find_fzf_exec ~/workspace/worknotes.links nvim
+}
+export -f wnotes
