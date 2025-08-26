@@ -1,15 +1,15 @@
 #!/usr/bin/env python3.12
 import os
 import argparse
-import requests
 import json
+import requests
 from dotenv import load_dotenv
 
 # Load the environment variables configured on the system
 load_dotenv()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
+JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME', '')
 JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
 JIRA_PROJECT_KEY    = os.getenv('JIRA_PROJECT_KEY')
 JIRA_WATCHER_GROUP  = os.getenv('JIRA_WATCHER_GROUP')
