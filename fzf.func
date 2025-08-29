@@ -100,6 +100,26 @@ function nbcd {
 }
 export -f nbcd
 
+# cd to the directory of a file in a git repository
+function gcd {
+    # send the directory of the picked file to cd
+    find_fzf_exec_dir $(git rev-parse --show-toplevel) cd
+}
+export -f gcd
+
+#
+# cd to the directory of a file in a git repository
+function gcd. {
+    if  [ ! -z $(git rev-parse --show-cdup) ]; then
+        # send the directory of the picked file to cd
+        find_fzf_exec_dir $(git rev-parse --show-cdup) cd
+    else
+        find_fzf_exec_dir . cd
+    fi
+}
+export -f gcd.
+
+
 function wnotes {
     find_fzf_exec ~/workspace/worknotes.links nvim
 }
