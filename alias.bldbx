@@ -18,6 +18,8 @@ alias x.geteebverfrombin='function af.geteebver () { for f in `find $1  -iname $
 alias x.eebver='function x.eebver() { SUPER=`eprint -vdK $1 | grep "superincident:" | awk '"'"'{ print $2}'"'"'`;VERSION=`eprint -vdK $1 | grep "^version:" | awk '"'"'{print $2 }'"'"'`; echo NetBackup_${VERSION}_EEB1_PET${SUPER}_SET$1; }; x.eebver'
 alias x.epr.comdate='function af.eprcomdate() { TZ="Asia/Kolkata" date -d "$@" "+%Y/%m/%d %H:%M:%S %Z"; }; af.eprcomdate'
 
+alias x.eprbt='function xeprall() { x.eprall $1 | .bt; }; xeprall'
+
 alias x.eset.tpip_up='function af.eset.tpip_up(){ eprint -k $@; eset -w TPIP_UP $@; eprint -k $@; }; af.eset.tpip_up'
 alias x.eset.cftsp='function af.eset.cftsp(){ for et in "$@"; do echo -e "\nChecking UD2 for $et"; UD2=`eprint -v $et | grep user_defined2 | grep -v CFTSP | sed -e '"'"'s/user_defined2:\s*\(.*\)\s*/CFTSP \1/'"'"'`; echo "UD2(w/o CFTSP)=$UD2";  if [[ ! -z "$UD2" ]]; then eset --u2 "$UD2" $et; fi; eprint -v $et | grep user_defined2; if [[ $? -ne 0 ]]; then eset --u2 CFTSP $et; eprint -v $et | grep user_defined2; fi; done }; af.eset.cftsp'
 alias x.eset.nbsmreq='function af.eset.nbsmreq(){ for et in "$@"; do echo -e "\nChecking UD2 for $et"; UD2=`eprint -v $et | grep user_defined2 | grep -v NBServerMigratorRequest | sed -e '"'"'s/user_defined2:\s*\(.*\)\s*/NBServerMigratorRequest \1/'"'"'`; echo "UD2 (w/o NBServerMigratorRequest) =$UD2"; if [[ ! -z "$UD2" ]]; then eset --u2 "$UD2" $et; fi; eprint -v $et | grep user_defined2; if [[ $? -ne 0 ]]; then eset --u2 NBServerMigratorRequest $et; eprint -v $et | grep user_defined2; fi; done }; af.eset.nbsmreq'
