@@ -7,11 +7,20 @@ vim.g.session_autosave = "no"
 -- Load lazy.nvim plugin manager
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
-  vim.fn.system({
-    "git", "clone", "--filter=blob:none",
+  local args = { "git", "clone" }
+
+  -- Add filter only if not Windows
+  if vim.fn.has("win32") == 0 and vim.fn.has("win64") == 0 then
+    table.insert(args, "--filter=blob:none")
+  end
+
+  vim.list_extend(args, {
     "https://github.com/folke/lazy.nvim.git",
-    "--branch=stable", lazypath
+    "--branch=stable", lazypath,
   })
+
+  vim.fn.system(args)
+
 end
 vim.opt.rtp:prepend(lazypath)
 
