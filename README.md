@@ -172,6 +172,33 @@ ln -s ~/.vim/nvim/.config/nvim/.luarc.json $HOME/.config/nvim/.luarc.json
 ln -s ~/.vim/nvim/.config/nvim/init.lua $HOME/.config/nvim/init.lua
 ln -s ~/.vim/nvim/.config/nvim/lua/plugins/init.lua $HOME/.config/nvim/lua/plugins/init.lua
 ln -s ~/.vim/nvim/.config/nvim/lua/plugins/lazy_plugin_list.lua $HOME/.config/nvim/lua/plugins/lazy_plugin_list.lua
+
+
+:: On Windows
+git clone https://github.com/folke/lazy.nvim %LOCALAPPDATA%\nvim-data\lazy\lazy.nvim
+
+:: make sure base dirs exist
+mkdir %LOCALAPPDATA%\nvim
+mkdir %LOCALAPPDATA%\nvim\lua\plugins
+
+:: symlink syntax folder
+mklink /D %LOCALAPPDATA%\nvim\syntax %USERPROFILE%\.vim\syntax
+
+:: symlink lua/myconfig
+mklink /D %LOCALAPPDATA%\nvim\lua\myconfig %USERPROFILE%\.vim\nvim\.config\nvim\lua\myconfig
+
+:: symlink .luarc.json
+mklink %LOCALAPPDATA%\nvim\.luarc.json %USERPROFILE%\.vim\nvim\.config\nvim\.luarc.json
+
+:: symlink init.lua
+mklink %LOCALAPPDATA%\nvim\init.lua %USERPROFILE%\.vim\nvim\.config\nvim\init.lua
+
+:: symlink plugins/init.lua
+mklink %LOCALAPPDATA%\nvim\lua\plugins\init.lua %USERPROFILE%\.vim\nvim\.config\nvim\lua\plugins\init.lua
+
+:: symlink plugins/lazy_plugin_list.lua
+mklink %LOCALAPPDATA%\nvim\lua\plugins\lazy_plugin_list.lua %USERPROFILE%\.vim\nvim\.config\nvim\lua\plugins\lazy_plugin_list.lua
+
 ```
 
 ###### Markdown setting used
