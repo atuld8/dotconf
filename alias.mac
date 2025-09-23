@@ -19,4 +19,5 @@ alias mc.setBrow=' function f() { if [ "$1" == "c" ]; then MAC_DEF_BROWSER="Goog
 alias mc.jr='function f() { open -a "$MAC_DEF_BROWSER" https://$JIRA_SERVER_NAME/browse/$1; }; f'
 alias mc.et='function f() { open -a "$MAC_DEF_BROWSER" https://${ETRACK_SERVER_NAME}/Etrack/readonly_inc.php?incident=${1};}; f'
 alias mc.eq='function f() { open -a "$MAC_DEF_BROWSER" https://${ETRACK_SERVER_NAME}/Etrack/readonly_inc.php?querychosen=${1};}; f'
+alias mc.sptc='function f() { open -a "$MAC_DEF_BROWSER" https://${SUPPORT_CASE_SERVER_NAME}/Cases/case/${1};}; f'
 alias mc.web='function f() { open -a "$MAC_DEF_BROWSER" $1; }; f'
