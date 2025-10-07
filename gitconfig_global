@@ -230,6 +230,7 @@
     rstAllcb = "!f_rstallcb() { git fetch && git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\" && git pull; }; f_rstallcb"
     rmt = ls-remote --head
     rmtPrune = remote update --prune
+    geturl = remote get-url origin
     rborgbr= "!f_rborgbr() { git fetch origin ${1:-master} && git rebase origin/${1:-master}; }; f_rborgbr"
     ; rebase the branch with specific tag; this will help to to rebase with master with specific build tag
     rborgon2br= "!f_rborgbr() { git fetch origin ${2:-master} && git rebase --onto $1 origin/${2:-master}; }; f_rborgbr"
