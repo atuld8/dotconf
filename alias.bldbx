@@ -73,5 +73,9 @@ alias x.ln.nb.jreeeb='function af.ln.nb.jreeeb() { mkdir AMD64 linuxR_x86 solari
 alias x.ln.nb.all='function af.ln.nb.all () { if [ ! -d ${1:-all} ]; then mkdir ${1:-all}; fi;  for f in  AMD64 linuxR_x86 linuxS_x86 solaris solaris_x86; do if [ -e $f ]; then echo $f is exists; else echo $f; ln -s ${1:-all}  $f ; fi; done ; }; af.ln.nb.all'
 alias x.ln.nb.svr2clnt='function af.ln.nb.svr2clnt() { [ -d linuxR_x86_2.6.18 ] && ln -s linuxR_x86_2.6.18 linuxR_x86; [ -d linuxR_x86_2.6.32 ] && ln -s linuxR_x86_2.6.32 linuxR_x86; [ -d linuxS_x86_3.0.76 ] && ln -s linuxS_x86_3.0.76 linuxS_x86; [ -d zlinuxR_2.6.18 ] && ln -s zlinuxR_2.6.18 zlinuxR; [ -d zlinuxR_2.6.32 ] && ln -s zlinuxR_2.6.32 zlinuxR; [ -d zlinuxS_3.0.76 ] && ln -s zlinuxS_3.0.76 zlinuxS; [ -d solaris10 ] && ln -s solaris10 solaris; [ -d solaris_x86_10_32 ] && ln -s solaris_x86_10_32 solaris_x86; [ -d solaris_x86_10_64 ] && ln -s solaris_x86_10_64 solaris_x86; [ -d rs6000_61 ] && echo ln -s rs6000_61 rs6000; [ -d hpia11.31 ] && echo ln -s hpia11.31 hpia64; }; af.ln.nb.svr2clnt'
 
+# src code
+alias g.trgt='function af.targets() { rg "TARGETS.*=.*${1}" -g "Build"; }; af.targets'
+alias g.trgtb='function af.targets() { rg "TARGETS.*=.*${1}" -g "Build" -path $(git rev-parse --show-toplevel); }; af.targets'
+
 export nbdt='~/nbdata'
 export cstdt='~/custdata'
