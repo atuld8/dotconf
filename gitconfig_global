@@ -162,10 +162,10 @@
     l1 = log --pretty=oneline
     l1t = log --color --pretty=tformat:'%x1b[31m%h%x09%x1b[32m%d%x1b[0m%x20%s%x20%x1b[33m(%an, %cr)%x1b[0m'
     l1tAll = log --full-history --all --color --pretty=tformat:'%x1b[31m%h%x09%x1b[32m%d%x1b[0m%x20%s%x20%x1b[33m(%an, %cr)%x1b[0m'
-    l1x = !"git log --pretty=format:'%C(auto)%h%Creset %C(green)%s%Creset %C(bold blue)(%cr)%Creset %C(yellow)- %an%Creset' -10"
-    l1xt = !"git log --pretty=format:'%C(auto)%h%Creset %C(green)%s%Creset %C(bold blue)(%cr)%Creset %C(yellow)- %an%Creset %C(magenta)%d%Creset' -10"
-    l1x2 = !"git log --pretty=format:'%C(green)%s%Creset %C(cyan)%cd%Creset %C(bold blue)(%cr)%Creset%n  %C(yellow)- %an <%ae>%Creset | Commit: %C(auto)%h%Creset %C(magenta)%d%Creset' --date=iso -10"
-    l1x2a = !"git log --pretty=format:'%C(green)%s%Creset %C(cyan)%cd%Creset %C(bold blue)(%cr)%Creset%n  %C(yellow)- %an <%ae>%Creset | Commit: %C(auto)%h%Creset %C(magenta)%d%Creset' --date=iso -10 --all"
+    l1x = log --pretty=format:'%C(auto)%h%Creset %C(green)%s%Creset %C(bold blue)(%cr)%Creset %C(yellow)- %an%Creset' -10
+    l1xt = log --pretty=format:'%C(auto)%h%Creset %C(green)%s%Creset %C(bold blue)(%cr)%Creset %C(yellow)- %an%Creset %C(magenta)%d%Creset' -10
+    l1x2 = log --pretty=format:'%C(green)%s%Creset %C(cyan)%cd%Creset %C(bold blue)(%cr)%Creset%n  %C(yellow)- %an <%ae>%Creset | Commit: %C(auto)%h%Creset %C(magenta)%d%Creset' --date=iso -10
+    l1x2a = log --pretty=format:'%C(green)%s%Creset %C(cyan)%cd%Creset %C(bold blue)(%cr)%Creset%n  %C(yellow)- %an <%ae>%Creset | Commit: %C(auto)%h%Creset %C(magenta)%d%Creset' --date=iso -10 --all
 
     l1diff = log --pretty=oneline --abbrev-commit -p
     lfmt1 = log --pretty=tformat:'%h - %an,  %ar : %s'
