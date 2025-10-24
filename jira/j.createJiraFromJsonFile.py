@@ -57,13 +57,13 @@ def create_jira_story(project_key, summary, description, assignee, generic_data)
 
     # Add Epic link if provided
     if epic_link:
-        fields["fields"]["customfield_10001"] = epic_link  # Change customfield_10008 to your instance's Epic Link field ID
+        fields["fields"]["customfield_10008"] = epic_link  # Change customfield_10008 to your instance's Epic Link field ID
 
     if JIRA_WATCHER_GROUP:
-        fields["fields"]["customfield_14600"] = [{'name': JIRA_WATCHER_GROUP}]
+        fields["fields"]["customfield_33462"] = [{'name': JIRA_WATCHER_GROUP}]
 
     if watcher_group:
-        fields["fields"]["customfield_14600"] = [{'name': watcher_group}]
+        fields["fields"]["customfield_33462"] = [{'name': watcher_group}]
 
     payload = fields
 

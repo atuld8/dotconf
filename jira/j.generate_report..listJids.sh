@@ -25,7 +25,7 @@ get_issue_details() {
             assignee: (.fields.assignee.displayName // "Unassigned"),
             reporter: .fields.reporter.displayName,
             priority: .fields.priority.name,
-            severity: (.fields.customfield_16006.value // "NA"),
+            severity: (.fields.customfield_20303.value // "NA"),
             issuetype: .fields.issuetype.name,
             labels: (.fields.labels | join(", "))
         }| [.key, (.summary | if length > 100 then .[0:97] + "..." else . end), .status, (.assignee | if length > 20 then .[0:20] else . end), (.reporter | if length > 20 then .[0:20] else . end), .priority, .severity, .issuetype, .labels] | @tsv'

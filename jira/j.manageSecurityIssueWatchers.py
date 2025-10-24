@@ -22,7 +22,7 @@ if not JIRA_SERVER_NAME or not JIRA_API_TOKEN or not JIRA_PROJECT_KEY:
 
 JIRA_URL = f"https://{JIRA_SERVER_NAME}"
 
-JIRA_SEC_ISSUE_WATCHER_CUST_ID = "customfield_15901"
+JIRA_SEC_ISSUE_WATCHER_CUST_ID = "customfield_33432"
 
 # Headers
 headers = {

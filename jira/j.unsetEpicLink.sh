@@ -78,7 +78,7 @@ unset_epic_link_to_jira_ticket() {
 
     if [ ! -z ${JIRA_EPIC_LINK} ]; then
         echo "Setting Epic Link to $JIRA_EPIC_LINK"
-        jira_put_call $REST_API_PATH generatePostDataToUpdateEpicLink customfield_10001 null
+        jira_put_call $REST_API_PATH generatePostDataToUpdateEpicLink customfield_10008 null
     else
         echo "Skipping the Epic Link value setting as it is empty"
     fi

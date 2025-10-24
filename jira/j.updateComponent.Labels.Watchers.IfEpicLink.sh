@@ -195,7 +195,7 @@ set_watchers_group_to_jira_ticket() {
 
     for group in ${watchersGroupArray[@]}; do
         echo "Adding $group to watcher group"
-        jira_put_call $REST_API_PATH generatePostDataToUpdateWatcherGroupField customfield_14600 $group
+        jira_put_call $REST_API_PATH generatePostDataToUpdateWatcherGroupField customfield_33462 $group
     done
 }
 
@@ -209,7 +209,7 @@ set_epic_link_to_jira_ticket_if_JIRA_EPIC_LINK() {
 
     if [ ! -z ${JIRA_EPIC_LINK} ]; then
         echo "Setting Epic Link to $JIRA_EPIC_LINK"
-        jira_put_call $REST_API_PATH generatePostDataToUpdateEpicLink customfield_10001 $JIRA_EPIC_LINK
+        jira_put_call $REST_API_PATH generatePostDataToUpdateEpicLink customfield_10008 $JIRA_EPIC_LINK
     else
         echo "Skipping the Epic Link value setting as it is empty"
     fi

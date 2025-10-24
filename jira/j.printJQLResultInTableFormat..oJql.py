@@ -72,8 +72,8 @@ def get_issues_by_jql(jql):
                        'priority',
                        'issuetype',
                        'labels',
-                       'customfield_16006',
-                       'customfield_10001']  # Adjust based on required fields
+                       'customfield_20303',
+                       'customfield_10008']  # Adjust based on required fields
         }
 
         response = requests.get(url, headers=headers, params=params, timeout=20)
@@ -104,10 +104,10 @@ def print_issues_in_table_format(issues, excludeCols):
         assignee = issue['fields']['assignee']['displayName'] if issue['fields']['assignee'] else 'Unassigned'
         reporter = issue['fields']['reporter']['displayName'] if issue['fields']['reporter'] else 'Unknown'
         priority = issue['fields']['priority']['name'] if issue['fields']['priority']['name'] else 'NA'
-        severity = issue['fields']['customfield_16006']['value'] if issue['fields']['customfield_16006'] and issue['fields']['customfield_16006']['value'] else 'NA'
+        severity = issue['fields']['customfield_20303']['value'] if issue['fields']['customfield_20303'] and issue['fields']['customfield_20303']['value'] else 'NA'
         issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
         labels = ', '.join(issue['fields']['labels']) if issue['fields']['labels'] else '-'
-        epic_link = issue['fields']['customfield_10001'] if issue['fields']['customfield_10001'] else '-'
+        epic_link = issue['fields']['customfield_10008'] if issue['fields']['customfield_10008'] else '-'
 
         unfiltered_entry = {
             'Sr.': index,
