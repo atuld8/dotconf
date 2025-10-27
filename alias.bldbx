@@ -77,5 +77,10 @@ alias x.ln.nb.svr2clnt='function af.ln.nb.svr2clnt() { [ -d linuxR_x86_2.6.18 ] 
 alias g.trgt='function af.targets() { rg "TARGETS.*=.*${1}" -g "Build"; }; af.targets'
 alias g.trgtb='function af.targets() { rg "TARGETS.*=.*${1}" -g "Build" -path $(git rev-parse --show-toplevel); }; af.targets'
 
+# Multiple line to single line
+alias g.trgtm='find . -type f -name "Build" -exec awk '\''/TARGETS[[:space:]]*=/ { line=$0; while (sub(/\\$/, "", line)) { getline nextLine; line=line nextLine } sub(/.*TARGETS[[:space:]]*=[[:space:]]*/, "", line); print FILENAME ": " line }'\'' {} +'
+alias g.trgtmb='find $(git rev-parse --show-toplevel) -type f -name "Build" -exec awk '\''/TARGETS[[:space:]]*=/ { line=$0; while (sub(/\\$/, "", line)) { getline nextLine; line=line nextLine } sub(/.*TARGETS[[:space:]]*=[[:space:]]*/, "", line); print FILENAME ": " line }'\'' {} +'
+
+
 export nbdt='~/nbdata'
 export cstdt='~/custdata'
