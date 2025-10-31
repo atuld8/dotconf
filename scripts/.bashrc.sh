@@ -360,6 +360,7 @@ alias lrt='ls -CFrt'
 alias llrt='ls -lFrt'
 alias dir='ls -l'
 alias grep='grep --color'
+alias rga='rg -n --color=always --hidden --follow --ignore-case'
 
 ls > /dev/null; if [ $? -ne 0 ]; then alias ls='ls -hF --color'; fi
 

@@ -72,6 +72,7 @@ alias clr="clear; pwd; ls -rth"
 alias cllr="clear; pwd; ls -lrth"
 alias .paths='echo -e ${PATH//:/\\n}'
 alias vbase='/usr/bin/vim -u NONE --noplugin'
+alias rga='rg -n --color=always --hidden --follow --ignore-case'
 
 # User specific aliases and functions
 #required by screen and tmux

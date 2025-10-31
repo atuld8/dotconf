@@ -1,3 +1,4 @@
+#!/bin/ bash
 alias mc.sleepscreen='/System/Library/CoreServices/"Menu Extras"/User.menu/Contents/Resources/CGSession -suspend'
 alias mc.lockscreen='/System/Library/Frameworks/ScreenSaver.framework/Resources/ScreenSaverEngine.app/Contents/MacOS/ScreenSaverEngine'
 alias mc.edit='open -a MacVim.app $*'
@@ -7,7 +8,7 @@ alias mc.worknotes='(cd ~/workspace/worknotes.links/ && fzf --preview "bat --col
 #alias mc.ps='ps -eo pid,ppid,args | grep "[v]im"' This will exclude the grep vim command from filter.
 alias mc.ps='ps -eo pid,ppid,args'
 
-alias mc.eclipse='$HOME/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse'
+alias mc.eclipse="$HOME/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse"
 alias mc.as='open -a "Android Studio.app"'
 alias mc.outlook='open -a "Microsoft Outlook.app"'
 alias mc.nano='/opt/homebrew/bin/nano'
@@ -15,9 +16,9 @@ alias mc.vsc='open -a /Applications/Visual\ Studio\ Code.app'
 alias mc.pgadmin='open -a "pgAdmin 4.app"'
 
 export MAC_DEF_BROWSER='Safari'
-alias mc.setBrow=' function f() { if [ "$1" == "c" ]; then MAC_DEF_BROWSER="Google Chrome"; else MAC_DEF_BROWSER="Safari"; fi; }; f'
-alias mc.jr='function f() { open -a "$MAC_DEF_BROWSER" https://$JIRA_SERVER_NAME/browse/$1; }; f'
-alias mc.et='function f() { open -a "$MAC_DEF_BROWSER" https://${ETRACK_SERVER_NAME}/Etrack/readonly_inc.php?incident=${1};}; f'
-alias mc.eq='function f() { open -a "$MAC_DEF_BROWSER" https://${ETRACK_SERVER_NAME}/Etrack/readonly_inc.php?querychosen=${1};}; f'
+alias mc.setBrow=' function f() { if [[ "$1" == "c" ]]; then MAC_DEF_BROWSER="Google Chrome"; else MAC_DEF_BROWSER="Safari"; fi; }; f'
+alias mc.jr='function f() { open -a "$MAC_DEF_BROWSER" "https://$JIRA_SERVER_NAME/browse/$1"; }; f'
+alias mc.et='function f() { open -a "$MAC_DEF_BROWSER" "https://${ETRACK_SERVER_NAME}/Etrack/readonly_inc.php?incident=${1}"; }; f'
+alias mc.eq='function f() { open -a "$MAC_DEF_BROWSER" "https://${ETRACK_SERVER_NAME}/Etrack/readonly_inc.php?querychosen=${1}"; }; f'
 alias mc.sc='function f() { open -a "$MAC_DEF_BROWSER" https://${SUPPORT_CASE_SERVER_NAME}/Cases/case/${1};}; f'
 alias mc.web='function f() { open -a "$MAC_DEF_BROWSER" $1; }; f'
