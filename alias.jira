@@ -44,6 +44,8 @@ alias j.getCmtsJsn='function af.jira_get_comments() { j.2.get issue/$1/comment |
 alias j.getCmts='function af.jira_get_comments() { j.2.get issue/$1/comment | jq -r '"'"'.comments[] | "\n> > > > -------- \(.author.displayName) : \(.created) -------- < < < <\n\n\(.body)\n"'"'"';}; af.jira_get_comments'
 alias j.getCmtsRev='function af.jira_get_comments() { j.2.get issue/$1/comment | jq -r '"'"'.comments | reverse[] | "\n\t-------- \(.author.displayName) : \(.created) --------\n\n\(.body)\n"'"'"';}; af.jira_get_comments'
 
+alias j.jql.qry='PY3_BIN=$(command -v python3 || command -v python || command -v python3.*); $PY3_BIN ~/.vim/jira/j.printJQLResultInTableFormat..oJql.py --excludeCols Labels'
+
 alias j.tknvrfy='curl $JIRA_ALIAS_EXTRA_OPT -H "Authorization: Bearer ${JIRA_ACC_TOKEN:-NULL}" -X GET https://$JIRA_SERVER_NAME/rest/api/2/myself | { output=`cat -`; if egrep -q "xml version|doctype html" <<<"$output"; then if egrep -q "doctype html" <<<"$output"; then XMLLINT_ARG="--html"; fi; echo "$output" | xmllint $XMLLINT_ARG --format -; else echo "$output" | jq .; fi; }'
 alias j.tknupt='read -sp "Enter Jira Access Token (Hidden): " JIRA_ACC_TOKEN; export JIRA_ACC_TOKEN'
 

@@ -27,6 +27,7 @@ alias x.eset.cftsp='function af.eset.cftsp(){ for et in "$@"; do echo -e "\nChec
 alias x.eset.nbsmreq='function af.eset.nbsmreq(){ for et in "$@"; do echo -e "\nChecking UD2 for $et"; UD2=`eprint -v $et | grep user_defined2 | grep -v NBServerMigratorRequest | sed -e '"'"'s/user_defined2:\s*\(.*\)\s*/NBServerMigratorRequest \1/'"'"'`; echo "UD2 (w/o NBServerMigratorRequest) =$UD2"; if [[ ! -z "$UD2" ]]; then eset --u2 "$UD2" $et; fi; eprint -v $et | grep user_defined2; if [[ $? -ne 0 ]]; then eset --u2 NBServerMigratorRequest $et; eprint -v $et | grep user_defined2; fi; done }; af.eset.nbsmreq'
 alias x.eset.no_epic='function af.eset.no_epic() { eset -F JIRA_EPIC -I NO_EPIC ${*}; }; af.eset.no_epic'
 alias x.eset.et_sfdc='function af.eset.no_epic() { eset -F SFDC -I $2 ${1}; }; af.eset.no_epic'
+alias x.eset.et_jira='function af.eset.no_epic() { eset -F JIRA -I $2 ${1}; }; af.eset.no_epic'
 alias x.eset.fixedsc='function af.eset.fixedsc() { eset -S FIXED -e SOURCE_CHANGE ${*}; }; af.eset.fixedsc'
 
 alias e.nb.stver='$CFG_EDITOR `git rev-parse --show-toplevel`/common/include/nb_static_version.h'
