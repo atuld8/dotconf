@@ -39,7 +39,7 @@ alias v++='vim -c "set tags+=tags" -c "cs add cscope.out"'
 alias vgrk='function af.vimgrok() { cmd=`echo $1 | awk -F'"'"'#'"'"' '"'"'{ print "vim "$1" +"$2 }'"'"'`;$cmd;}; af.vimgrok'
 alias hx='head -10'
 alias tx='tail -10'
-alias r@='function af.runat() { local target_dir="$1"; shift; local cmd="$@"; ( cd "$target_dir" || exit 1; eval "$cmd"); }; af.runat'
+alias r@='function af.runat() { local target_dir="$1"; shift; local cmd="$@"; ( cd "$target_dir" || return 1; eval "$cmd"); }; af.runat'
 
 if [ -z $SCP_HOSTNAME ]; then export SCP_HOSTNAME=`hostname -f`; fi
 

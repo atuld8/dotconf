@@ -4,17 +4,17 @@ fi
 
 if [[ "$JIRA_SERVER_NAME" == "" ]]; then
   echo "JIRA_SERVER_NAME is not defined"
-  exit 1
+  return 1
 fi
 
 if [[ "$JIRA_USER_NAME" == "" ]]; then
   echo "JIRA_USER_NAME is not defined"
-  exit 1
+  return 1
 fi
 
 if [[ "$JIRA_USER_EMAIL" == "" ]]; then
   echo "JIRA_USER_EMAIL is not defined"
-  exit 1
+  return 1
 fi
 
 export JIRA_ALIAS_EXTRA_OPT="--silent"
