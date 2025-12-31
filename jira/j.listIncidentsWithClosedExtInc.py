@@ -39,45 +39,89 @@ CLOSED_STATUSES = ["Closed", "Done", "Resolved", "Fixed", "Solution Provided"]
 
 def parse_input_file(file_path):
     """
-    Parse the input file to extract Incident and EXT_INC mappings.
-    Returns a dictionary with incident numbers as keys and list of Jira IDs as values.
+    Parse the input file to extract Incident, EXT_INC, and any additional column data.
+    Returns incident-jira mappings with additional metadata, column headers, and extra columns info.
 
     Args:
         file_path (str): Path to the input file
 
     Returns:
-        dict: Dictionary mapping incident numbers to list of Jira IDs
+        tuple: (incident_data_map, headers, extra_col_indices) where:
+            - incident_data_map: dict mapping (incident, jira_id) to dict of all column data
+            - headers: list of column headers found in file
+            - extra_col_indices: list of indices for additional columns beyond INCIDENT and EXT_INC
     """
-    incident_jira_map = defaultdict(list)
+    incident_data_map = {}
+    headers = []
+    extra_col_indices = []
+    incident_col_idx = -1
+    jira_col_idx = -1
 
     try:
         with open(file_path, 'r') as f:
             lines = f.readlines()
 
+        # Find header line to detect columns
+        for line in lines:
+            if 'INCIDENT' in line and 'EXT_INC' in line:
+                # Extract headers from the line
+                parts = [p.strip() for p in line.split('|') if p.strip()]
+                headers = parts
+                
+                # Find indices of INCIDENT and EXT_INC
+                for idx, header in enumerate(headers):
+                    if 'INCIDENT' in header:
+                        incident_col_idx = idx
+                    elif 'EXT_INC' in header:
+                        jira_col_idx = idx
+                    else:
+                        extra_col_indices.append(idx)
+                break
+
+        # Parse data lines
         for line in lines:
             # Skip header lines and separator lines
             if '---' in line or 'INCIDENT' in line or 'EXT_INC' in line:
                 continue
 
-            # Extract incident and Jira ID using regex
-            # Looking for pattern: | <incident_number> | <FI-xxxxx or SH-xxxxx> |
-            match = re.search(r'\|\s*(\d+)\s*\|\s*((?:FI|SH)-\d+)\s*\|', line)
-            if match:
-                incident = match.group(1).strip()
-                jira_id = match.group(2).strip()
-
-                # Avoid duplicates
-                if jira_id not in incident_jira_map[incident]:
-                    incident_jira_map[incident].append(jira_id)
+            # Split by | and extract columns
+            parts = [p.strip() for p in line.split('|') if p.strip()]
+            
+            if len(parts) < 2:
+                continue
+                
+            # Extract incident and Jira ID
+            if incident_col_idx >= 0 and jira_col_idx >= 0 and len(parts) > max(incident_col_idx, jira_col_idx):
+                incident = parts[incident_col_idx]
+                jira_id = parts[jira_col_idx]
+                
+                # Validate incident is a number and jira_id starts with FI- or SH-
+                if incident.isdigit() and re.match(r'^(FI|SH)-\d+$', jira_id):
+                    # Store all column data
+                    row_data = {
+                        'incident': incident,
+                        'jira_id': jira_id,
+                        'extra_cols': {}
+                    }
+                    
+                    # Extract additional columns
+                    for idx in extra_col_indices:
+                        if idx < len(parts):
+                            col_name = headers[idx] if idx < len(headers) else f'Col_{idx}'
+                            row_data['extra_cols'][col_name] = parts[idx]
+                    
+                    # Use tuple as key for unique incident+jira combination
+                    key = (incident, jira_id)
+                    incident_data_map[key] = row_data
 
     except FileNotFoundError:
         print(f"Error: File '{file_path}' not found.")
-        return None
+        return None, [], []
     except Exception as e:
         print(f"Error reading file: {e}")
-        return None
+        return None, [], []
 
-    return dict(incident_jira_map)
+    return incident_data_map, headers, extra_col_indices
 
 
 def get_jira_statuses_bulk(jira_ids, batch_size=50):
@@ -222,21 +266,29 @@ def main(file_path, show_all=False, show_jira_status=False):
     print(f"Closed statuses: {', '.join(CLOSED_STATUSES)}\n")
 
     # Parse the input file
-    incident_jira_map = parse_input_file(file_path)
+    incident_data_map, headers, extra_col_indices = parse_input_file(file_path)
 
-    if incident_jira_map is None:
+    if incident_data_map is None:
         return
 
-    if not incident_jira_map:
+    if not incident_data_map:
         print("No incident-Jira mappings found in the file.")
         return
+    
+    # Build incident to jira mapping for processing
+    incident_jira_map = defaultdict(lambda: {'jira_ids': [], 'data': []})
+    for (incident, jira_id), row_data in incident_data_map.items():
+        if jira_id not in incident_jira_map[incident]['jira_ids']:
+            incident_jira_map[incident]['jira_ids'].append(jira_id)
+            incident_jira_map[incident]['data'].append(row_data)
 
     print(f"Found {len(incident_jira_map)} unique incidents with Jira mappings.")
+    print(f"Detected columns: {', '.join(headers) if headers else 'INCIDENT, EXT_INC (default)'}\n")
 
     # Collect all unique Jira IDs for bulk fetching
     all_jira_ids = []
-    for jira_ids in incident_jira_map.values():
-        all_jira_ids.extend(jira_ids)
+    for incident_info in incident_jira_map.values():
+        all_jira_ids.extend(incident_info['jira_ids'])
 
     # Remove duplicates while preserving order
     unique_jira_ids = list(dict.fromkeys(all_jira_ids))
@@ -254,7 +306,9 @@ def main(file_path, show_all=False, show_jira_status=False):
     all_incidents = []
     closed_count = 0
 
-    for incident, jira_ids in sorted(incident_jira_map.items()):
+    for incident, incident_info in sorted(incident_jira_map.items()):
+        jira_ids = incident_info['jira_ids']
+        jira_data = incident_info['data']
         jira_statuses = {}
 
         # Get statuses from bulk fetch results
@@ -270,6 +324,7 @@ def main(file_path, show_all=False, show_jira_status=False):
             'incident': incident,
             'jira_count': len(jira_ids),
             'jira_statuses': jira_statuses,
+            'jira_data': jira_data,  # Store additional column data
             'all_closed': all_closed,
             'status_string': format_jira_status_string(jira_statuses)
         })
@@ -289,19 +344,41 @@ def main(file_path, show_all=False, show_jira_status=False):
         print("No incidents found matching the filter criteria.")
         return
 
+    # Determine if we have extra columns to display
+    has_extra_cols = False
+    extra_col_names = []
+    if incidents_to_display:
+        first_item = incidents_to_display[0]
+        if first_item['jira_data'] and first_item['jira_data'][0]['extra_cols']:
+            has_extra_cols = True
+            extra_col_names = list(first_item['jira_data'][0]['extra_cols'].keys())
+
     # Create table with separate columns for each Jira ticket
     table = PrettyTable()
-    table.field_names = ["Sr.", "Incident", "Jira ID", "Status", "All Closed"]
+    base_fields = ["Sr.", "Incident", "Jira ID", "Status"]
+    if has_extra_cols:
+        table.field_names = base_fields + extra_col_names + ["All Closed"]
+    else:
+        table.field_names = base_fields + ["All Closed"]
+    
     table.align["Sr."] = "r"
     table.align["Incident"] = "l"
     table.align["Jira ID"] = "l"
     table.align["Status"] = "l"
+    for col_name in extra_col_names:
+        table.align[col_name] = "l"
     table.align["All Closed"] = "c"
 
     sr_counter = 1
     for item in incidents_to_display:
         incident = item['incident']
         jira_statuses = item['jira_statuses']
+        jira_data = item['jira_data']
+
+        # Create a map of jira_id to extra_cols
+        jira_extra_map = {}
+        for data_row in jira_data:
+            jira_extra_map[data_row['jira_id']] = data_row['extra_cols']
 
         # Sort Jira IDs for consistent display
         sorted_jira_ids = sorted(jira_statuses.keys())
@@ -309,27 +386,45 @@ def main(file_path, show_all=False, show_jira_status=False):
         # Add first row with incident number
         first_jira = sorted_jira_ids[0]
         all_closed_mark = "✓" if item['all_closed'] else "✗"
-        table.add_row([
+        
+        row = [
             sr_counter,
             incident,
             first_jira,
-            jira_statuses[first_jira],
-            all_closed_mark
-        ])
+            jira_statuses[first_jira]
+        ]
+        
+        # Add extra column data if available
+        if has_extra_cols:
+            extra_data = jira_extra_map.get(first_jira, {})
+            for col_name in extra_col_names:
+                row.append(extra_data.get(col_name, '-'))
+        
+        row.append(all_closed_mark)
+        table.add_row(row)
 
         # Add remaining Jira tickets for the same incident (blank incident column)
         for jira_id in sorted_jira_ids[1:]:
-            table.add_row([
+            row = [
                 "",
                 "",
                 jira_id,
-                jira_statuses[jira_id],
-                ""
-            ])
+                jira_statuses[jira_id]
+            ]
+            
+            # Add extra column data if available
+            if has_extra_cols:
+                extra_data = jira_extra_map.get(jira_id, {})
+                for col_name in extra_col_names:
+                    row.append(extra_data.get(col_name, '-'))
+            
+            row.append("")
+            table.add_row(row)
 
         # Add separator line after each incident (if there are more incidents)
         if sr_counter < len(incidents_to_display):
-            table.add_row(["---", "---", "---", "---", "---"])
+            separator = ["---"] * len(table.field_names)
+            table.add_row(separator)
 
         sr_counter += 1
 
