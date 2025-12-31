@@ -5,7 +5,7 @@ Script to list all Incidents whose EXT_INC (Jira tickets) are in closed state.
 EXT_INC column contains Jira ticket IDs starting with FI- or SH-.
 Handles 1-to-many relationship where one incident can have multiple FI- or SH- tickets.
 
-Closed states: ["Closed", "Done", "Resolved", "Fixed"]
+Closed states: ["Closed", "Done", "Resolved", "Fixed", "Solution Provided"]
 '''
 
 import os
@@ -67,7 +67,7 @@ def parse_input_file(file_path):
                 # Extract headers from the line
                 parts = [p.strip() for p in line.split('|') if p.strip()]
                 headers = parts
-                
+
                 # Find indices of INCIDENT and EXT_INC
                 for idx, header in enumerate(headers):
                     if 'INCIDENT' in header:
@@ -86,15 +86,15 @@ def parse_input_file(file_path):
 
             # Split by | and extract columns
             parts = [p.strip() for p in line.split('|') if p.strip()]
-            
+
             if len(parts) < 2:
                 continue
-                
+
             # Extract incident and Jira ID
             if incident_col_idx >= 0 and jira_col_idx >= 0 and len(parts) > max(incident_col_idx, jira_col_idx):
                 incident = parts[incident_col_idx]
                 jira_id = parts[jira_col_idx]
-                
+
                 # Validate incident is a number and jira_id starts with FI- or SH-
                 if incident.isdigit() and re.match(r'^(FI|SH)-\d+$', jira_id):
                     # Store all column data
@@ -103,13 +103,13 @@ def parse_input_file(file_path):
                         'jira_id': jira_id,
                         'extra_cols': {}
                     }
-                    
+
                     # Extract additional columns
                     for idx in extra_col_indices:
                         if idx < len(parts):
                             col_name = headers[idx] if idx < len(headers) else f'Col_{idx}'
                             row_data['extra_cols'][col_name] = parts[idx]
-                    
+
                     # Use tuple as key for unique incident+jira combination
                     key = (incident, jira_id)
                     incident_data_map[key] = row_data
@@ -126,7 +126,7 @@ def parse_input_file(file_path):
 
 def get_jira_statuses_bulk(jira_ids, batch_size=50):
     """
-    Get the current status of multiple Jira issues in bulk using JQL.
+    Get the current status and resolution of multiple Jira issues in bulk using JQL.
     This is much faster than making individual API calls.
 
     Args:
@@ -134,7 +134,7 @@ def get_jira_statuses_bulk(jira_ids, batch_size=50):
         batch_size (int): Number of issues to fetch per batch (default 50)
 
     Returns:
-        dict: Dictionary mapping Jira IDs to their status names
+        dict: Dictionary mapping Jira IDs to dict with 'status' and 'resolution'
     """
     jira_status_map = {}
 
@@ -157,7 +157,7 @@ def get_jira_statuses_bulk(jira_ids, batch_size=50):
             params = {
                 'jql': jql,
                 'maxResults': batch_size,
-                'fields': 'key,status'
+                'fields': 'key,status,resolution'
             }
 
             response = requests.get(url, headers=headers, params=params, timeout=30)
@@ -167,26 +167,27 @@ def get_jira_statuses_bulk(jira_ids, batch_size=50):
                 for issue in issues:
                     key = issue['key']
                     status = issue['fields']['status']['name']
-                    jira_status_map[key] = status
+                    resolution = issue['fields']['resolution']['name'] if issue['fields'].get('resolution') else '-'
+                    jira_status_map[key] = {'status': status, 'resolution': resolution}
                 print("✓")
             else:
                 print(f"✗ Failed: {response.status_code}")
                 # Mark failed fetches as ERROR
                 for jira_id in batch:
                     if jira_id not in jira_status_map:
-                        jira_status_map[jira_id] = "ERROR"
+                        jira_status_map[jira_id] = {'status': 'ERROR', 'resolution': '-'}
 
         except requests.exceptions.RequestException as e:
             print(f"✗ Error: {e}")
             # Mark failed fetches as ERROR
             for jira_id in batch:
                 if jira_id not in jira_status_map:
-                    jira_status_map[jira_id] = "ERROR"
+                    jira_status_map[jira_id] = {'status': 'ERROR', 'resolution': '-'}
 
     # Mark any missing issues as NOT_FOUND
     for jira_id in jira_ids:
         if jira_id not in jira_status_map:
-            jira_status_map[jira_id] = "NOT_FOUND"
+            jira_status_map[jira_id] = {'status': 'NOT_FOUND', 'resolution': '-'}
 
     return jira_status_map
 
@@ -224,14 +225,23 @@ def get_jira_status(jira_id):
 def check_all_tickets_closed(jira_statuses):
     """
     Check if all Jira tickets are in closed state.
+    Special rule: "Solution Provided" with "Incomplete" resolution is NOT considered closed.
 
     Args:
-        jira_statuses (dict): Dictionary mapping Jira IDs to their statuses
+        jira_statuses (dict): Dictionary mapping Jira IDs to dict with status info
 
     Returns:
         bool: True if all tickets are closed, False otherwise
     """
-    for status in jira_statuses.values():
+    for jira_id, status_info in jira_statuses.items():
+        status = status_info['status'] if isinstance(status_info, dict) else status_info
+        resolution = status_info.get('resolution', '-') if isinstance(status_info, dict) else '-'
+
+        # Special rule: "Solution Provided" with "Incomplete" resolution is not closed
+        if status == "Solution Provided" and resolution == "Incomplete":
+            return False
+
+        # Check if status is in closed statuses list
         if status not in CLOSED_STATUSES:
             return False
     return True
@@ -242,13 +252,14 @@ def format_jira_status_string(jira_statuses):
     Format Jira IDs and their statuses into a readable string.
 
     Args:
-        jira_statuses (dict): Dictionary mapping Jira IDs to their statuses
+        jira_statuses (dict): Dictionary mapping Jira IDs to dict with status info
 
     Returns:
         str: Formatted string like "FI-12345[Closed], SH-67890[Done]"
     """
     status_list = []
-    for jira_id, status in sorted(jira_statuses.items()):
+    for jira_id, status_info in sorted(jira_statuses.items()):
+        status = status_info['status'] if isinstance(status_info, dict) else status_info
         status_list.append(f"{jira_id}[{status}]")
     return ", ".join(status_list)
 
@@ -274,7 +285,7 @@ def main(file_path, show_all=False, show_jira_status=False):
     if not incident_data_map:
         print("No incident-Jira mappings found in the file.")
         return
-    
+
     # Build incident to jira mapping for processing
     incident_jira_map = defaultdict(lambda: {'jira_ids': [], 'data': []})
     for (incident, jira_id), row_data in incident_data_map.items():
@@ -313,7 +324,7 @@ def main(file_path, show_all=False, show_jira_status=False):
 
         # Get statuses from bulk fetch results
         for jira_id in jira_ids:
-            jira_statuses[jira_id] = all_jira_statuses.get(jira_id, "ERROR")
+            jira_statuses[jira_id] = all_jira_statuses.get(jira_id, {'status': 'ERROR', 'resolution': '-'})
 
         all_closed = check_all_tickets_closed(jira_statuses)
 
@@ -355,16 +366,17 @@ def main(file_path, show_all=False, show_jira_status=False):
 
     # Create table with separate columns for each Jira ticket
     table = PrettyTable()
-    base_fields = ["Sr.", "Incident", "Jira ID", "Status"]
+    base_fields = ["Sr.", "Incident", "Jira ID", "Status", "Resolution"]
     if has_extra_cols:
         table.field_names = base_fields + extra_col_names + ["All Closed"]
     else:
         table.field_names = base_fields + ["All Closed"]
-    
+
     table.align["Sr."] = "r"
     table.align["Incident"] = "l"
     table.align["Jira ID"] = "l"
     table.align["Status"] = "l"
+    table.align["Resolution"] = "l"
     for col_name in extra_col_names:
         table.align[col_name] = "l"
     table.align["All Closed"] = "c"
@@ -385,39 +397,43 @@ def main(file_path, show_all=False, show_jira_status=False):
 
         # Add first row with incident number
         first_jira = sorted_jira_ids[0]
-        all_closed_mark = "✓" if item['all_closed'] else "✗"
-        
+        all_closed_mark = "YES" if item['all_closed'] else "NO"
+        first_status_info = jira_statuses[first_jira]
+
         row = [
             sr_counter,
             incident,
             first_jira,
-            jira_statuses[first_jira]
+            first_status_info['status'] if isinstance(first_status_info, dict) else first_status_info,
+            first_status_info['resolution'] if isinstance(first_status_info, dict) else '-'
         ]
-        
+
         # Add extra column data if available
         if has_extra_cols:
             extra_data = jira_extra_map.get(first_jira, {})
             for col_name in extra_col_names:
                 row.append(extra_data.get(col_name, '-'))
-        
+
         row.append(all_closed_mark)
         table.add_row(row)
 
         # Add remaining Jira tickets for the same incident (blank incident column)
         for jira_id in sorted_jira_ids[1:]:
+            status_info = jira_statuses[jira_id]
             row = [
                 "",
                 "",
                 jira_id,
-                jira_statuses[jira_id]
+                status_info['status'] if isinstance(status_info, dict) else status_info,
+                status_info['resolution'] if isinstance(status_info, dict) else '-'
             ]
-            
+
             # Add extra column data if available
             if has_extra_cols:
                 extra_data = jira_extra_map.get(jira_id, {})
                 for col_name in extra_col_names:
                     row.append(extra_data.get(col_name, '-'))
-            
+
             row.append("")
             table.add_row(row)
 
@@ -438,22 +454,25 @@ def main(file_path, show_all=False, show_jira_status=False):
 
         # Create a comprehensive Jira status table
         jira_table = PrettyTable()
-        jira_table.field_names = ["Sr.", "Jira ID", "Status", "Is Closed"]
+        jira_table.field_names = ["Sr.", "Jira ID", "Status", "Resolution", "Is Closed"]
         jira_table.align["Sr."] = "r"
         jira_table.align["Jira ID"] = "l"
         jira_table.align["Status"] = "l"
+        jira_table.align["Resolution"] = "l"
         jira_table.align["Is Closed"] = "c"
 
         # Collect all unique Jira tickets with their statuses
         jira_status_list = []
         for jira_id in sorted(all_jira_statuses.keys()):
-            status = all_jira_statuses[jira_id]
-            is_closed = "✓" if status in CLOSED_STATUSES else "✗"
-            jira_status_list.append((jira_id, status, is_closed))
+            status_info = all_jira_statuses[jira_id]
+            status = status_info['status'] if isinstance(status_info, dict) else status_info
+            resolution = status_info['resolution'] if isinstance(status_info, dict) else '-'
+            is_closed = "YES" if status in CLOSED_STATUSES else "NO"
+            jira_status_list.append((jira_id, status, resolution, is_closed))
 
         # Add rows to the table
-        for idx, (jira_id, status, is_closed) in enumerate(jira_status_list, start=1):
-            jira_table.add_row([idx, jira_id, status, is_closed])
+        for idx, (jira_id, status, resolution, is_closed) in enumerate(jira_status_list, start=1):
+            jira_table.add_row([idx, jira_id, status, resolution, is_closed])
 
         print(jira_table)
 
