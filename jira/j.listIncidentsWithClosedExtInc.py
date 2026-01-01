@@ -6,8 +6,27 @@ EXT_INC column contains Jira ticket IDs starting with FI- or SH-.
 Handles 1-to-many relationship where one incident can have multiple FI- or SH- tickets.
 
 Closed states: ["Closed", "Done", "Resolved", "Fixed", "Solution Provided"]
-'''
+Special Rule: Tickets with "Solution Provided" status AND "Incomplete" resolution are NOT considered closed.
 
+Quick Testing:
+  # Basic usage - show only incidents with all tickets closed
+  ./j.listIncidentsWithClosedExtInc.py ~/op/SR_FI_SH
+
+  # Show all incidents regardless of status
+  ./j.listIncidentsWithClosedExtInc.py ~/op/SR_FI_SH --show-all
+
+  # Include detailed Jira status table
+  ./j.listIncidentsWithClosedExtInc.py ~/op/SR_FI_SH --show-jira-status
+
+  # Test with first 20 lines
+  head -n 20 ~/op/SR_FI_SH | ./j.listIncidentsWithClosedExtInc.py /dev/stdin
+
+  # Save output to file
+  ./j.listIncidentsWithClosedExtInc.py ~/op/SR_FI_SH > results.txt
+
+  # Pipe to less for scrolling
+  ./j.listIncidentsWithClosedExtInc.py ~/op/SR_FI_SH | less
+'''
 import os
 import re
 import argparse
