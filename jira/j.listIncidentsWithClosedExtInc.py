@@ -484,6 +484,7 @@ def main(file_path, show_all=False, show_jira_status=False):
     print(f"Incidents with all tickets closed: {closed_count}")
     print(f"Incidents with open tickets: {len(all_incidents) - closed_count}")
     print(f"Closed status definitions: {', '.join(CLOSED_STATUSES)}")
+    print("Note: Tickets with 'Solution Provided' status AND 'Incomplete' resolution are NOT considered closed.")
     print("="*120)
 
 
