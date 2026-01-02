@@ -49,12 +49,19 @@ end
 
 -- Function to add cscope/ctags relative to git root
 local function F_ctag_cscope_add_wrt_git()
-  local rootpath = vim.fn.system("git rev-parse --show-toplevel"):gsub("\n$", "")
+  local ok, rootpath = pcall(function()
+    return vim.fn.system("git rev-parse --show-toplevel 2>/dev/null"):gsub("\n$", "")
+  end)
+  
+  if not ok or rootpath == "" or vim.v.shell_error ~= 0 then
+    return -- Not in a git repository
+  end
+  
   local cscope_out = rootpath .. "/cscope.out"
   local ctags_file = rootpath .. "/tags"
 
   if vim.fn.filereadable(cscope_out) == 1 then
-    cscope_maps.cscope.add(cscope_out)
+    pcall(cscope_maps.cscope.add, cscope_out)
   end
 
   if vim.fn.filereadable(ctags_file) == 1 then

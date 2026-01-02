@@ -108,13 +108,6 @@ return {
   { "andrewradev/linediff.vim" },
   { "preservim/tagbar" },
 
-  -- LSP support
-  { "neovim/nvim-lspconfig",
-  config = function()
-      require("myconfig.lsp") -- only runs AFTER lspconfig is loaded
-  end,
-  },
-
     -- Autocompletion
   { "hrsh7th/nvim-cmp" },
   { "hrsh7th/cmp-nvim-lsp" },

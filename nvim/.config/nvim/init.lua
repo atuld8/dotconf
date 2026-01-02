@@ -38,18 +38,16 @@ local v = vim.version()
 
 -- Check if version is at least 0.10.0
 if v.major > 0 or (v.major == 0 and v.minor >= 10) then
-require("lazy").setup("plugins")
-require("lazy").setup("myconfig.plugins")
+-- Setup lazy.nvim with all plugin sources
+require("lazy").setup({
+  { import = "plugins" },
+})
 
 -- Load basic configs
 require("myconfig.options")
 require("myconfig.keymaps")
 
--- Load plugins (using lazy.nvim)
-require("myconfig.plugins")
-
 -- Load extras
-require("myconfig.lsp")
 require("myconfig.cscope")
 end
 
