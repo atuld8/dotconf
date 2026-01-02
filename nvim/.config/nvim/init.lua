@@ -49,25 +49,15 @@ require("myconfig.keymaps")
 
 -- Load extras
 require("myconfig.cscope")
+require("myconfig.lsp")
 end
 
 -- Basic Neovim settings
-vim.opt.number = true
-vim.opt.relativenumber = true
 vim.opt.termguicolors = true
 vim.cmd("filetype plugin indent on")
 
 -- Encoding
 vim.opt.encoding = "utf-8"
-
--- Filetype handling
-vim.cmd("filetype plugin on")
-vim.cmd("filetype indent on")
-
--- Line numbers
-vim.opt.number = true
-vim.opt.relativenumber = true
-
 
 -- Enable relativenumber for normal buffers, except NERDTree
 local function set_numbers()
@@ -776,15 +766,6 @@ vim.keymap.set("x", "<Leader><C-m>s", ":call MultiCursorSearch('')<CR>", { silen
 
 -- Search all subdirectories when using :find
 vim.opt.path:append("**")
-
-
--- ALE options
-vim.g.ale_python_flake8_options =
-  "--ignore=E501,E221,D100,D101,D102,D103"
-vim.g.ale_python_pycodestyle_options =
-  "--ignore=E221,E226,E302,E71,E501,W12,D100,D101,D102,D103"
-
-
 
 
 -- Template plugin settings

@@ -10,12 +10,8 @@ require("cscope_maps").setup({
     skip_input_prompt = true, -- auto-use cscope.out if found
 })
 
-
+-- Tags configuration
 vim.opt.tags = { "./tags", "tags", "tags;/" }
-vim.opt.cscopetag = true
-vim.opt.csto = 1
-vim.opt.cscopeverbose = true
-vim.opt.cscopequickfix = "s+,c+,d+,i+,t+,e+,f+,g+"
 
 local function add_cscope_if_found()
   local db = vim.fn.getcwd() .. "/cscope.out"
@@ -28,8 +24,6 @@ end
 vim.api.nvim_create_autocmd({ "VimEnter", "DirChanged" }, {
   callback = add_cscope_if_found,
 })
-
-local cscope_maps = require("cscope_maps")
 
 -- Function to add cscope and ctags (relative to current script path)
 local function F_ctag_cscope_add()

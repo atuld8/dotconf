@@ -4,9 +4,6 @@ return {
   -- Plugin manager can manage itself
   { "folke/lazy.nvim" },
 
-  -- Required shared library
-  { "xolox/vim-misc" },
-
   -- UI
   { "vim-airline/vim-airline" },
 
@@ -116,6 +113,29 @@ return {
   { "andrewradev/linediff.vim" },
   { "preservim/tagbar" },
 
+  -- Telescope fuzzy finder
+  { "nvim-lua/plenary.nvim" },
+  {
+      "nvim-telescope/telescope.nvim",
+      dependencies = { "nvim-lua/plenary.nvim" },
+      cmd = { "Telescope" },
+  },
+
+  -- Cscope integration
+  {
+      "dhananjaylatkar/cscope_maps.nvim",
+      dependencies = { "nvim-telescope/telescope.nvim" },
+      config = function()
+        require("cscope_maps").setup({
+          cscope = {
+            db_file = "./cscope.out",
+            exec = "cscope",
+            picker = "telescope",
+          },
+        })
+      end,
+  },
+
     -- Autocompletion
   { "hrsh7th/nvim-cmp" },
   { "hrsh7th/cmp-nvim-lsp" },
@@ -124,8 +144,31 @@ return {
   { "L3MON4D3/LuaSnip" },
   { "saadparwaiz1/cmp_luasnip" },
 
-  { "github/copilot.vim", event = "VeryLazy", },
-  -- Optional helper
-  { "nvim-lua/plenary.nvim" },
+  -- AI Assistants
+  { "github/copilot.vim", event = "VeryLazy" },
+  {
+      "David-Kunz/gen.nvim",
+      cmd = { "Gen" },
+      opts = {
+          model = "mistral",
+          host = "localhost",
+          port = "11434",
+          prompt = "$input",
+          quit_map = "q",
+          retry_map = "<c-r>",
+          accept_map = "<c-cr>",
+          display_mode = "float",
+          show_prompt = false,
+          show_model = false,
+          no_auto_close = false,
+          init = function() pcall(io.popen, "ollama serve > /dev/null 2>&1 &") end,
+          command = function(options)
+              local body = {model = options.model, stream = true}
+              return "curl --silent --no-buffer -X POST http://" .. options.host .. ":" .. options.port .. "/api/chat -d $body"
+          end,
+          result_filetype = "markdown",
+          debug = false
+      },
+  },
 }
 

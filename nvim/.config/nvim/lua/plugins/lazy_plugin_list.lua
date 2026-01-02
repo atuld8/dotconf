@@ -95,7 +95,6 @@ return {
   "lacombar/vim-mpage",
   "will133/vim-dirdiff",
   "LucHermitte/lh-vim-lib",
-  "LucHermitte/lh-vim-lib",
   --{ "LucHermitte/local_vimrc",
   -- dependencies = { "LucHermitte/lh-vim-lib" },
   --},
@@ -143,10 +142,4 @@ return {
           debug = false -- Prints errors and the command which is run.
       }
   },
-  -- LSP support
-  { "neovim/nvim-lspconfig",
-  config = function()
-      require("myconfig.lsp") -- only runs AFTER lspconfig is loaded
-  end,
-  }
 }
