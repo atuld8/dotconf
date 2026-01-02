@@ -25,8 +25,8 @@ end
 vim.opt.rtp:prepend(lazypath)
 
 vim.opt.timeout = true
-vim.opt.timeoutlen = 300
-vim.opt.ttimeoutlen = 30
+vim.opt.timeoutlen = 200  -- Faster response for leader key combinations
+vim.opt.ttimeoutlen = 10  -- Faster escape key response
 
 
 -- Set leader keys BEFORE loading any plugins

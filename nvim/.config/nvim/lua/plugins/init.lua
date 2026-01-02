@@ -40,6 +40,14 @@ return {
   {
     "dense-analysis/ale",
     config = function()
+      -- Disable ALE's integration with Neovim diagnostics to avoid conflicts with LSP
+      vim.g.ale_use_neovim_diagnostics_api = 0
+      
+      -- Only lint on save and when text changes after leaving insert mode
+      vim.g.ale_lint_on_text_changed = 'normal'
+      vim.g.ale_lint_on_insert_leave = 1
+      vim.g.ale_lint_on_enter = 0
+      
       -- Linters
       vim.g.ale_linters = {
         python = { "flake8", "pycodestyle", "pylint" },
