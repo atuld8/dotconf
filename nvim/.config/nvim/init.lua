@@ -1,5 +1,5 @@
 -- init.lua
-vim.g.python3_host_prog="/opt/homebrew/bin/python3.12"
+vim.g.python3_host_prog="/opt/homebrew/bin/python3"
 
 vim.g.session_autoload = "no"
 vim.g.session_autosave = "no"
@@ -23,6 +23,10 @@ if not vim.loop.fs_stat(lazypath) then
 
 end
 vim.opt.rtp:prepend(lazypath)
+
+vim.opt.timeout = true
+vim.opt.timeoutlen = 300
+vim.opt.ttimeoutlen = 30
 
 
 -- Set leader keys BEFORE loading any plugins
