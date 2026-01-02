@@ -116,11 +116,27 @@ return {
       "David-Kunz/gen.nvim",
       opts = {
           model = "mistral", -- The default model to use.
+          host = "localhost", -- The host running the Ollama service.
+          port = "11434", -- The port on which the Ollama service is listening.
+          input = function()
+              local start_line = vim.fn.getpos("'<")[2] - 1
+              local end_line = vim.fn.getpos("'>")[2]
+
+              if start_line >= 0 and end_line >= start_line then
+                  local lines = vim.api.nvim_buf_get_lines(0, start_line, end_line, false)
+                  if #lines > 0 then
+                      return table.concat(lines, "\n")
+                  end
+              end
+
+              return table.concat(
+                  vim.api.nvim_buf_get_lines(0, 0, -1, false),
+                  "\n"
+              )
+          end,
           quit_map = "q", -- set keymap to close the response window
           retry_map = "<c-r>", -- set keymap to re-send the current prompt
           accept_map = "<c-cr>", -- set keymap to replace the previous selection with the last result
-          host = "localhost", -- The host running the Ollama service.
-          port = "11434", -- The port on which the Ollama service is listening.
           display_mode = "float", -- The display mode. Can be "float" or "split" or "horizontal-split" or "vertical-split".
           show_prompt = false, -- Shows the prompt submitted to Ollama. Can be true (3 lines) or "full".
           show_model = false, -- Displays which model you are using at the beginning of your chat session.

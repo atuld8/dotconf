@@ -109,7 +109,11 @@ return {
   { "preservim/tagbar" },
 
   -- LSP support
-  { "neovim/nvim-lspconfig" },
+  { "neovim/nvim-lspconfig",
+  config = function()
+      require("myconfig.lsp") -- only runs AFTER lspconfig is loaded
+  end,
+  },
 
     -- Autocompletion
   { "hrsh7th/nvim-cmp" },

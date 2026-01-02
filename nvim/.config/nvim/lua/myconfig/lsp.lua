@@ -18,32 +18,52 @@ local on_attach = function(_, bufnr)
   map("n", "gr", vim.lsp.buf.references)
 end
 
--- Lua (for Neovim config)
-lspconfig.lua_ls.setup({
-  on_attach = on_attach,
-  capabilities = capabilities,
-  settings = {
-    Lua = {
-      diagnostics = { globals = { "vim" }, disable = { "large-file-warning" }, },
-      workspace = {
-        library = vim.api.nvim_get_runtime_file("", true),
+-- Shared on_attach and capabilities (keep your existing ones)
+local on_attach = on_attach
+local capabilities = capabilities
+
+-- Lua LSP
+vim.lsp.configs.lua_ls = {
+  default_config = {
+    cmd = { "lua-language-server" },
+    filetypes = { "lua" },
+    settings = {
+      Lua = {
+        diagnostics = {
+          globals = { "vim" },
+          disable = { "large-file-warning" },
+        },
+        workspace = {
+          library = vim.api.nvim_get_runtime_file("", true),
+        },
+        telemetry = { enable = false },
       },
-      telemetry = { enable = false },
     },
-  },
-})
+    on_attach = on_attach,
+    capabilities = capabilities,
+  }
+}
 
--- C/C++ (clangd)
-lspconfig.clangd.setup({
-  on_attach = on_attach,
-  capabilities = capabilities,
-})
+-- C/C++ LSP (clangd)
+vim.lsp.configs.clangd = {
+  default_config = {
+    cmd = { "clangd" },
+    filetypes = { "c", "cpp", "objc", "objcpp" },
+    on_attach = on_attach,
+    capabilities = capabilities,
+  }
+}
 
--- Python (pyright)
-lspconfig.pyright.setup({
-  on_attach = on_attach,
-  capabilities = capabilities,
-})
+-- Python LSP (pyright)
+vim.lsp.configs.pyright = {
+  default_config = {
+    cmd = { "pyright-langserver", "--stdio" },
+    filetypes = { "python" },
+    on_attach = on_attach,
+    capabilities = capabilities,
+  }
+}
+
 
 -- Autocomplete
 cmp.setup({
