@@ -788,7 +788,19 @@ end, { nargs = 1 })
 -- CtrlP plugin: open buffer list by default
 vim.g.ctrlp_cmd = "CtrlPBuffer"
 
+
+-- user commands
+require("myconfig.commands")
+
 -- Load project-specific vimrc (must be last)
 --- Call it once on startup
 F_include_project_specific_vimrc()
+
+-- debug
+vim.g.copilot_no_tab_map = true
+vim.keymap.set("i", "<C-J>", 'copilot#Accept("")', {
+  expr = true,
+  silent = true,
+  replace_keycodes = false,
+})
 

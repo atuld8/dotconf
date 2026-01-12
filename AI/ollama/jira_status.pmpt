@@ -1,0 +1,8 @@
+Convert this request into Jira JQL only.
+
+Request:
+"Show blocked tickets not updated in the last 3 days,
+owned by the NBServerMigrator team"
+
+Output only JQL.
+
