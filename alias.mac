@@ -25,7 +25,7 @@ alias mc.sc='function f() { open -a "$MAC_DEF_BROWSER" https://${SUPPORT_CASE_SE
 alias mc.brow='function f() { open -a "$MAC_DEF_BROWSER" $1; }; f'
 
 alias ol.ls='ollama list'
-alias ol.lsm='ollama list | cut -d":" -f1'
+alias ol.lsm='ollama list | cut -d":" -f1 | tail -n +2'
 alias ol.rfzf='ollama run $(ollama list | tail -n +2 | awk '"'"'{print $1}'"'"' | fzf)'
 alias ol.status='curl -sSf http://localhost:11434/api/version && echo " ollama is running" || echo "ollama Not running"'
 alias ol.stop='brew services stop ollama'
