@@ -82,9 +82,10 @@ alias x.unc2http.evd='function af.unc2http() { echo "$@" | sed -e "s/^\\\\/https
 alias x.unc2sftp.evd='function af.unc2http() { echo "$@" | sed -e "s/^\\\\/:\/\//g" | sed -E "s/\.comm(.*)/\-sftp.comm\1/g" | sed -e "s/\\\\/\//g" | sed -e "s/$/\//g" | xargs -I {} sh -c "echo \"sftp{}\"; echo \"scp{}\""; }; af.unc2http'
 alias x.rmtcmd='function af.cmdrmt() { ssh -q -t $RMTCMD_HOST bash -ic '"\'"'$@'"\'"'; }; af.cmdrmt'
 alias x.unix2win='function af.unix2win() { drive="${1:-U:}"; path=$(realpath "${2:-$PWD}"); echo $path | sed "s|^$HOME|$drive|; s|/|\\\\|g"; }; af.unix2win'
-alias x.tmp2v='function tmx() { if ! tmux list-panes -F "#P" | grep -q "^2$"; then tmux split-window -h -l $(tmux display-message -p "#{pane_width}" | awk '"'"'{print int($1 * 0.3)}'"'"'); tmux last-pane; fi; tmux send-key -t ":.2" "$@" C-m; }; tmx'
-alias x.tmp2h='function tmx() { if ! tmux list-panes -F "#P" | grep -q "^2$"; then tmux split-window -v -p 30; tmux last-pane; fi; tmux send-key -t ":.2" "$@" C-m; }; tmx'
-alias x.tmp2c='function tmxc() { tmux send-key -t :.2 "clear" C-m; }; tmxc'
+alias x.txp2v='function tmx() { if ! tmux list-panes -F "#P" | grep -q "^2$"; then tmux split-window -h -l $(tmux display-message -p "#{pane_width}" | awk '"'"'{print int($1 * 0.3)}'"'"'); tmux last-pane; fi; tmux send-key -t ":.2" "$@" C-m; }; tmx'
+alias x.txp2h='function tmx() { if ! tmux list-panes -F "#P" | grep -q "^2$"; then tmux split-window -v -p 30; tmux last-pane; fi; tmux send-key -t ":.2" "$@" C-m; }; tmx'
+alias x.txp2c='function tmxc() { tmux send-key -t :.2 "clear" C-m; }; tmxc'
+alias x.txdp='function tmxdp() { tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$@; read -n 1 -s -r -p \"Press any key to continue\""; }; tmxdp'
 
 # modify configs quickly
 alias e='$CFG_EDITOR'
