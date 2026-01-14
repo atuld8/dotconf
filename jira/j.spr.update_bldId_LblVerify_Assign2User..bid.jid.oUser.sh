@@ -22,5 +22,5 @@ $(dirname "${BASH_SOURCE[0]}")/j.addLabels..id.labels.sh $JIRA_ISSUE_ID Verify
 if [[ ! -z $JIRA_USER_NAME ]]; then
     # Update assignee to user for further verification
     echo "Assigning the ticket to user $JIRA_USER_NAME"
-    python3.12 $(dirname "${BASH_SOURCE[0]}")/j.updateAssignee.id.assignee.py $JIRA_ISSUE_ID $JIRA_USER_NAME
+    python3 $(dirname "${BASH_SOURCE[0]}")/j.updateAssignee.id.assignee.py $JIRA_ISSUE_ID $JIRA_USER_NAME
 fi

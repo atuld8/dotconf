@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 
 # pip3.12 install pandas tabulate matplotlib
 

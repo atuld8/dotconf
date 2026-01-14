@@ -16,5 +16,5 @@ $(dirname "${BASH_SOURCE[0]}")/j.addLabels..id.labels.sh $JIRA_ISSUE_ID Verify
 
 # Update assignee to reporter for further verification
 echo "Assigning the ticket to reporter"
-python3.12 $(dirname "${BASH_SOURCE[0]}")/j.updateAssignee2Reporter.py $JIRA_ISSUE_ID
+python3 $(dirname "${BASH_SOURCE[0]}")/j.updateAssignee2Reporter.py $JIRA_ISSUE_ID
 

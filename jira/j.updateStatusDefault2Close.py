@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 
 '''
 Fixed               A fix for this issue is checked into the tree and tested.

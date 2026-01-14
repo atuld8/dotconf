@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 
 '''
 Script to list all Incidents whose EXT_INC (Jira tickets) are in closed state.
