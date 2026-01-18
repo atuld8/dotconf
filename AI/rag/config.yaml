@@ -1,0 +1,101 @@
+repo_root: ".."
+
+include_globs:
+  # Scripting / high-level languages
+  - "**/*.py"
+  - "**/*.rb"
+  - "**/*.php"
+  - "**/*.r"
+  - "**/*.lua"
+  - "**/*.pl"
+  - "**/*.ps1"
+  - "**/*.sh"
+  - "**/*.bash"
+  - "**/*.zsh"
+
+  # Web: JS/TS
+  - "**/*.js"
+  - "**/*.jsx"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.mjs"
+  - "**/*.cjs"
+
+  # JVM languages
+  - "**/*.java"
+  - "**/*.kt"
+  - "**/*.kts"
+  - "**/*.scala"
+  - "**/*.groovy"
+
+  # .NET / C-family
+  - "**/*.cs"
+  - "**/*.fs"
+  - "**/*.vb"
+
+  # C / C++ & headers
+  - "**/*.c"
+  - "**/*.h"
+  - "**/*.hpp"
+  - "**/*.hh"
+  - "**/*.hxx"
+  - "**/*.cc"
+  - "**/*.cpp"
+  - "**/*.cxx"
+
+  # Go
+  - "**/*.go"
+
+  # Rust
+  - "**/*.rs"
+
+  # Swift / Obj‑C
+  - "**/*.swift"
+  - "**/*.m"
+  - "**/*.mm"
+
+  # SQL and data pipelines
+  - "**/*.sql"
+  - "**/*.psql"
+  - "**/*.hql"
+
+  # Config formats used as code
+  - "**/*.json"
+  - "**/*.yaml"
+  - "**/*.yml"
+  - "**/*.toml"
+  - "**/*.xml"
+
+  # Build / infra
+  - "**/Makefile"
+  - "**/CMakeLists.txt"
+  - "**/*.gradle"
+  - "**/*.gradle.kts"
+  - "**/*.sbt"
+  - "**/*.dockerfile"
+  - "**/Dockerfile"
+
+exclude_globs:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/.git/**"
+  - "**/.idea/**"
+  - "**/.vscode/**"
+  - "**/target/**"      # Rust / Java build folders
+  - "**/bin/**"
+  - "**/obj/**"
+  - "**/__pycache__/**"
+
+chunk:
+  max_chars: 1200
+  overlap: 150
+embeddings:
+  model: "nomic-embed-text"
+ollama:
+  host: "http://localhost:11434"
+vectorstore:
+  type: "chroma"  # options: chroma | sqlite-vss | qdrant
+  path: "./chroma"      # for chroma/sqlite
+  collection: "code-index"
+
