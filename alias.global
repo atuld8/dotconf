@@ -7,10 +7,11 @@ function af.esh { echo "Cmd: $@"; $@; echo "Rc: $?";}
 
 alias set.b='. ~/.bashrc'
 alias a='alias'
-alias h='history'
-alias d='vim -d'
 alias c='clear'
+alias d='vim -d'
 alias eb='exec bash'
+alias f='find'
+alias h='history'
 alias fixterm="printf '\e[?2004l'; stty sane"
 alias p='realpath '
 alias f.a='alias | cut -d" " -f2- | grep'
@@ -95,6 +96,7 @@ alias ewa='af.ewa() { if [[ "$CFG_EDITOR" =~ ^(vim|nvim)$ ]]; then extra_para="+
 alias ewa1='af.ewa() { if [[ "$CFG_EDITOR" =~ ^(vim|nvim)$ ]]; then extra_para="+/\s$1="; fi; $CFG_EDITOR $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*) $extra_para;}; af.ewa'
 alias btw='af.ew() { which $1 && .bt $(which $1) || echo "$1 is not a file"; }; af.ew'
 alias btwa='af.ewa() { echo .bt $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*);}; af.ewa'
+alias ewb1='af.ewb() { if [[ "$CFG_EDITOR" =~ ^(vim|nvim)$ ]]; then extra_para="+/\s$1="; fi; $CFG_EDITOR $(grep -l "\s$1=" ~/.bash* ~/.vim/bash*) $extra_para;}; af.ewb'
 alias e.l.a='$CFG_EDITOR ~/.alias'
 alias e.l.al='$CFG_EDITOR ~/.alias.loc'
 alias e.l.at='$CFG_EDITOR ~/.alias.tmp'
