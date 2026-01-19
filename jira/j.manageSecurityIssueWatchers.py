@@ -69,7 +69,8 @@ def get_current_sec_issue_watcher_list(ticket_id):
     issue_details = response.json()
     current_watchers = issue_details['fields'].get(JIRA_SEC_ISSUE_WATCHER_CUST_ID, [])
 
-    return current_watchers
+    # Ensure we return an empty list if the field is None
+    return current_watchers if current_watchers is not None else []
 
 
 # Function to get the user details
