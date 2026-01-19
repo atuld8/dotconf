@@ -202,54 +202,61 @@ def update_ticket_with_final_list(ticket_id, final_watcher_list):
 # Function to update the security watchers list for the Jira id
 def update_watchers(args):
     """
-    Update the security watchers for a Jira issue.
+    Update the security watchers for Jira issues.
 
     Args:
         args (Namespace): Command-line arguments containing:
-            - jira_id (str): The ID of the Jira issue.
+            - jira_ids (list of str): List of Jira issue IDs.
             - add (list of str): List of users to add as watchers.
             - remove (list of str): List of users to remove from watchers.
             - dry_run (bool): Flag to skip calling the update method (dry run).
     """
-    ticket_id = args.jira_id
     add_list = args.add
     remove_list = args.remove
     dry_run = args.dry_run
 
-    original_watcher_list = get_current_sec_issue_watcher_list(ticket_id)
+    for ticket_id in args.jira_ids:
+        print(f"\n{'='*60}")
+        print(f"Processing {ticket_id}")
+        print(f"{'='*60}")
 
-    watcher_list_after_delete = delete_watchers_from_list(original_watcher_list[:], remove_list)
+        original_watcher_list = get_current_sec_issue_watcher_list(ticket_id)
 
-    watcher_list_after_add = add_watchers_to_list(watcher_list_after_delete, add_list)
+        watcher_list_after_delete = delete_watchers_from_list(original_watcher_list[:], remove_list)
 
-    original_watchers_name = [watcher["name"] for watcher in original_watcher_list]
-    print(f"\n\nList of watchers before update : {original_watchers_name}")
+        watcher_list_after_add = add_watchers_to_list(watcher_list_after_delete, add_list)
 
-    final_watcher_names = [watcher["name"] for watcher in watcher_list_after_add]
-    print(f"List of watchers after update  : {final_watcher_names}")
+        original_watchers_name = [watcher["name"] for watcher in original_watcher_list]
+        print(f"\n\nList of watchers before update : {original_watchers_name}")
 
-    if not dry_run:
-        if set(original_watchers_name) != set(final_watcher_names):
-            update_ticket_with_final_list(ticket_id, watcher_list_after_add)
-        else:
-            print("\nNothing to update as both list are identicals.")
+        final_watcher_names = [watcher["name"] for watcher in watcher_list_after_add]
+        print(f"List of watchers after update  : {final_watcher_names}")
+
+        if not dry_run:
+            if set(original_watchers_name) != set(final_watcher_names):
+                update_ticket_with_final_list(ticket_id, watcher_list_after_add)
+            else:
+                print("\nNothing to update as both list are identicals.")
+        print()  # Add blank line between issues
 
 
 
 def print_watchers(args):
     """
-    Prints the list of current security watchers for a specified JIRA issue.
+    Prints the list of current security watchers for specified JIRA issues.
 
     Args:
         args (Namespace):
-            An object containing command-line arguments, expected to have a 'jira_id' attribute.
+            An object containing command-line arguments, expected to have a 'jira_ids' attribute.
 
     Returns:
         None
     """
-    current_watchers = get_current_sec_issue_watcher_list(args.jira_id)
-    watcher_names = [watcher["name"] for watcher in current_watchers]
-    print(f"Current security watchers for {args.jira_id}: {watcher_names}")
+    for jira_id in args.jira_ids:
+        current_watchers = get_current_sec_issue_watcher_list(jira_id)
+        watcher_names = [watcher["name"] for watcher in current_watchers]
+        print(f"Current security watchers for {jira_id}: {watcher_names}")
+        print()  # Add blank line between issues
 
 
 def parse_jira_watchers_args():
@@ -258,7 +265,7 @@ def parse_jira_watchers_args():
 
     Returns:
         argparse.Namespace: Parsed arguments containing:
-            jira_id (str): The ID of the Jira issue.
+            jira_ids (list of str): List of Jira issue IDs.
             add (list of str): List of users to add as watchers.
             remove (list of str): List of users to remove from watchers.
             list (bool): Flag to display the list of existing watchers.
@@ -267,16 +274,19 @@ def parse_jira_watchers_args():
     parser = argparse.ArgumentParser(
         description=(
             'Get Jira Epic details by ID. '
-            '<script> XXX-1234 '
+            '<script> '
+            '-j XXX-1234 XXX-5678 '
             '-a add.user3 add.user4 '
             '-r remove.user1 remove.user2 '
             '-d -l'
         )
     )
     parser.add_argument(
-        "jira_id",
-        type=str,
-        help="The ID of the Jira")
+        "-j", "--jira-ids",
+        nargs="+",
+        required=True,
+        dest="jira_ids",
+        help="List of Jira IDs to process")
     parser.add_argument(
         "-a", "--add",
         nargs="*",
