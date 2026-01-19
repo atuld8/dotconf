@@ -2,7 +2,7 @@
 """
 Python replacement for et_data_in_col.awk with equery integration.
 
-This script executes equery commands (locally or remotely via SSH) and formats 
+This script executes equery commands (locally or remotely via SSH) and formats
 the tab-separated output into a nicely formatted table with customizable columns.
 
 Supports both LOCAL and REMOTE execution modes.
@@ -92,7 +92,7 @@ class EqueryFormatter:
             header_line: Tab-separated header line
         """
         self.headers = header_line.strip().split('\t')
-        
+
         # Create index mapping for quick lookup
         self.column_indices = {col: idx for idx, col in enumerate(self.headers)}
 
@@ -102,11 +102,11 @@ class EqueryFormatter:
         else:
             # Only include columns that exist in the header
             self.display_columns = [col for col in self.columns if col in self.column_indices]
-            
+
             # Warn about missing columns
             missing = set(self.columns) - set(self.headers)
             if missing:
-                print(f"Warning: Columns not found in data: {', '.join(missing)}", 
+                print(f"Warning: Columns not found in data: {', '.join(missing)}",
                       file=sys.stderr)
 
         # Setup column widths
@@ -129,11 +129,11 @@ class EqueryFormatter:
         for col in self.display_columns:
             idx = self.column_indices[col]
             width = self.column_widths[col]
-            
+
             # Get value and truncate if needed
             value = values[idx] if idx < len(values) else ''
             truncated = value[:width] if len(value) > width else value
-            
+
             print(f' {truncated:<{width}} |', end='')
         print()
 
@@ -174,7 +174,7 @@ class EqueryFormatter:
         print(f"\nTotal number of records: {record_count}")
 
 
-def run_equery(query_name: str, ssh_target: Optional[str] = None, 
+def run_equery(query_name: str, ssh_target: Optional[str] = None,
                user_flag: Optional[str] = None) -> List[str]:
     """
     Execute equery command and return filtered output.
@@ -195,7 +195,7 @@ def run_equery(query_name: str, ssh_target: Optional[str] = None,
         if user_flag:
             equery_cmd_parts.extend(['-u', user_flag])
         equery_cmd_parts.append(query_name)
-        
+
         # Build full command (local or via SSH)
         if ssh_target:
             # ===== REMOTE EXECUTION: Execute via SSH =====
@@ -220,13 +220,13 @@ def run_equery(query_name: str, ssh_target: Optional[str] = None,
                         break
                 except Exception:
                     continue
-            
+
             if cmd is None:
                 print("Error: equery command not found locally.", file=sys.stderr)
                 print("  Tried: /usr/local/bin/equery, equery, /usr/local/bin/eq, eq", file=sys.stderr)
                 print("  Hint: Use --ssh user@server to run on remote server instead", file=sys.stderr)
                 sys.exit(1)
-        
+
         # Execute command
         result = subprocess.run(
             cmd,
@@ -234,21 +234,21 @@ def run_equery(query_name: str, ssh_target: Optional[str] = None,
             text=True,
             check=True
         )
-        
+
         # Filter output: only lines starting with INCIDENT or digits (matching egrep "^INCIDENT|^[0-9]")
         lines = []
         for line in result.stdout.split('\n'):
             line = line.strip()
             if line and (line.startswith('INCIDENT') or (line and line[0].isdigit())):
                 lines.append(line)
-        
+
         if not lines:
             print("Warning: No data lines found in equery output", file=sys.stderr)
         else:
             print(f"[INFO] Found {len(lines)} lines ({len(lines)-1} data rows)", file=sys.stderr)
-        
+
         return lines
-        
+
     except subprocess.CalledProcessError as e:
         print(f"Error executing command: {' '.join(cmd)}", file=sys.stderr)
         if e.stderr:
@@ -332,11 +332,11 @@ Examples:
 
 Shell function equivalents:
   # Remote execution
-  equery_runner() { 
+  equery_runner() {
     ssh $NIS_USER@$NIS_SERVER equery $1 | egrep "^INCIDENT|^[0-9]" | \\
       awk -F"\\t" -f ~/.vim/scripts/et_data_in_col.awk -v cols=*
   }
-  
+
   # Local execution
   equery my_query | egrep "^INCIDENT|^[0-9]" | \\
     awk -F"\\t" -f ~/.vim/scripts/et_data_in_col.awk -v cols=INCIDENT,STATE
