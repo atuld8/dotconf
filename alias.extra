@@ -8,7 +8,10 @@ alias fmt.unalias='sed -e'"'"'s/^\(alias\) \([a-zA-Z0-9\.\]*\)*\=.*/un\1 \2/g'"'
 alias fmt.clip='xclip -d $ENG_VM_NAME -selection clipboard'
 
 alias j.fmt.nr='awk '"'"'BEGIN{ignored_lines=0; header_found=0;} /--------------/ { ignored_lines++; print; header_found=1; next } {print} END {print "\n\nNumber of Records: " NR-ignored_lines-header_found}'"'"''
-alias j.fmt.addsr='awk '"'"' BEGIN {FS="|"; OFS="|"; } NR == 1 || NR == 3 { SEPERATPOR="+-----" $0; print SEPERATPOR; } NR == 2 { print "| Sr. |" $2, $3, $4, $5, $6 "|"; } NR > 3 && !/\+----/ { $1 = sprintf("| %3d ", NR-3); print $1, $2, $3, $4, $5, $6 "|"; } END { print SEPERATPOR; } '"'"''
+alias j.fmt.addsr='awk -f $HOME/.vim/scripts/add_sr_col.awk'
+alias j.fmt.rmsr='awk -v remove="Sr." -f $HOME/.vim/scripts/remove_cols.awk'
+alias j.fmt.upsr='awk -v remove="Sr." -f $HOME/.vim/scripts/remove_cols.awk | awk -f $HOME/.vim/scripts/add_sr_col.awk'
+alias j.fmt.sp='awk -v remove="Sr.,Severity,Epic,Reporter,IssueType,Priority" -f $HOME/.vim/scripts/remove_cols.awk | awk -f $HOME/.vim/scripts/add_sr_col.awk'
 
 function j.fmt.grep() { grep --color=never -E "^(\+|.*Sr\..*|.*$1.*)"; }
 function fmt.et()  { grep --color=never -i -E "^(\+|\------|.*Incident.*|.*$1.*)"; }
