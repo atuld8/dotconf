@@ -11,21 +11,21 @@ Requirements:
 
 Usage:
     # Basic usage with JQL query
-    ./j.sprintBoard.py -q "project = NBU AND sprint in openSprints()"
+    ./j.sprintBoard.py -q "project = PROJ AND sprint in openSprints()"
 
     # Include sub-tasks
-    ./j.sprintBoard.py -q "project = NBU AND type in (Story, defect) AND sprint in openSprints()" -s
+    ./j.sprintBoard.py -q "project = PROJ AND type in (Story, defect) AND sprint in openSprints()" -s
 
     # Full example
-    ./j.sprintBoard.py -q "project = NBU AND component = Commandos AND type in (Story, defect) AND sprint in openSprints() ORDER BY priority DESC" --show-sub-tasks
+    ./j.sprintBoard.py -q "project = PROJ AND component = Scrum_team AND type in (Story, defect) AND sprint in openSprints() ORDER BY priority DESC" --show-sub-tasks
 
 Features:
     - Groups issues by assignee
     - Displays status in columns: To-Do, In Progress, Blocked, Done, Closed
     - Shows issue type indicators (prepended):
-        * Story: "+ NBU-123"
-        * Defect: "- NBU-456"
-        * Sub-task: "    * NBU-789" (indented in board view only)
+        * Story: "+ JIRA_ID-123"
+        * Defect: "- JIRA_ID-456"
+        * Sub-task: "    * JIRA_ID-789" (indented in board view only)
     - Lists full issue details below the board (without indentation)
     - Optional sub-task inclusion with --show-sub-tasks flag
 """
@@ -159,10 +159,10 @@ def get_issue_key_with_type(issue, for_board=True):
 
     Returns:
         str: Issue key with type indicator:
-             - Sub-tasks (board): "    * NBU-123" (indented with asterisk prefix)
-             - Sub-tasks (details): "* NBU-123" (no indent)
-             - Stories: "+ NBU-123" (prefix)
-             - Defects: "- NBU-123" (prefix)
+             - Sub-tasks (board): "    * JIRA_ID-123" (indented with asterisk prefix)
+             - Sub-tasks (details): "* JIRA_ID-123" (no indent)
+             - Stories: "+ JIRA_ID-123" (prefix)
+             - Defects: "- JIRA_ID-123" (prefix)
     """
     key = issue['key']
     issue_type = issue['fields']['issuetype']['name']
@@ -332,21 +332,21 @@ def main():
         epilog="""
 Examples:
   # Basic usage
-  %(prog)s -q "project = NBU AND sprint in openSprints()"
+  %(prog)s -q "project = PROJ AND sprint in openSprints()"
 
   # With sub-tasks included
-  %(prog)s -q "project = NBU AND type in (Story, defect) AND sprint in openSprints()" -s
+  %(prog)s -q "project = PROJ AND type in (Story, defect) AND sprint in openSprints()" -s
 
   # With detailed issue list
-  %(prog)s -q "project = NBU AND sprint in openSprints()" -d
+  %(prog)s -q "project = PROJ AND sprint in openSprints()" -d
 
   # Full example with all options
-  %(prog)s -q "project = NBU AND component = Commandos AND type in (Story, defect) AND sprint in openSprints() ORDER BY priority DESC" -s -d
+  %(prog)s -q "project = PROJ AND component = Scrum_team AND type in (Story, defect) AND sprint in openSprints() ORDER BY priority DESC" -s -d
 
 Issue Type Indicators:
-  Story:        + NBU-123
-  Defect/Bug:   - NBU-456
-  Sub-task:         * NBU-789 (indented in board only)
+  Story:        + JIRA_ID-123
+  Defect/Bug:   - JIRA_ID-456
+  Sub-task:         * JIRA_ID-789 (indented in board only)
         """
     )
 
