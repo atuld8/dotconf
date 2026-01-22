@@ -142,4 +142,8 @@ return {
           debug = false -- Prints errors and the command which is run.
       }
   },
+  {
+      "mechatroner/rainbow_csv",
+      ft = { "csv", "tsv", "csv_pipe", "csv_semicolon" },
+  },
 }
