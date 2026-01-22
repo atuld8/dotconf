@@ -132,7 +132,7 @@ def get_issues_by_jql(jql_query, max_results=200):
         params = {
             'jql': jql_query,
             'maxResults': max_results,
-            'fields': ['key', 'summary', 'status', 'assignee', 'issuetype', 'priority', 'parent']
+            'fields': ['key', 'summary', 'status', 'assignee', 'issuetype', 'priority', 'parent', 'reporter', 'customfield_20303']
         }
 
         response = requests.get(url, headers=headers, params=params, timeout=30)
@@ -149,19 +149,19 @@ def get_issues_by_jql(jql_query, max_results=200):
         sys.exit(1)
 
 
-def get_issue_key_with_type(issue, for_board=True):
+def get_issue_key_with_type(issue, for_board=True, priority=None):
     """
-    Get issue key with type symbol.
+    Get issue key with type symbol and optionally priority.
 
     Args:
         issue (dict): Jira issue object
-        for_board (bool): If True, use board format. If False, use details format.
+        for_board (bool): If True, use board format with priority. If False, use details format.
+        priority (str): Priority name (e.g., 'P1', 'Critical', etc.)
 
     Returns:
-        str: Issue key with type indicator:
-             - Stories: "+ JIRA_ID-123" (prefix)
-             - Defects: "- JIRA_ID-123" (prefix)
-             - Sub-tasks: "-- JIRA_ID-123" (prefix, no indentation)
+        str: Issue key with type indicator and priority:
+             - Board format: "+ NBU-123 (P1)" or "- NBU-456 (P2)"
+             - Details format: "+ NBU-123" or "-- NBU-456"
     """
     key = issue['key']
     issue_type = issue['fields']['issuetype']['name']
@@ -169,8 +169,11 @@ def get_issue_key_with_type(issue, for_board=True):
     # Get symbol prefix
     symbol = TYPE_SYMBOLS.get(issue_type, '')
 
-    # All types get prefix symbols (no special indentation)
-    return f"{symbol}{key}"
+    # For board view, add priority in parentheses
+    if for_board and priority and priority != 'N/A':
+        return f"{symbol}{key} ({priority})"
+    else:
+        return f"{symbol}{key}"
 
 
 def get_mapped_status(status_name):
@@ -206,16 +209,24 @@ def organize_issues_by_assignee_and_status(issues):
     # First pass: collect all issues and identify parent-subtask relationships
     for issue in issues:
         key = issue['key']
-        key_with_type_board = get_issue_key_with_type(issue, for_board=True)
-        key_with_type_details = get_issue_key_with_type(issue, for_board=False)
         summary = issue['fields']['summary']
         status = issue['fields']['status']['name']
         assignee_obj = issue['fields'].get('assignee')
+        reporter_obj = issue['fields'].get('reporter')
+        priority_obj = issue['fields'].get('priority')
+        severity_obj = issue['fields'].get('customfield_20303')
         issue_type = issue['fields']['issuetype']['name']
         parent_field = issue['fields'].get('parent')
 
         # Get assignee name or "Unassigned"
         assignee = assignee_obj['displayName'] if assignee_obj else 'Unassigned'
+        reporter = reporter_obj['displayName'] if reporter_obj else 'N/A'
+        priority = priority_obj['name'] if priority_obj else 'N/A'
+        severity = severity_obj['value'] if severity_obj else 'N/A'
+
+        # Generate keys with priority for board display
+        key_with_type_board = get_issue_key_with_type(issue, for_board=True, priority=priority)
+        key_with_type_details = get_issue_key_with_type(issue, for_board=False)
 
         # Map status to board column
         board_status = get_mapped_status(status)
@@ -226,8 +237,12 @@ def organize_issues_by_assignee_and_status(issues):
             'key_with_type_board': key_with_type_board,
             'key_with_type_details': key_with_type_details,
             'summary': summary,
-            'status': board_status,
+            'status': status,
+            'board_status': board_status,
             'assignee': assignee,
+            'reporter': reporter,
+            'priority': priority,
+            'severity': severity,
             'issue_type': issue_type,
             'parent': parent_field['key'] if parent_field else None
         }
@@ -241,7 +256,7 @@ def organize_issues_by_assignee_and_status(issues):
             parent_info[key] = issue_info
 
         # Store in details dict
-        issue_details_dict[key] = (issue_type, summary)
+        issue_details_dict[key] = (issue_type, summary, status, assignee, reporter, priority, severity)
 
     # Second pass: build board data and ordered details list with sub-tasks grouped under parents
     issue_details_list = []
@@ -251,20 +266,24 @@ def organize_issues_by_assignee_and_status(issues):
         parent = parent_info[parent_key]
 
         # Add parent to board data
-        board_data[parent['assignee']][parent['status']].append(parent['key_with_type_board'])
+        board_data[parent['assignee']][parent['board_status']].append(parent['key_with_type_board'])
 
         # Add parent to details list
-        issue_details_list.append((parent['key_with_type_details'], parent['issue_type'], parent['summary']))
+        issue_details_list.append((parent['key_with_type_details'], parent['issue_type'], parent['summary'],
+                                   parent['status'], parent['assignee'], parent['reporter'],
+                                   parent['priority'], parent['severity']))
 
         # Add sub-tasks immediately after parent (sorted by key)
         if parent_key in parent_to_subtasks:
             subtasks = sorted(parent_to_subtasks[parent_key], key=lambda x: x['key'])
             for subtask in subtasks:
                 # Add sub-task to board data (under parent)
-                board_data[subtask['assignee']][subtask['status']].append(subtask['key_with_type_board'])
+                board_data[subtask['assignee']][subtask['board_status']].append(subtask['key_with_type_board'])
 
                 # Add sub-task to details list
-                issue_details_list.append((subtask['key_with_type_details'], subtask['issue_type'], subtask['summary']))
+                issue_details_list.append((subtask['key_with_type_details'], subtask['issue_type'], subtask['summary'],
+                                          subtask['status'], subtask['assignee'], subtask['reporter'],
+                                          subtask['priority'], subtask['severity']))
 
     return board_data, issue_details_list
 
@@ -345,28 +364,45 @@ def display_sprint_board(board_data, status_counts):
     print()
 
 
-def display_issue_details(issue_details_list):
+def display_issue_details(issue_details_list, verbose=False):
     """
     Display full issue details below the board.
 
     Args:
-        issue_details_list (list): List of tuples (issue_key, type, summary) in order
+        issue_details_list (list): List of tuples (issue_key, type, summary, status, assignee, reporter, priority, severity) in order
+        verbose (bool): If True, display detailed metadata (status, assignee, reporter, priority, severity)
     """
     print("\n" + "="*80)
     print("ISSUE DETAILS")
     print("="*80)
 
-    for issue_key, issue_type, summary in issue_details_list:
+    for i, (issue_key, issue_type, summary, status, assignee, reporter, priority, severity) in enumerate(issue_details_list):
         # Truncate summary if too long
         if len(summary) > 100:
             summary = summary[:97] + "..."
 
+        is_subtask = issue_type in ['Sub-task', 'Subtask']
+
+        # Check if next item is also a sub-task (to avoid blank line between parent and sub-task)
+        next_is_subtask = False
+        if i + 1 < len(issue_details_list):
+            next_issue_type = issue_details_list[i + 1][1]
+            next_is_subtask = next_issue_type in ['Sub-task', 'Subtask']
+
         # Add indentation for sub-tasks to show tree structure
-        if issue_type in ['Sub-task', 'Subtask']:
+        if is_subtask:
             # Add extra indentation for sub-tasks to create tree view
             print(f"  {issue_key} ({issue_type}): {summary}")
+            if verbose:
+                print(f"    Status: {status} | Assignee: {assignee} | Reporter: {reporter} | Priority: {priority} | Severity: {severity}")
         else:
             print(f"{issue_key} ({issue_type}): {summary}")
+            if verbose:
+                print(f"  Status: {status} | Assignee: {assignee} | Reporter: {reporter} | Priority: {priority} | Severity: {severity}")
+
+        # Add blank line when verbose and not transitioning from parent to sub-task
+        if verbose and not next_is_subtask and i + 1 < len(issue_details_list):
+            print()  # Add blank line between parent groups or after sub-task group ends
 
     print()
 
@@ -391,9 +427,11 @@ Examples:
   %(prog)s -q "project = PROJ AND component = Scrum_team AND type in (Story, defect) AND sprint in openSprints() ORDER BY priority DESC" -s -d
 
 Issue Type Indicators:
-  Story:        + JIRA_ID-123
-  Defect/Bug:   - JIRA_ID-456
-  Sub-task:     -- JIRA_ID-789
+  Story:        + JIRA_ID-123 (P1)
+  Defect/Bug:   - JIRA_ID-456 (P2)
+  Sub-task:     -- JIRA_ID-789 (P3)
+
+  Note: Priority is shown in parentheses in the sprint board.
         """
     )
 
@@ -413,6 +451,12 @@ Issue Type Indicators:
         '-d', '--show-details',
         action='store_true',
         help='Display detailed issue list below the board (default: False)'
+    )
+
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='Display verbose issue details including status, assignee, reporter, priority, and severity (use with -d)'
     )
 
     parser.add_argument(
@@ -468,7 +512,7 @@ Issue Type Indicators:
 
     # Display issue details if requested
     if args.show_details:
-        display_issue_details(issue_details_list)
+        display_issue_details(issue_details_list, verbose=args.verbose)
 
     print(f"\nTotal issues displayed: {len(issue_details_list)}")
 
