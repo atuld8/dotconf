@@ -5,7 +5,8 @@ alias x.eprl='eprint'
 alias x.eprs='eprint -v'
 alias x.eprwatcher='eprint -u'
 alias x.eprnocmt='eprint -v -l -A -f -s -u'
-alias x.epra='eprint  -v -l -A -f -c -s -u'
+alias x.epra='eprint -v -l -A -f -c -s -u'
+alias x.epre='eprint -e'
 alias x.epreebbin='function af.eprint_eebbin() { eprint -c $1  | awk '"'"'/Checksums for all files/,/Checksums for eebinstallers will be available at the/'"'"' | grep -v "Checksums for"; }; af.eprint_eebbin'
 alias x.epreebdet='function af.eprint_eebdet() { eprint -c $1  | awk '"'"'/This entry has been automatically updated/,/Checksums for eebinstallers will be available at the/'"'"'; }; af.eprint_eebdet'
 alias x.eprspr='function af.eprint_super() { eprint -vdK $1 | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -I {} eprint -vdK  {}; }; af.eprint_super'
@@ -21,6 +22,7 @@ alias x.eebver='function x.eebver() { SUPER=`eprint -vdK $1 | grep "superinciden
 alias x.epr.comdate='function af.eprcomdate() { TZ="Asia/Kolkata" date -d "$@" "+%Y/%m/%d %H:%M:%S %Z"; }; af.eprcomdate'
 
 alias x.eprabt='function xeprall() { x.epra $1 | .bt; }; xeprall'
+alias x.eprebt='function xeprall() { x.epre $1 | .bt; }; xeprall'
 
 alias x.eset.tpip_up='function af.eset.tpip_up(){ eprint -k $@; eset -w TPIP_UP $@; eprint -k $@; }; af.eset.tpip_up'
 alias x.eset.cftsp='function af.eset.cftsp(){ for et in "$@"; do echo -e "\nChecking UD2 for $et"; UD2=`eprint -v $et | grep user_defined2 | grep -v CFTSP | sed -e '"'"'s/user_defined2:\s*\(.*\)\s*/CFTSP \1/'"'"'`; echo "UD2(w/o CFTSP)=$UD2";  if [[ ! -z "$UD2" ]]; then eset --u2 "$UD2" $et; fi; eprint -v $et | grep user_defined2; if [[ $? -ne 0 ]]; then eset --u2 CFTSP $et; eprint -v $et | grep user_defined2; fi; done }; af.eset.cftsp'
