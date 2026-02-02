@@ -221,6 +221,7 @@ alias .fzf="fzf --border --preview 'command -v bat &>/dev/null && bat --style=he
 alias .bt='bat --style=header,numbers --color=always --paging=always --tabs=4 --wrap=auto'
 alias .btp='bat --style=plain --color=always --paging=always --tabs=4 --wrap=auto'
 alias .btd='bat --style=header,numbers,changes --color=always --paging=always --tabs=4 --wrap=auto'
+alias .jbt='sed -E -e "s/^(JiraID:|Summary:|Assignee:|Reporter:|IssueType:|Labels:|Description:|> > > > -+)/\x1b[32m\1\x1b[0m/" | .bt'
 
 .btstdin() {
 local cmd="$1"   # first arg is the command
