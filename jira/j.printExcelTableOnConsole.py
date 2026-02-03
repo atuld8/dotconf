@@ -34,7 +34,7 @@ def main():
     parser.add_argument('-t', '--header', default="A1", help='Header start cell, e.g. B2')
     parser.add_argument('-p', '--print-headers', help='Comma-separated list of headers to print (case-sensitive, matches Excel header values)')
     parser.add_argument('-x', '--exclude-headers', help='Comma-separated list of headers to exclude from output (case-sensitive, matches Excel header values)')
-    parser.add_argument('-l', '--list-headers', action='store_true', help='List the headers in vertical order')
+    parser.add_argument('-l', '--list-headers', action='store_true', help='List the header names in vertical order')
     parser.add_argument('-m', '--formula-mode', choices=['print', 'convert'], default='print', help='Choose to print formula as text or convert to value (default: print)')
     parser.add_argument('-e', '--skip-if-empty', help='Skip row if the value of cell is empty for this header column')
     parser.add_argument('--data-only', action='store_true', help='Load workbook with data_only=True to get cell values instead of formulas')
