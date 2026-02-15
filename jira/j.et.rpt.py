@@ -1110,9 +1110,15 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
             'issues': [],
             'priority': 5
         },
+        'CASE_CLOSED_JIRA_ACTIVE': {
+            'title': 'CASE CLOSED BUT JIRA ACTIVE',
+            'description': 'Case Closed but Jira still In Progress/Active - needs Jira status update',
+            'issues': [],
+            'priority': 6
+        },
         'BOTH_CLOSED': {
-            'title': 'BOTH CLOSED/DONE',
-            'description': 'Both Jira and Etrack indicate completion',
+            'title': 'ALL CLOSED/DONE',
+            'description': 'Jira Done + Case Closed + Etrack Closed - fully completed',
             'issues': [],
             'priority': 10
         },
@@ -1206,7 +1212,8 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
 
         if not has_etrack:
             categories['NO_ETRACK']['issues'].append(issue_info)
-        elif et_state in ET_CLOSED_STATES and jr_case_status in CASE_CLOSED_STATUSES:
+        # BOTH_CLOSED now requires ALL THREE to be done/closed
+        elif et_state in ET_CLOSED_STATES and jr_case_status in CASE_CLOSED_STATUSES and jr_status in JIRA_DONE_STATUSES:
             categories['BOTH_CLOSED']['issues'].append(issue_info)
         elif jr_status in JIRA_DONE_STATUSES and et_state in ET_CLOSED_STATES:
             categories['READY_TO_CLOSE']['issues'].append(issue_info)
@@ -1221,6 +1228,9 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         # Broader: Case Closed and Etrack WAITING (Jira may or may not be done)
         elif et_state in ET_WAITING_STATES and jr_case_status in CASE_CLOSED_STATUSES:
             categories['ET_WAITING_CASE_CLOSED']['issues'].append(issue_info)
+        # Case Closed but Jira still active (any Etrack state)
+        elif jr_case_status in CASE_CLOSED_STATUSES and jr_status in JIRA_ACTIVE_STATUSES:
+            categories['CASE_CLOSED_JIRA_ACTIVE']['issues'].append(issue_info)
         elif jr_case_status in CASE_CUSTOMER_STATUSES:
             categories['CUSTOMER_WAITING']['issues'].append(issue_info)
         elif et_state in ET_ACTIVE_STATES and jr_status in JIRA_ACTIVE_STATUSES:
@@ -1245,6 +1255,17 @@ def get_unique_etracks(issues: List[Dict]) -> set:
         if et and str(et).strip():
             etracks.add(str(et).strip())
     return etracks
+
+
+def fi_sort_key(issue: Dict) -> tuple:
+    """Extract sort key from FI key for natural sorting (e.g., FI-9 < FI-123)."""
+    import re
+    key = issue.get('key', '')
+    # Extract prefix and numeric part (e.g., "FI-1234" -> ("FI-", 1234))
+    match = re.match(r'^([A-Za-z]+-)(\d+)$', key)
+    if match:
+        return (match.group(1), int(match.group(2)))
+    return (key, 0)
 
 
 def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
@@ -1381,7 +1402,9 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             table.field_names = ['#', 'Key', 'Assignee', 'Priority', 'Jr Status', 'Case Status', 'ET State', 'ET Incident']
             table.align = 'l'
 
-            display_issues = issues if Colors.notruncate else issues[:50]
+            # Sort issues by FI key
+            sorted_issues = sorted(issues, key=fi_sort_key)
+            display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
                 table.add_row([
                     idx,
@@ -1402,7 +1425,9 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             # Fallback: simple format
             print(f"{'#':<4} {'Key':<10} {'Assignee':<20} {'Jr Status':<20} {'Case Status':<25} {'ET State':<10}")
             print("-" * 90)
-            display_issues = issues if Colors.notruncate else issues[:50]
+            # Sort issues by FI key
+            sorted_issues = sorted(issues, key=fi_sort_key)
+            display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
                 print(f"{idx:<4} {issue['key']:<10} {str(issue['jr_assignee'])[:18]:<20} "
                       f"{issue['jr_status'][:18]:<20} {issue['jr_case_status'][:23]:<25} "
