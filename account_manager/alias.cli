@@ -1,0 +1,4 @@
+alias cli='python3 -m account_manager.cli'
+alias cli.uget='cli get'
+alias cli.vyes='function f() { cli update-verified $1 yes; }; f'
+
