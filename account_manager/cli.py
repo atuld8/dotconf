@@ -3,6 +3,7 @@
 Command-line interface for Account Manager
 """
 
+import os
 import sys
 from .models import AccountManager, DatabaseLockedError
 from .reports import ReportGenerator
@@ -940,7 +941,12 @@ def run_demo(db: AccountManager, report_gen: ReportGenerator):
 def main():
     """Main CLI entry point"""
     # Initialize components
-    db = AccountManager("accounts.db")
+    # Check ET_JR_ACCOUNTS_DB env var first, then fall back to module directory
+    db_path = os.environ.get('ET_JR_ACCOUNTS_DB')
+    if not db_path:
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(module_dir, "accounts.db")
+    db = AccountManager(db_path)
     report_gen = ReportGenerator(db)
     io_utils = IOUtils(db)
 
@@ -2574,6 +2580,58 @@ def main():
             help_command = sys.argv[2] if len(sys.argv) > 2 else None
             print_usage(help_command)
 
+        elif command in ['config', 'info', 'settings']:
+            # Show configuration and settings
+            print("Account Manager - Configuration")
+            print("=" * 60)
+            
+            # Database
+            env_db = os.environ.get('ET_JR_ACCOUNTS_DB')
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            default_db = os.path.join(module_dir, "accounts.db")
+            
+            print("\nDatabase:")
+            if env_db:
+                print(f"  Path (from ET_JR_ACCOUNTS_DB): {env_db}")
+                print(f"  Exists: {os.path.exists(env_db)}")
+            else:
+                print(f"  Path (default): {default_db}")
+                print(f"  Exists: {os.path.exists(default_db)}")
+            
+            # Record count
+            try:
+                accounts = db.get_all_accounts()
+                print(f"  Records: {len(accounts)}")
+            except Exception:
+                print("  Records: (unable to query)")
+            
+            # Module info
+            print("\nModule:")
+            print(f"  Directory: {module_dir}")
+            
+            # Environment variables
+            print("\nEnvironment Variables:")
+            env_vars = [
+                ('ET_JR_ACCOUNTS_DB', 'Database path'),
+                ('JIRA_SERVER_NAME', 'Jira server'),
+                ('JIRA_ACC_TOKEN', 'Jira API token'),
+                ('JIRA_PROJECT_KEY', 'Jira project'),
+                ('RMTCMD_HOST', 'Remote command host'),
+            ]
+            for var, desc in env_vars:
+                value = os.environ.get(var)
+                if value:
+                    # Mask sensitive values
+                    if 'TOKEN' in var or 'PASSWORD' in var:
+                        display = value[:4] + '****' + value[-4:] if len(value) > 8 else '****'
+                    else:
+                        display = value
+                    print(f"  {var}: {display}")
+                else:
+                    print(f"  {var}: (not set) - {desc}")
+            
+            print()
+
         else:
             print(f"✗ Unknown command: {command}")
             print("\nAvailable commands: add, update, delete, get, list, list-incomplete,")
@@ -2583,7 +2641,7 @@ def main():
             print("                    update-jira-ids, fetch-jira-id, update-verified,")
             print("                    update-notes, action-log, action-summary,")
             print("                    action-history, action-clear, lookup-etrack-emails,")
-            print("                    demo, help")
+            print("                    config, demo, help")
             print("\nFor detailed help: python3 -m account_manager.cli help [command]")
 
     except DatabaseLockedError as e:

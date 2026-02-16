@@ -62,6 +62,8 @@ function j.fmt.R_() { reporter=$1 && awk -F '[+|]' '$7 ~ /------/ || $7 ~ /Repor
 function j.fmt.ST_() { status=$1 && awk -F '[+|]' '$5 ~ /------/ || $5 ~ /Status/ || $5 ~ /'"${status}"'/ { print ; }'; }
 function j.fmt.SE_() { severity=$1 && awk -F '[+|]' '$9 ~ /------/ || $9 ~ /Serverity/ || $9 ~ /'"${severity}"'/ { print ; }'; }
 
+alias am.cli='PYTHONPATH=$MVP python3 -m account_manager.cli'
+
 #export JIRA_ACC_TOKEN='Jtkn'
 #export JIRA_WATCHERS_LIST="u1 u2"
 #export JIRA_SERVER_NAME=".com"
