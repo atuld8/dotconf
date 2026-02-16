@@ -241,6 +241,8 @@ FIELD_ALIASES = {
     'components': 'components',
     'casestatus': 'customfield_16200',
     'case_status': 'customfield_16200',
+    'casefis': 'customfield_20707',
+    'case_fis': 'customfield_20707',
     'etrack': 'customfield_33802',
     'etrack_incident': 'customfield_33802',
     'cvss': 'customfield_33415',
@@ -339,7 +341,24 @@ class JiraReportClient:
         elif field.startswith('customfield_'):
             field_id = field
         else:
-            field_id = field
+            # Try to find field by name in Jira API
+            all_fields = self.get_all_fields()
+            field_id = None
+
+            # Search by exact name match (case-insensitive)
+            field_name_lower = field.lower().strip()
+            for fid, fmeta in all_fields.items():
+                if fmeta.get('name', '').lower().strip() == field_name_lower:
+                    field_id = fid
+                    break
+                # Also check without trailing colon (e.g., "Case FIs:" -> "Case FIs")
+                if fmeta.get('name', '').lower().strip().rstrip(':') == field_name_lower.rstrip(':'):
+                    field_id = fid
+                    break
+
+            # If still not found, use field as-is
+            if not field_id:
+                field_id = field
 
         # Get display name from field metadata
         all_fields = self.get_all_fields()
