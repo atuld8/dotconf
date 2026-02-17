@@ -147,6 +147,15 @@ python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --re
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-from=deepak.tanksale
 ```
 
+### Show FIs with Conflicting Assignees
+```bash
+# FIs linked to multiple Etracks with different assignees (detailed format)
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --show-conflicts
+
+# Table format
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --show-conflicts --table
+```
+
 ### Check Single FI
 ```bash
 python3 -m account_manager.cli check-assignee FI-59131
@@ -391,6 +400,12 @@ python3 -m account_manager.cli assign-etrack-fi 1234567 user_one
 | --fix-interactive | With --fix: prompt y/n/q each |
 | --fix-from=USER | Only fix FIs assigned to USER (implies --fix) |
 | --skip-fi=IDS | With --fix: skip comma-separated FI IDs |
+| --show-conflicts | Show FIs linked to multiple incidents with different assignees |
+| --table | With --show-conflicts: display in table format |
+| --incident=NO | Validate single incident by number |
+| --fi=ID | Validate single FI by ID (e.g., FI-59131 or 59131) |
+| --report | Generate formatted reassignment report (no fixes) |
+| --report-from=USER | Generate report for FIs currently assigned to USER |
 
 ### assign-etrack-fi Options
 | Option | Description |

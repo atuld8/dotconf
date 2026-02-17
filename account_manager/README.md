@@ -105,6 +105,8 @@ python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --au
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix  # Fix mismatches
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report  # Generate report
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-from=manager.name
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --show-conflicts  # FIs with conflicting assignees
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --show-conflicts --table  # Table format
 python3 -m account_manager.cli check-assignee FI-12345
 
 # Etrack and FI Assignment (requires verified account)
