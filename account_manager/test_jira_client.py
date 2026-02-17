@@ -22,14 +22,14 @@ def test_connection():
 
         # Test connection
         if client.test_connection():
-            print("✓ Connection successful!\n")
+            print("+ Connection successful!\n")
             return client
         else:
-            print("✗ Connection failed!\n")
+            print("X Connection failed!\n")
             return None
 
     except Exception as e:
-        print(f"✗ Error initializing Jira client: {e}")
+        print(f"X Error initializing Jira client: {e}")
         return None
 
 
@@ -41,9 +41,9 @@ def test_get_assignee(client, fi_id):
     assignee = client.get_assignee(fi_id)
 
     if assignee:
-        print(f"✓ Assignee: {assignee}")
+        print(f"+ Assignee: {assignee}")
     else:
-        print(f"✗ Could not fetch assignee (issue may not exist or no assignee)")
+        print(f"X Could not fetch assignee (issue may not exist or no assignee)")
 
     return assignee
 
@@ -66,7 +66,7 @@ def test_get_issue_summary(client, fi_id):
         print(f"Created:          {summary.get('created')}")
         print(f"Updated:          {summary.get('updated')}")
     else:
-        print(f"✗ Could not fetch issue summary")
+        print(f"X Could not fetch issue summary")
 
     return summary
 
@@ -98,7 +98,7 @@ def main():
     client = test_connection()
 
     if not client:
-        print("\n✗ Cannot proceed without valid Jira connection")
+        print("\nX Cannot proceed without valid Jira connection")
         print("\nPlease ensure:")
         print("  1. .env file exists with JIRA_SERVER_NAME and JIRA_ACC_TOKEN")
         print("  2. Environment variables are correctly set")

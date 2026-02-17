@@ -354,10 +354,10 @@ class EtrackExecutor:
         output = self._execute_command(cmd)
 
         if output is not None:
-            print(f"  ✓ Etrack {incident_no} assigned to {user_name}")
+            print(f"  + Etrack {incident_no} assigned to {user_name}")
             return True
         else:
-            print(f"  ✗ Failed to assign etrack {incident_no} to {user_name}")
+            print(f"  X Failed to assign etrack {incident_no} to {user_name}")
             return False
 
     def get_etrack_info(self, incident_no: str) -> Optional[EtrackInfo]:

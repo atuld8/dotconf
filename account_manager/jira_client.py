@@ -158,10 +158,10 @@ class JiraClient:
             )
 
             if response.status_code == 204:
-                print(f"✓ Successfully updated assignee for {issue_key} to {assignee_name}")
+                print(f"+ Successfully updated assignee for {issue_key} to {assignee_name}")
                 return True
             else:
-                print(f"✗ Failed to update assignee for {issue_key}: Status {response.status_code}, {response.text}")
+                print(f"X Failed to update assignee for {issue_key}: Status {response.status_code}, {response.text}")
                 return False
 
         except requests.exceptions.RequestException as e:
@@ -288,14 +288,14 @@ class JiraClient:
 
             if response.status_code == 200:
                 user_data = response.json()
-                print(f"✓ Connected to Jira as: {user_data.get('displayName')} ({user_data.get('name')})")
+                print(f"+ Connected to Jira as: {user_data.get('displayName')} ({user_data.get('name')})")
                 return True
             else:
-                print(f"✗ Jira connection test failed: Status {response.status_code}")
+                print(f"X Jira connection test failed: Status {response.status_code}")
                 return False
 
         except requests.exceptions.RequestException as e:
-            print(f"✗ Jira connection test failed: {e}")
+            print(f"X Jira connection test failed: {e}")
             return False
 
     def get_fi_details_batch(self, fi_ids: List[str], batch_size: int = 50) -> Dict[str, Dict[str, Any]]:
@@ -527,7 +527,7 @@ class MockJiraClient:
 
     def test_connection(self) -> bool:
         """Mock connection test"""
-        print("✓ Using Mock Jira Client (no actual connection)")
+        print("+ Using Mock Jira Client (no actual connection)")
         return True
 
     def search_users(self, query: str, max_results: int = 50) -> List[Dict[str, Any]]:

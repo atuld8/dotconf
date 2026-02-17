@@ -149,7 +149,7 @@ Validation Logic:
       - Etrack 1234567 assigned to: user_one
       - user_one's jira_account in DB: user.one
       - FI-10001 Jira assignee: user.two
-      - Result: ✗ MISMATCH (should be user.one, not user.two)
+      - Result: X MISMATCH (should be user.one, not user.two)
 
 Options:
     --mock              Use mock Jira client (no API calls, for testing)
@@ -892,7 +892,7 @@ def run_demo(db: AccountManager, report_gen: ReportGenerator):
             community_account="johndoe_community",
             jira_account="john.doe"
         )
-        print("✓ Added sample account: john_doe")
+        print("+ Added sample account: john_doe")
     except ValueError:
         print("• Sample account john_doe already exists")
 
@@ -903,7 +903,7 @@ def run_demo(db: AccountManager, report_gen: ReportGenerator):
             cohesity_email="jane.smith@ccompany.com",
             jira_account="jane.smith"
         )
-        print("✓ Added sample account: jane_smith")
+        print("+ Added sample account: jane_smith")
     except ValueError:
         print("• Sample account jane_smith already exists")
 
@@ -970,10 +970,10 @@ def main():
             try:
                 db.add_account(etrack_user_id)
                 db.log_action('add_account', 'account', etrack_user_id, status='success')
-                print(f"✓ Added account: {etrack_user_id}")
+                print(f"+ Added account: {etrack_user_id}")
             except ValueError as e:
                 db.log_action('add_account', 'account', etrack_user_id, status='failed', details=str(e))
-                print(f"✗ {e}")
+                print(f"X {e}")
 
         elif command == 'update':
             if len(sys.argv) < 3:
@@ -982,10 +982,20 @@ def main():
             etrack_user_id = sys.argv[2]
             # Parse field=value pairs
             updates = {}
+            allowed_fields = ['first_name', 'last_name', 'veritas_email', 'cohesity_email',
+                             'community_account', 'jira_account', 'manual_verified', 'notes']
+            invalid_fields = []
             for arg in sys.argv[3:]:
                 if '=' in arg:
                     field, value = arg.split('=', 1)
-                    updates[field] = value
+                    if field in allowed_fields:
+                        updates[field] = value
+                    else:
+                        invalid_fields.append(field)
+            if invalid_fields:
+                print(f"X Invalid field(s): {', '.join(invalid_fields)}")
+                print(f"  Valid fields: {', '.join(allowed_fields)}")
+                return
             if updates:
                 # Get old values for logging
                 old_account = db.get_account(etrack_user_id=etrack_user_id)
@@ -993,7 +1003,7 @@ def main():
                 db.update_account(etrack_user_id, **updates)
                 db.log_action('update_account', 'account', etrack_user_id,
                              old_value=str(old_vals), new_value=str(updates), status='success')
-                print(f"✓ Updated account: {etrack_user_id}")
+                print(f"+ Updated account: {etrack_user_id}")
             else:
                 print("No updates provided")
 
@@ -1004,10 +1014,10 @@ def main():
             etrack_user_id = sys.argv[2]
             if db.delete_account(etrack_user_id):
                 db.log_action('delete_account', 'account', etrack_user_id, status='success')
-                print(f"✓ Deleted account: {etrack_user_id}")
+                print(f"+ Deleted account: {etrack_user_id}")
             else:
                 db.log_action('delete_account', 'account', etrack_user_id, status='failed', details='Account not found')
-                print(f"✗ Account not found: {etrack_user_id}")
+                print(f"X Account not found: {etrack_user_id}")
 
         elif command == 'get':
             if len(sys.argv) < 3:
@@ -1027,7 +1037,7 @@ def main():
                 if account.get('notes'):
                     print(f"  Notes:             {account['notes']}")
             else:
-                print(f"✗ Account not found: {etrack_user_id}")
+                print(f"X Account not found: {etrack_user_id}")
 
         elif command == 'list':
             accounts = db.get_all_accounts()
@@ -1064,7 +1074,7 @@ def main():
                     incomplete.append((acc, missing))
 
             if not incomplete:
-                print("✓ All accounts are complete!")
+                print("+ All accounts are complete!")
             else:
                 print(f"Found {len(incomplete)} incomplete accounts:\n")
                 print("=" * 80)
@@ -1111,7 +1121,7 @@ def main():
             if result:
                 print(result)
             else:
-                print(f"✗ Not found: {identifier}")
+                print(f"X Not found: {identifier}")
 
         elif command == 'report':
             report_type = sys.argv[2] if len(sys.argv) > 2 else 'summary'
@@ -1213,7 +1223,7 @@ def main():
                     # Check if it's a valid option or valid prefix
                     is_valid = arg in valid_options or any(arg.startswith(p) for p in valid_option_prefixes)
                     if not is_valid:
-                        print(f"✗ Error: Unknown option '{arg}'")
+                        print(f"X Error: Unknown option '{arg}'")
                         # Suggest similar options
                         similar = [opt for opt in valid_options if arg[2:6] in opt or opt[2:6] in arg]
                         if similar:
@@ -1282,7 +1292,7 @@ def main():
 
             # Validate that we have either query_name, --incident, or --fi
             if not query_name and not single_incident and not single_fi:
-                print("✗ Error: Must specify a query name, --incident=<number>, or --fi=<id>")
+                print("X Error: Must specify a query name, --incident=<number>, or --fi=<id>")
                 print("\nUsage:")
                 print("  python3 -m account_manager.cli validate-fi <query-name> [options]")
                 print("  python3 -m account_manager.cli validate-fi --incident=<number> [options]")
@@ -1323,14 +1333,14 @@ def main():
             if not records:
                 if single_fi:
                     fi_display = single_fi if single_fi.startswith('FI-') else f'FI-{single_fi}'
-                    print(f"✗ No records found for {fi_display}")
+                    print(f"X No records found for {fi_display}")
                 elif single_incident:
-                    print(f"✗ No FI records found for incident {single_incident}")
+                    print(f"X No FI records found for incident {single_incident}")
                 else:
-                    print("✗ No records found from esql query")
+                    print("X No records found from esql query")
                 return
 
-            print(f"✓ Found {len(records)} FI records")
+            print(f"+ Found {len(records)} FI records")
             print()
 
             # Always compute conflicts: FIs linked to multiple incidents with different assignees
@@ -1358,7 +1368,7 @@ def main():
             # Show detailed conflicts if --show-conflicts
             if show_conflicts:
                 if not conflicts:
-                    print("✓ No conflicts found - all FIs have consistent assignees")
+                    print("+ No conflicts found - all FIs have consistent assignees")
                     print(f"\n  Total FIs analyzed: {len(fi_to_incidents)}")
                     multi_incident_fis = [fi for fi, incs in fi_to_incidents.items() if len(incs) > 1]
                     print(f"  FIs linked to multiple incidents (same assignee): {len(multi_incident_fis)}")
@@ -1467,10 +1477,10 @@ def main():
                 try:
                     jira_client = JiraClient()
                     if not jira_client.test_connection():
-                        print("✗ Failed to connect to Jira")
+                        print("X Failed to connect to Jira")
                         return
                 except Exception as e:
-                    print(f"✗ Error initializing Jira client: {e}")
+                    print(f"X Error initializing Jira client: {e}")
                     print("Tip: Use --mock flag to test without Jira connection")
                     return
 
@@ -1487,7 +1497,7 @@ def main():
                 print(f"NEW USERS ADDED: {len(validator.new_users_added)}")
                 print("=" * 60)
                 for account_data in validator.new_users_added:
-                    print(f"\n✓ {account_data.etrack_user_id}")
+                    print(f"\n+ {account_data.etrack_user_id}")
                     print(f"  Jira: {account_data.jira_account}")
                     print(f"  Veritas: {account_data.veritas_email}")
                     print(f"  Cohesity: {account_data.cohesity_email}")
@@ -1697,7 +1707,7 @@ def main():
 
                 if fixed_success:
                     label = "Would fix" if fix_dry_run else "Successfully fixed"
-                    print(f"\n✓ {label}: {len(fixed_success)}")
+                    print(f"\n+ {label}: {len(fixed_success)}")
                     for item in fixed_success:
                         print(f"  {item['fi_id']}: {item['old_assignee'] or 'None'} → {item['new_assignee']}")
 
@@ -1707,7 +1717,7 @@ def main():
                         print(f"  {item['fi_id']}: {item['reason']}")
 
                 if fixed_failed:
-                    print(f"\n✗ Failed to fix: {len(fixed_failed)}")
+                    print(f"\nX Failed to fix: {len(fixed_failed)}")
                     for item in fixed_failed:
                         print(f"  {item['fi_id']}: {item['reason']}")
                         print(f"    Fix: {item['solution']}")
@@ -1773,10 +1783,10 @@ def main():
                 try:
                     jira_client = JiraClient()
                     if not jira_client.test_connection():
-                        print("✗ Failed to connect to Jira")
+                        print("X Failed to connect to Jira")
                         return
                 except Exception as e:
-                    print(f"✗ Error initializing Jira client: {e}")
+                    print(f"X Error initializing Jira client: {e}")
                     return
 
             print()
@@ -1786,24 +1796,24 @@ def main():
             jira_assignee = jira_client.get_assignee(fi_id)
 
             if jira_assignee:
-                print(f"✓ Jira Assignee: {jira_assignee}")
+                print(f"+ Jira Assignee: {jira_assignee}")
 
                 # Try to find in database
                 print(f"\nSearching in database...")
                 account = db.search_accounts(jira_account=jira_assignee)
 
                 if account:
-                    print(f"✓ Found in database:")
+                    print(f"+ Found in database:")
                     print(f"  Etrack User ID: {account[0]['etrack_user_id']}")
                     print(f"  Jira Account: {account[0]['jira_account']}")
                     print(f"  Cohesity Email: {account[0]['cohesity_email']}")
                     print(f"  Veritas Email: {account[0]['veritas_email']}")
                 else:
-                    print(f"✗ Not found in database")
+                    print(f"X Not found in database")
                     print(f"  You may need to add this account:")
                     print(f"  python3 -m account_manager.cli add <etrack_user_id>")
             else:
-                print(f"✗ Could not fetch assignee (FI may not exist or has no assignee)")
+                print(f"X Could not fetch assignee (FI may not exist or has no assignee)")
 
             # Get full issue summary
             if not use_mock:
@@ -1841,13 +1851,13 @@ def main():
                 print(f"Already had email: {stats['skipped']}")
 
                 if not dry_run and stats['updated'] > 0:
-                    print(f"\n✓ Updated {stats['updated']} accounts")
+                    print(f"\n+ Updated {stats['updated']} accounts")
                     print("Run 'list-incomplete' to see remaining missing fields")
                 elif dry_run:
                     print("\nRun without --dry-run to apply updates")
 
             except RuntimeError as e:
-                print(f"✗ Error: {e}")
+                print(f"X Error: {e}")
                 print("\nTroubleshooting:")
                 print("  1. Ensure euserls is installed and in your PATH")
                 print("  2. OR set RMTCMD_HOST environment variable for SSH execution")
@@ -1865,7 +1875,7 @@ def main():
             # Check if account exists
             account = db.get_account(etrack_user_id=etrack_user_id)
             if not account:
-                print(f"✗ Account not found: {etrack_user_id}")
+                print(f"X Account not found: {etrack_user_id}")
                 print(f"  Add it first: python3 -m account_manager.cli add {etrack_user_id}")
                 return
 
@@ -1880,16 +1890,16 @@ def main():
                     if not dry_run:
                         # Show updated account
                         account = db.get_account(etrack_user_id=etrack_user_id)
-                        print("\n✓ Account updated:")
+                        print("\n+ Account updated:")
                         print(f"  Etrack User ID: {account['etrack_user_id']}")
                         print(f"  Veritas Email:  {account['veritas_email']}")
                     else:
                         print("\nRun without --dry-run to update the database")
                 else:
-                    print("\n✗ Failed to fetch email")
+                    print("\nX Failed to fetch email")
 
             except RuntimeError as e:
-                print(f"✗ Error: {e}")
+                print(f"X Error: {e}")
 
         elif command == 'update-verified':
             # Update manual verification status
@@ -1901,19 +1911,19 @@ def main():
             verified_value = sys.argv[3].lower()
 
             if verified_value not in ['yes', 'no']:
-                print("✗ Error: Verification value must be 'yes' or 'no'")
+                print("X Error: Verification value must be 'yes' or 'no'")
                 return
 
             account = db.get_account(etrack_user_id=etrack_user_id)
             if not account:
-                print(f"✗ Account not found: {etrack_user_id}")
+                print(f"X Account not found: {etrack_user_id}")
                 return
 
             old_verified = account.get('manual_verified', 'no')
             db.update_account(etrack_user_id, manual_verified=verified_value)
             db.log_action('verify_account', 'account', etrack_user_id,
                          old_value=old_verified, new_value=verified_value, status='success')
-            print(f"✓ Updated manual_verified for {etrack_user_id}: {verified_value}")
+            print(f"+ Updated manual_verified for {etrack_user_id}: {verified_value}")
 
         elif command == 'update-notes':
             # Update notes field
@@ -1926,16 +1936,16 @@ def main():
 
             account = db.get_account(etrack_user_id=etrack_user_id)
             if not account:
-                print(f"✗ Account not found: {etrack_user_id}")
+                print(f"X Account not found: {etrack_user_id}")
                 return
 
             if '--clear' in sys.argv:
                 db.update_account(etrack_user_id, notes=None)
-                print(f"✓ Cleared notes for {etrack_user_id}")
+                print(f"+ Cleared notes for {etrack_user_id}")
             else:
                 notes = ' '.join(sys.argv[3:])
                 db.update_account(etrack_user_id, notes=notes)
-                print(f"✓ Updated notes for {etrack_user_id}")
+                print(f"+ Updated notes for {etrack_user_id}")
 
         elif command == 'update-jira-ids':
             # Update missing JIRA IDs using first/last name
@@ -1966,13 +1976,13 @@ def main():
                 print(f"Skipped: {stats['skipped']}")
 
                 if not dry_run and stats['updated'] > 0:
-                    print(f"\n✓ Updated {stats['updated']} accounts")
+                    print(f"\n+ Updated {stats['updated']} accounts")
                     print("Run 'list-incomplete' to see remaining missing fields")
                 elif dry_run:
                     print("\nRun without --dry-run to apply updates")
 
             except RuntimeError as e:
-                print(f"✗ Error: {e}")
+                print(f"X Error: {e}")
                 print("\nTroubleshooting:")
                 print("  1. Ensure JIRA credentials are configured")
                 print("  2. Check JIRA_URL, JIRA_USER, JIRA_API_TOKEN environment variables")
@@ -1991,13 +2001,13 @@ def main():
             # Check if account exists
             account = db.get_account(etrack_user_id=etrack_user_id)
             if not account:
-                print(f"✗ Account not found: {etrack_user_id}")
+                print(f"X Account not found: {etrack_user_id}")
                 print(f"  Add it first: python3 -m account_manager.cli add {etrack_user_id}")
                 return
 
             # Check if names are present
             if not account.get('first_name') or not account.get('last_name'):
-                print(f"✗ Account must have both first_name and last_name")
+                print(f"X Account must have both first_name and last_name")
                 print(f"  Current: first_name={account.get('first_name', '(missing)')}, last_name={account.get('last_name', '(missing)')}")
                 print(f"  Update names first: python3 -m account_manager.cli update-emails {etrack_user_id}")
                 return
@@ -2015,16 +2025,16 @@ def main():
                     if not dry_run:
                         # Show updated account
                         account = db.get_account(etrack_user_id=etrack_user_id)
-                        print("\n✓ Account updated:")
+                        print("\n+ Account updated:")
                         print(f"  Etrack User ID: {account['etrack_user_id']}")
                         print(f"  JIRA Account:   {account['jira_account']}")
                     else:
                         print("\nRun without --dry-run to update the database")
                 else:
-                    print("\n✗ Failed to fetch JIRA ID")
+                    print("\nX Failed to fetch JIRA ID")
 
             except RuntimeError as e:
-                print(f"✗ Error: {e}")
+                print(f"X Error: {e}")
 
         elif command == 'assign-etrack-fi':
             # Assign etrack to user and update linked FI in Jira
@@ -2061,7 +2071,7 @@ def main():
             account = db.get_account(etrack_user_id=etrack_user_id)
 
             if not account:
-                print(f"✗ User '{etrack_user_id}' not found in database")
+                print(f"X User '{etrack_user_id}' not found in database")
                 print(f"")
                 print(f"To add this user:")
                 print(f"  python3 -m account_manager.cli add {etrack_user_id}")
@@ -2070,7 +2080,7 @@ def main():
 
             jira_account = account.get('jira_account')
             if not jira_account:
-                print(f"✗ User '{etrack_user_id}' found but jira_account is not set")
+                print(f"X User '{etrack_user_id}' found but jira_account is not set")
                 print(f"")
                 print(f"To set jira_account:")
                 print(f"  python3 -m account_manager.cli update {etrack_user_id} jira_account=<jira_username>")
@@ -2082,7 +2092,7 @@ def main():
             # Check if account is verified
             manual_verified = account.get('manual_verified', '')
             if manual_verified.lower() != 'yes':
-                print(f"✗ User '{etrack_user_id}' is not verified (manual_verified='{manual_verified}')")
+                print(f"X User '{etrack_user_id}' is not verified (manual_verified='{manual_verified}')")
                 print(f"")
                 print(f"Only verified accounts can be used for assignment.")
                 print(f"To view account details before verifying:")
@@ -2092,7 +2102,7 @@ def main():
                 print(f"  python3 -m account_manager.cli update-verified {etrack_user_id} yes")
                 return
 
-            print(f"  ✓ Found user: {etrack_user_id}")
+            print(f"  + Found user: {etrack_user_id}")
             print(f"    Jira Account: {jira_account}")
 
             # Step 2: Get external references from etrack
@@ -2106,7 +2116,7 @@ def main():
                 external_refs = etrack_client.get_external_references(etrack_number, ext_src='TOOLS_AGILE', verbose=verbose)
 
                 if not external_refs:
-                    print(f"✗ No FI found linked to etrack {etrack_number} (ext_src=TOOLS_AGILE)")
+                    print(f"X No FI found linked to etrack {etrack_number} (ext_src=TOOLS_AGILE)")
                     print("")
                     print("Possible reasons:")
                     print("  - Etrack doesn't have an FI linked")
@@ -2115,10 +2125,10 @@ def main():
                     return
 
                 fi_ids = [ref.ext_ref_id for ref in external_refs]
-                print(f"  ✓ Found {len(fi_ids)} linked FI(s): {', '.join(fi_ids)}")
+                print(f"  + Found {len(fi_ids)} linked FI(s): {', '.join(fi_ids)}")
 
             except Exception as e:
-                print(f"✗ Error fetching external references: {e}")
+                print(f"X Error fetching external references: {e}")
                 return
 
             # Step 3: Check current etrack assignee and reassign if needed
@@ -2128,7 +2138,7 @@ def main():
                 print(f"  Current assignee: {current_assignee or 'N/A'}")
 
                 if current_assignee == etrack_user_id:
-                    print(f"  ✓ Etrack already assigned to {etrack_user_id}")
+                    print(f"  + Etrack already assigned to {etrack_user_id}")
                 else:
                     print(f"  → Reassigning etrack from '{current_assignee}' to '{etrack_user_id}'...")
                     success = etrack_client.assign_etrack(etrack_number, etrack_user_id, dry_run=dry_run)
@@ -2144,10 +2154,10 @@ def main():
                         db.log_action('assign_etrack', 'etrack', etrack_number,
                                      old_value=current_assignee, new_value=etrack_user_id,
                                      status='failed', details='eset command failed')
-                        print(f"  ⚠ Failed to reassign etrack, continuing with FI assignment...")
+                        print(f"  * Failed to reassign etrack, continuing with FI assignment...")
 
             except Exception as e:
-                print(f"  ⚠ Error checking/updating etrack: {e}")
+                print(f"  * Error checking/updating etrack: {e}")
                 print(f"    Continuing with FI assignment...")
 
             # Step 4: Initialize Jira client and update FI assignees
@@ -2158,10 +2168,10 @@ def main():
                 else:
                     jira_client = JiraClient()
                     if not jira_client.test_connection():
-                        print("✗ Failed to connect to Jira")
+                        print("X Failed to connect to Jira")
                         return
             except Exception as e:
-                print(f"✗ Error initializing Jira client: {e}")
+                print(f"X Error initializing Jira client: {e}")
                 return
 
             # Check and update each FI
@@ -2175,7 +2185,7 @@ def main():
                 print(f"    Current Jira assignee: {current_fi_assignee or 'N/A'}")
 
                 if current_fi_assignee == jira_account:
-                    print(f"    ✓ Already assigned to {jira_account}")
+                    print(f"    + Already assigned to {jira_account}")
                     fi_results['already_assigned'] += 1
                 else:
                     print(f"    → Updating assignee to '{jira_account}'...")
@@ -2212,9 +2222,9 @@ def main():
             if dry_run:
                 print("\nRun without --dry-run to apply changes")
             elif fi_results['updated'] > 0:
-                print("\n✓ Assignment completed successfully")
+                print("\n+ Assignment completed successfully")
             elif fi_results['already_assigned'] == len(fi_ids):
-                print("\n✓ All assignments already correct")
+                print("\n+ All assignments already correct")
 
         elif command == 'action-log':
             # View action log
@@ -2307,7 +2317,7 @@ def main():
             else:
                 deleted = db.clear_action_log(before=before)
 
-            print(f"✓ Cleared {deleted} action log entries")
+            print(f"+ Cleared {deleted} action log entries")
 
         elif command == 'lookup-etrack-emails':
             # Lookup emails for list of Etrack IDs, FI IDs, or usernames
@@ -2337,17 +2347,17 @@ def main():
                     include_missing = True
 
             if input_type not in ['etrack', 'fi', 'user']:
-                print(f"✗ Invalid input type: {input_type}")
+                print(f"X Invalid input type: {input_type}")
                 print("  Use 'etrack', 'fi', or 'user'")
                 return
 
             if email_type not in ['cohesity', 'veritas']:
-                print(f"✗ Invalid email type: {email_type}")
+                print(f"X Invalid email type: {email_type}")
                 print("  Use 'cohesity' or 'veritas'")
                 return
 
             if output_format not in ['table', 'csv', 'semi', 'simple']:
-                print(f"✗ Invalid format: {output_format}")
+                print(f"X Invalid format: {output_format}")
                 print("  Use 'table', 'csv', 'semi', or 'simple'")
                 return
 
@@ -2383,7 +2393,7 @@ def main():
                             if parsed:
                                 input_ids.append(parsed)
                 except FileNotFoundError:
-                    print(f"✗ File not found: {file_path}")
+                    print(f"X File not found: {file_path}")
                     return
             else:
                 # Check if stdin has data
@@ -2398,7 +2408,7 @@ def main():
                     return
 
             if not input_ids:
-                print(f"✗ No valid {input_type} IDs found")
+                print(f"X No valid {input_type} IDs found")
                 return
 
             type_label = {'etrack': 'Etrack', 'fi': 'FI', 'user': 'User'}[input_type]
@@ -2412,7 +2422,7 @@ def main():
                 try:
                     etrack_exec = EtrackExecutor()
                 except RuntimeError as e:
-                    print(f"✗ Error: {e}")
+                    print(f"X Error: {e}")
                     return
 
             if input_type == 'fi':
@@ -2420,7 +2430,7 @@ def main():
                 try:
                     jira_client = JiraClient()
                 except Exception as e:
-                    print(f"✗ Error initializing Jira client: {e}")
+                    print(f"X Error initializing Jira client: {e}")
                     return
 
             # Results storage
@@ -2633,7 +2643,7 @@ def main():
             print()
 
         else:
-            print(f"✗ Unknown command: {command}")
+            print(f"X Unknown command: {command}")
             print("\nAvailable commands: add, update, delete, get, list, list-incomplete,")
             print("                    search, translate, report, export, import,")
             print("                    export-log, import-log, validate-fi, check-assignee,")
@@ -2645,13 +2655,13 @@ def main():
             print("\nFor detailed help: python3 -m account_manager.cli help [command]")
 
     except DatabaseLockedError as e:
-        print(f"✗ Database Error: {str(e)}")
+        print(f"X Database Error: {str(e)}")
         print("\nThe database is being used by another process.")
         print("Please wait a moment and try again, or check for other running processes.")
         sys.exit(1)
 
     except Exception as e:
-        print(f"✗ Error: {str(e)}")
+        print(f"X Error: {str(e)}")
         import traceback
         traceback.print_exc()
 

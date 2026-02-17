@@ -31,7 +31,7 @@ def main():
             community_account="johndoe_community",
             jira_account="john.doe"
         )
-        print("  ✓ Added: ET12345 (John Doe)")
+        print("  + Added: ET12345 (John Doe)")
     except ValueError as e:
         print(f"  • {e}")
 
@@ -43,7 +43,7 @@ def main():
             community_account="janesmith_community",
             jira_account="jane.smith"
         )
-        print("  ✓ Added: ET67890 (Jane Smith)")
+        print("  + Added: ET67890 (Jane Smith)")
     except ValueError as e:
         print(f"  • {e}")
 
@@ -53,7 +53,7 @@ def main():
             veritas_email="bob.jones@vcompany.com",
             jira_account="bob.jones"
         )
-        print("  ✓ Added: ET11111 (Bob Jones - partial data)")
+        print("  + Added: ET11111 (Bob Jones - partial data)")
     except ValueError as e:
         print(f"  • {e}")
 
@@ -112,7 +112,7 @@ def main():
         community_account="bobjones_community"
     )
     updated = db.get_account(etrack_user_id="ET11111")
-    print(f"  ✓ Updated: {updated['cohesity_email']}")
+    print(f"  + Updated: {updated['cohesity_email']}")
 
     # Reports
     print("\n" + "=" * 60)

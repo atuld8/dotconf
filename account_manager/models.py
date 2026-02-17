@@ -9,7 +9,31 @@ from typing import Optional, Dict, List, Any
 # Database lock retry settings
 DB_LOCK_RETRIES = 5
 DB_LOCK_DELAY = 0.5  # seconds
+# Invalid etrack_user_id values (placeholders, empty, etc.)
+INVALID_ETRACK_USER_IDS = {'-', 'n/a', 'na', 'none', 'null', 'unknown', 'unassigned', ''}
 
+
+def is_valid_etrack_user_id(etrack_user_id: str) -> bool:
+    """
+    Validate that etrack_user_id is a valid value.
+
+    Rejects placeholder values like '-', 'N/A', empty strings, etc.
+
+    Args:
+        etrack_user_id: The etrack user ID to validate
+
+    Returns:
+        True if valid, False if invalid/placeholder
+    """
+    if not etrack_user_id:
+        return False
+    normalized = etrack_user_id.strip().lower()
+    if normalized in INVALID_ETRACK_USER_IDS:
+        return False
+    # Must have at least one alphanumeric character
+    if not any(c.isalnum() for c in normalized):
+        return False
+    return True
 
 class DatabaseLockedError(Exception):
     """Raised when database remains locked after retries"""
@@ -149,7 +173,14 @@ class AccountManager:
 
         Returns:
             ID of the newly created record
+            
+        Raises:
+            ValueError: If etrack_user_id is invalid (e.g., '-', 'N/A', empty)
         """
+        # Validate etrack_user_id
+        if not is_valid_etrack_user_id(etrack_user_id):
+            raise ValueError(f"Invalid etrack_user_id: '{etrack_user_id}' (cannot be empty, '-', 'N/A', etc.)")
+        
         try:
             self.cursor.execute("""
                 INSERT INTO accounts

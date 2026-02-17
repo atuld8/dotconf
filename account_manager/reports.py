@@ -457,8 +457,8 @@ class ReportGenerator:
 
         # Status symbols
         status_symbols = {
-            'success': '✓',
-            'failed': '✗',
+            'success': '+',
+            'failed': 'X',
             'skipped': '○',
             'dry_run': '◌'
         }
@@ -677,7 +677,7 @@ class ReportGenerator:
             data = daily_data[day]
             total = data['success'] + data['failed']
             report.append(f"📅 {day}")
-            report.append(f"   Total: {total} actions (✓ {data['success']} success, ✗ {data['failed']} failed)")
+            report.append(f"   Total: {total} actions (+ {data['success']} success, X {data['failed']} failed)")
 
             # Show top actions for this day
             sorted_actions = sorted(data['actions'].items(), key=lambda x: -x[1])
@@ -718,8 +718,8 @@ class ReportGenerator:
             return "\n".join(report)
 
         status_symbols = {
-            'success': '✓',
-            'failed': '✗',
+            'success': '+',
+            'failed': 'X',
             'skipped': '○',
             'dry_run': '◌'
         }

@@ -38,7 +38,7 @@ Email:  Amy.user@vcompany.com
         user_info = executor._parse_output(sample_output, "auser")
 
         if user_info:
-            print("✓ Parsing successful!")
+            print("+ Parsing successful!")
             print(f"  Login: {user_info.etrack_user_id}")
             print(f"  Name: {user_info.first_name} {user_info.last_name}")
             print(f"  Email: {user_info.email}")
@@ -46,7 +46,7 @@ Email:  Amy.user@vcompany.com
             print(f"  Status: {user_info.status}")
             return True
         else:
-            print("✗ Parsing failed")
+            print("X Parsing failed")
             return False
     finally:
         # Don't unset if it was already set
@@ -65,16 +65,16 @@ def test_live_euserls(etrack_user_id):
 
         # Check if command is available
         if executor.use_ssh:
-            print(f"✓ Will use SSH: {executor.rmtcmd_host}")
+            print(f"+ Will use SSH: {executor.rmtcmd_host}")
         else:
-            print(f"✓ euserls found locally at: {executor.euserls_path}")
+            print(f"+ euserls found locally at: {executor.euserls_path}")
 
         # Fetch user info
         print(f"\nFetching user info...")
         user_info = executor.get_user_info(etrack_user_id)
 
         if user_info:
-            print("✓ Successfully fetched user info:")
+            print("+ Successfully fetched user info:")
             print(f"  Login: {user_info.etrack_user_id}")
             print(f"  Name: {user_info.first_name} {user_info.last_name}")
             print(f"  Email: {user_info.email}")
@@ -82,11 +82,11 @@ def test_live_euserls(etrack_user_id):
             print(f"  Status: {user_info.status}")
             return True
         else:
-            print(f"✗ Failed to fetch user info for {etrack_user_id}")
+            print(f"X Failed to fetch user info for {etrack_user_id}")
             return False
 
     except RuntimeError as e:
-        print(f"✗ Error: {e}")
+        print(f"X Error: {e}")
         return False
 
 
@@ -101,14 +101,14 @@ def test_email_only(etrack_user_id):
         email = executor.get_email(etrack_user_id)
 
         if email:
-            print(f"✓ Email: {email}")
+            print(f"+ Email: {email}")
             return True
         else:
-            print(f"✗ Failed to fetch email")
+            print(f"X Failed to fetch email")
             return False
 
     except RuntimeError as e:
-        print(f"✗ Error: {e}")
+        print(f"X Error: {e}")
         return False
 
 
@@ -143,10 +143,10 @@ def main():
     print("\n" + "=" * 60)
     print("TEST SUMMARY")
     print("=" * 60)
-    print(f"Parsing test: {'✓ PASS' if parsing_ok else '✗ FAIL'}")
+    print(f"Parsing test: {'+ PASS' if parsing_ok else 'X FAIL'}")
     if live_ok is not None:
-        print(f"Live test: {'✓ PASS' if live_ok else '✗ FAIL'}")
-        print(f"Email test: {'✓ PASS' if email_ok else '✗ FAIL'}")
+        print(f"Live test: {'+ PASS' if live_ok else 'X FAIL'}")
+        print(f"Email test: {'+ PASS' if email_ok else 'X FAIL'}")
 
     print("\nNOTE: For live testing, ensure one of:")
     print("  1. euserls command is in your PATH")

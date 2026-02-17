@@ -5,7 +5,7 @@ FI Validator - Validate FI assignees against Jira and account database
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from .esql_integration import FIRecord
-from .models import AccountManager
+from .models import AccountManager, is_valid_etrack_user_id
 from .account_populator import AccountPopulator, AccountData, AutoPopulateStrategy, format_account_data
 
 
@@ -19,7 +19,7 @@ class AssigneeInfo:
     error: Optional[str] = None
 
     def __str__(self):
-        status = "✓ MATCH" if self.matches else "✗ MISMATCH"
+        status = "+ MATCH" if self.matches else "X MISMATCH"
         return f"{self.fi_id}: {status} (Jira: {self.jira_assignee}, Expected: {self.expected_jira_id})"
 
 
@@ -104,6 +104,11 @@ class FIValidator:
         Returns:
             Jira account if successfully added, None otherwise
         """
+        # Validate etrack_user_id before processing
+        if not is_valid_etrack_user_id(etrack_user_id):
+            print(f"* Skipping invalid etrack_user_id: '{etrack_user_id}' (placeholder/empty value)")
+            return None
+
         # Check if already processed in this session to avoid duplicate attempts
         if etrack_user_id in self._processed_users:
             return None
@@ -120,7 +125,7 @@ class FIValidator:
             raise ValueError(f"Unknown user '{etrack_user_id}' and FAIL strategy is set")
 
         if self.auto_populate_strategy == AutoPopulateStrategy.SKIP:
-            print(f"⚠ Warning: No Jira account found for etrack_user_id '{etrack_user_id}' (skipping auto-population)")
+            print(f"* Warning: No Jira account found for etrack_user_id '{etrack_user_id}' (skipping auto-population)")
             return None
 
         if self.auto_populate_strategy == AutoPopulateStrategy.INTERACTIVE:
@@ -132,7 +137,7 @@ class FIValidator:
             # Prompt user for confirmation
             account_data = self.populator.interactive_populate(etrack_user_id, inferred)
         else:  # AUTO - minimal data, user will update later
-            print(f"\n✓ Auto-adding minimal account for '{etrack_user_id}' (fields left empty for later update)")
+            print(f"\n+ Auto-adding minimal account for '{etrack_user_id}' (fields left empty for later update)")
             account_data = AccountData(
                 etrack_user_id=etrack_user_id,
                 veritas_email=None,
@@ -153,11 +158,11 @@ class FIValidator:
                 jira_account=account_data.jira_account
             )
             self.new_users_added.append(account_data)
-            print(f"✓ Added account for '{etrack_user_id}' (update later with: cli.py update {etrack_user_id})\n")
+            print(f"+ Added account for '{etrack_user_id}' (update later with: cli.py update {etrack_user_id})\n")
             return account_data.jira_account
 
         except Exception as e:
-            print(f"✗ Failed to add account for '{etrack_user_id}': {e}")
+            print(f"X Failed to add account for '{etrack_user_id}': {e}")
             return None
 
     def get_jira_assignee(self, fi_id: str) -> Optional[str]:
@@ -202,6 +207,17 @@ class FIValidator:
             ValidationResult with assignee comparisons
         """
         validations = []
+
+        # Skip validation for invalid etrack_user_id values (placeholders like '-', 'N/A', etc.)
+        if not is_valid_etrack_user_id(record.etrack_user_id):
+            return ValidationResult(
+                incident_no=record.incident_no,
+                etrack_user_id=record.etrack_user_id,
+                who_added_fi=record.who_added_fi,
+                fi_validations=[],
+                db_jira_account=None,
+                status="skipped_invalid_user"
+            )
 
         # Get expected Jira ID for the etrack assignee from database
         expected_jira_id = self.am.translate(record.etrack_user_id, 'jira_account')
@@ -288,7 +304,7 @@ class FIValidator:
         if self.jira_client and all_fi_ids:
             print(f"Fetching {total_fis} FI assignees from Jira (batched)...")
             fi_assignees = self.jira_client.get_multiple_assignees(all_fi_ids)
-            print(f"✓ Fetched {len(fi_assignees)} FI assignees")
+            print(f"+ Fetched {len(fi_assignees)} FI assignees")
 
         # Now validate records using pre-fetched data
         results = []
@@ -406,7 +422,7 @@ class FIValidator:
         report.append("")
 
         if not mismatches and not unknown_users:
-            report.append("✓ All FI assignments match expected values!")
+            report.append("+ All FI assignments match expected values!")
             report.append("=" * 120)
             return "\n".join(report)
 
@@ -469,13 +485,13 @@ class FIValidator:
 
                 for validation in result.fi_validations:
                     if not validation.matches:
-                        report.append(f"    {validation.fi_id}: ✗ MISMATCH")
+                        report.append(f"    {validation.fi_id}: X MISMATCH")
                         report.append(f"      Current Jira Assignee: {validation.jira_assignee or 'N/A'}")
                         report.append(f"      Should be assigned to: {validation.expected_jira_id or 'N/A'}")
                         if validation.error:
                             report.append(f"      Error: {validation.error}")
                     else:
-                        report.append(f"    {validation.fi_id}: ✓ OK (assigned to {validation.jira_assignee})")
+                        report.append(f"    {validation.fi_id}: + OK (assigned to {validation.jira_assignee})")
                 report.append("")
 
         report.append("=" * 120)
