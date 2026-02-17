@@ -2075,12 +2075,18 @@ def parse_prettytable_output(content: str) -> List[Dict]:
     +-----+----------+------------------------+-------------+
     | 1   | FI-59535 | PXXXXX WXXXXXXX        | Major       |
     +-----+----------+------------------------+-------------+
+
+    Uses separator lines (+---+---+) to determine column boundaries,
+    which handles cells containing pipe characters (like Markdown links).
     """
     rows = []
     headers = []
+    col_positions = []  # List of (start, end) tuples for each column
     in_table = False
 
-    for line in content.splitlines():
+    lines = content.splitlines()
+
+    for line in lines:
         # Strip trailing whitespace but preserve leading for detection
         line = line.rstrip()
 
@@ -2088,13 +2094,63 @@ def parse_prettytable_output(content: str) -> List[Dict]:
         if not line.strip():
             continue
 
-        # Skip separator lines (lines with only +, -, |, and spaces)
+        # Check if this is a separator line (e.g., +-----+----------+)
+        if line.strip().startswith('+') and set(line.replace(' ', '')) <= {'+', '-'}:
+            if not col_positions:
+                # Parse column positions from separator line
+                # Find positions of all '+' characters
+                plus_positions = [i for i, c in enumerate(line) if c == '+']
+                if len(plus_positions) >= 2:
+                    col_positions = [(plus_positions[i] + 1, plus_positions[i + 1])
+                                     for i in range(len(plus_positions) - 1)]
+            continue
+
+        # Skip other separator lines (lines with only +, -, |, and spaces)
         if set(line.replace(' ', '')) <= {'+', '-', '|'}:
             continue
 
         # Check if this is a table row (contains | but not just separators)
-        if '|' in line:
-            # Extract content between first and last |
+        if '|' in line and col_positions:
+            # Use column positions to extract cells (handles pipes inside cells)
+            cells = []
+            for start, end in col_positions:
+                if start < len(line) and end <= len(line):
+                    cell = line[start:end].strip().rstrip('|').strip()
+                elif start < len(line):
+                    cell = line[start:].strip().rstrip('|').strip()
+                else:
+                    cell = ''
+                cells.append(cell)
+
+            if not cells or all(c == '' for c in cells):
+                continue
+
+            if not in_table:
+                # First row with cells is header
+                headers = cells
+                in_table = True
+            else:
+                # Data row - check it's not a repeat of header
+                first_cell = cells[0] if cells else ''
+                if first_cell == '#' or first_cell == headers[0]:
+                    # This is a repeated header, skip
+                    continue
+
+                # Build row dict
+                row = {}
+                for i, header in enumerate(headers):
+                    if header == '#':
+                        continue  # Skip row index column
+                    if i < len(cells):
+                        row[header] = cells[i]
+                    else:
+                        row[header] = ''
+
+                if row:
+                    rows.append(row)
+
+        elif '|' in line and not col_positions:
+            # Fallback: simple pipe splitting (for tables without separator lines)
             pipe_parts = line.split('|')
 
             # Filter out empty parts from leading/trailing pipes

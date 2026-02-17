@@ -36,3 +36,6 @@ alias ol.log='tmux display-popup -E -w 80% -h 50% '"'"'tail -f $op/ollama.log; r
 alias ol.rpc.2='function af.ollama() { ollama run ${3:-mistral} <<< "$(cat ${1:-ollama}.pmpt; printf '"'"'\n'"'"'; cat ${1:-ollama}.sh)"; }; af.ollama'
 alias ol.rpc.3='function af.ollama() { ollama run ${3:-mistral} <<< "$(cat ${2:-ollama.pmpt}; printf '"'"'\n'"'"'; cat ${1:-ollama.sh})"; }; af.ollama'
 alias ol.run='function af.ollama() { ollama run ${1:-mistral}; }; af.ollama'
+
+
+alias cd.1d='cd $HOME/Library/CloudStorage/OneDrive-Cohesity/'

@@ -243,7 +243,8 @@ alias .dymd='date "+%Y-%m-%d"|tr -d "\n"'
 alias .d='date "+%d-%b-%Y"|tr -d "\n"'
 alias .t='date "+%H:%M:%S"|tr -d "\n"'
 alias .dt.='function af() { date "+%d-%b-%Y${1:- }%H:%M:%S"|tr -d "\n"; }; af'
-alias .dt_='function af() { date "+%d-%b-%Y_%H:%M:%S"|tr -d "\n"; }; af'
+alias .dt_='function af() { date "+%d-%b-%Y_%H-%M-%S"|tr -d "\n"; }; af'
+alias .dtymd='function af() { date "+%Y%m%d_%H%M%S"|tr -d "\n"; }; af'
 
 # frequeently used alias, hence quick access
 # alias q.=''
