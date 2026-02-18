@@ -1816,11 +1816,11 @@ def main():
                     for v in result.fi_validations:
                         if not v.matches:
                             all_mismatch_fi_ids.add(v.fi_id)
-                
+
                 # Exclude conflict FIs from mismatch list
                 conflict_fi_ids = set(conflicts.keys()) if conflicts else set()
                 mismatch_only_fi_ids = all_mismatch_fi_ids - conflict_fi_ids
-                
+
                 if mismatch_only_fi_ids:
                     mismatch_fi_list = ','.join(sorted(mismatch_only_fi_ids))
                     print(f"\nMismatch FIs ({len(mismatch_only_fi_ids)} - Jira assignee doesn't match expected):")
@@ -2509,74 +2509,74 @@ def main():
             if input_type == 'etrack':
                 if verbose:
                     print(f"  Batch querying {len(input_ids)} Etrack assignees...")
-                
+
                 # Get all assignees in batched queries
                 assignee_map = etrack_exec.get_etrack_assignees_batch(input_ids, verbose=verbose)
-                
+
                 if verbose:
                     print(f"  Found {sum(1 for v in assignee_map.values() if v)} assignees")
-                
+
                 # Now lookup emails for each
                 for input_id in input_ids:
                     assignee = assignee_map.get(input_id)
-                    
+
                     if not assignee:
                         missing.append((input_id, None, 'No assignee'))
                         continue
-                    
+
                     # Lookup email from accounts database
                     account = db.get_account(etrack_user_id=assignee)
-                    
+
                     if not account:
                         missing.append((input_id, assignee, 'Account not found'))
                         continue
-                    
+
                     email_field = f"{email_type}_email"
                     email = account.get(email_field) or ''
-                    
+
                     if email:
                         results.append((input_id, assignee, email))
                     else:
                         missing.append((input_id, assignee, f'No {email_type} email'))
-            
+
             elif input_type == 'user':
                 # Direct username lookup - no etrack call needed
                 for input_id in input_ids:
                     assignee = input_id
                     account = db.get_account(etrack_user_id=assignee)
-                    
+
                     if not account:
                         missing.append((input_id, assignee, 'Account not found'))
                         continue
-                    
+
                     email_field = f"{email_type}_email"
                     email = account.get(email_field) or ''
-                    
+
                     if email:
                         results.append((input_id, assignee, email))
                     else:
                         missing.append((input_id, assignee, f'No {email_type} email'))
-            
+
             else:  # fi
                 # FI type - need to get Etrack from Jira first, then batch query assignees
                 # OPTIMIZED: Use batch JQL search to get Etrack IDs from all FIs at once
                 fi_to_etrack = {}
                 fi_missing = []
-                
+
                 if verbose:
                     print(f"  Batch fetching Etrack IDs from {len(input_ids)} FIs...")
-                
+
                 # Batch fetch Etrack IDs using JQL search
                 etrack_field = 'customfield_33802'
                 field_map = jira_client.get_field_batch(input_ids, etrack_field)
-                
+
                 for fi_id in input_ids:
                     etrack_id = field_map.get(fi_id)
                     if etrack_id:
                         fi_to_etrack[fi_id] = str(etrack_id).strip()
                     else:
                         fi_missing.append((fi_id, None, 'No Etrack linked' if fi_id in field_map else 'FI not found'))
-                
+
                 # Batch query assignees for all Etrack IDs
                 etrack_ids = list(fi_to_etrack.values())
                 if etrack_ids:
@@ -2585,36 +2585,36 @@ def main():
                     assignee_map = etrack_exec.get_etrack_assignees_batch(etrack_ids, verbose=verbose)
                 else:
                     assignee_map = {}
-                
+
                 # Now lookup emails
                 for fi_id, etrack_id in fi_to_etrack.items():
                     assignee = assignee_map.get(etrack_id)
-                    
+
                     if not assignee:
                         missing.append((fi_id, None, 'No assignee'))
                         continue
-                    
+
                     account = db.get_account(etrack_user_id=assignee)
-                    
+
                     if not account:
                         missing.append((fi_id, assignee, 'Account not found'))
                         continue
-                    
+
                     email_field = f"{email_type}_email"
                     email = account.get(email_field) or ''
-                    
+
                     if email:
                         results.append((fi_id, assignee, email))
                     else:
                         missing.append((fi_id, assignee, f'No {email_type} email'))
-                
+
                 # Add FIs that had no Etrack
                 missing.extend(fi_missing)
 
             # Output results
             print()
             sep = ';' if output_format == 'semi' else ','
-            
+
             if output_format in ['csv', 'semi']:
                 print(f"{type_label.lower()}_id{sep}assignee{sep}email")
                 for input_id, assignee, email in results:
@@ -2662,12 +2662,12 @@ def main():
             # Show configuration and settings
             print("Account Manager - Configuration")
             print("=" * 60)
-            
+
             # Database
             env_db = os.environ.get('ET_JR_ACCOUNTS_DB')
             module_dir = os.path.dirname(os.path.abspath(__file__))
             default_db = os.path.join(module_dir, "accounts.db")
-            
+
             print("\nDatabase:")
             if env_db:
                 print(f"  Path (from ET_JR_ACCOUNTS_DB): {env_db}")
@@ -2675,18 +2675,18 @@ def main():
             else:
                 print(f"  Path (default): {default_db}")
                 print(f"  Exists: {os.path.exists(default_db)}")
-            
+
             # Record count
             try:
                 accounts = db.get_all_accounts()
                 print(f"  Records: {len(accounts)}")
             except Exception:
                 print("  Records: (unable to query)")
-            
+
             # Module info
             print("\nModule:")
             print(f"  Directory: {module_dir}")
-            
+
             # Environment variables
             print("\nEnvironment Variables:")
             env_vars = [
@@ -2707,7 +2707,7 @@ def main():
                     print(f"  {var}: {display}")
                 else:
                     print(f"  {var}: (not set) - {desc}")
-            
+
             print()
 
         else:
