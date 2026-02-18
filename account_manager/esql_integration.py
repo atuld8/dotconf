@@ -17,10 +17,12 @@ class FIRecord:
     etrack_user_id: str
     who_added_fi: str
     fi_ids: List[str]  # List of FI IDs (e.g., ['FI-59131'] or ['FI-58985', 'FI-60908'])
+    incident_type: Optional[str] = None  # Type: SERVICE_REQUEST, DEFECT, ENHANCEMENT, etc.
 
     def __str__(self):
         fi_list = ', '.join(self.fi_ids)
-        return f"Incident {self.incident_no}: {self.etrack_user_id} | Added by: {self.who_added_fi} | FIs: {fi_list}"
+        type_str = f" | Type: {self.incident_type}" if self.incident_type else ""
+        return f"Incident {self.incident_no}: {self.etrack_user_id} | Added by: {self.who_added_fi} | FIs: {fi_list}{type_str}"
 
 
 class EsqlExecutor:
@@ -237,23 +239,28 @@ class EsqlExecutor:
         except FileNotFoundError:
             raise FileNotFoundError(f"esql command not found: {self.esql_command}")
 
-    def fetch_incident_by_id(self, incident_no: str, timeout: int = 60) -> List[FIRecord]:
+    def fetch_incident_by_id(self, incident_no: str, timeout: int = 60,
+                              type_filter: str = 'SERVICE_REQUEST',
+                              include_all_types: bool = False) -> List[FIRecord]:
         """
         Fetch FI records for a specific incident number
 
         Args:
             incident_no: The etrack incident number
             timeout: Command timeout in seconds
+            type_filter: Only include if incident is this type (default: SERVICE_REQUEST)
+            include_all_types: If True, include all incident types (ignore type_filter)
 
         Returns:
             List of FIRecord objects for that incident
         """
-        # Step 1: Get incident assignee
-        assignee_sql = f"SELECT incident, assigned_to FROM incident WHERE incident = {incident_no}"
+        # Step 1: Get incident assignee and type
+        assignee_sql = f"SELECT incident, assigned_to, type FROM incident WHERE incident = {incident_no}"
         assignee_output = self.execute_raw_query(assignee_sql, timeout)
-        
-        # Parse assignee
+
+        # Parse assignee and type
         assignee = None
+        inc_type = None
         for line in assignee_output.strip().split('\n'):
             line = line.strip()
             if not line or 'assigned_to' in line.lower() or line.startswith('---'):
@@ -261,15 +268,24 @@ class EsqlExecutor:
             parts = line.split('\t')
             if len(parts) >= 2:
                 assignee = parts[1].strip()
+                if len(parts) >= 3:
+                    inc_type = parts[2].strip()
                 break
-        
+
         if not assignee:
             return []
-        
+
+        # Filter by type unless include_all_types is True
+        if not include_all_types and type_filter and inc_type:
+            if inc_type != type_filter:
+                print(f"  Note: Incident {incident_no} is type '{inc_type}' (not {type_filter}) - skipping")
+                print(f"        Use --all-types to include all incident types")
+                return []
+
         # Step 2: Get FI links from external_reference table
         fi_sql = f"SELECT incident, ext_src, ext_inc FROM external_reference WHERE incident = {incident_no} AND ext_src = 'TOOLS_AGILE'"
         fi_output = self.execute_raw_query(fi_sql, timeout)
-        
+
         # Parse FI IDs
         fi_ids = []
         for line in fi_output.strip().split('\n'):
@@ -281,25 +297,30 @@ class EsqlExecutor:
             for part in parts:
                 if re.match(r'^FI-\d+$', part):
                     fi_ids.append(part)
-        
+
         if not fi_ids:
             return []
-        
+
         # Create FIRecord
         return [FIRecord(
             incident_no=incident_no,
             etrack_user_id=assignee,
             who_added_fi='(unknown)',
-            fi_ids=sorted(fi_ids)
+            fi_ids=sorted(fi_ids),
+            incident_type=inc_type
         )]
 
-    def fetch_by_fi_id(self, fi_id: str, timeout: int = 60) -> List[FIRecord]:
+    def fetch_by_fi_id(self, fi_id: str, timeout: int = 60,
+                        type_filter: str = 'SERVICE_REQUEST',
+                        include_all_types: bool = False) -> List[FIRecord]:
         """
         Fetch FI records for a specific FI ID (e.g., FI-59131)
 
         Args:
             fi_id: The FI ID (e.g., FI-59131 or just 59131)
             timeout: Command timeout in seconds
+            type_filter: Only include incidents of this type (default: SERVICE_REQUEST)
+            include_all_types: If True, include all incident types (ignore type_filter)
 
         Returns:
             List of FIRecord objects for incidents linked to that FI
@@ -311,7 +332,7 @@ class EsqlExecutor:
         # Step 1: Find incident(s) linked to this FI
         incident_sql = f"SELECT incident, ext_src, ext_inc FROM external_reference WHERE ext_src = 'TOOLS_AGILE' AND ext_inc = '{fi_id}'"
         incident_output = self.execute_raw_query(incident_sql, timeout)
-        
+
         # Parse incident numbers
         incident_nos = []
         for line in incident_output.strip().split('\n'):
@@ -322,17 +343,19 @@ class EsqlExecutor:
             parts = [p.strip() for p in parts if p.strip()]
             if parts and parts[0].isdigit():
                 incident_nos.append(parts[0])
-        
+
         if not incident_nos:
             return []
-        
-        # Step 2: Get assignee for each incident
+
+        # Step 2: Get assignee and type for each incident
         records = []
+        skipped_incidents = []
         for inc_no in incident_nos:
-            assignee_sql = f"SELECT incident, assigned_to FROM incident WHERE incident = {inc_no}"
+            assignee_sql = f"SELECT incident, assigned_to, type FROM incident WHERE incident = {inc_no}"
             assignee_output = self.execute_raw_query(assignee_sql, timeout)
-            
+
             assignee = None
+            inc_type = None
             for line in assignee_output.strip().split('\n'):
                 line = line.strip()
                 if not line or 'assigned_to' in line.lower() or line.startswith('---'):
@@ -340,16 +363,31 @@ class EsqlExecutor:
                 parts = line.split('\t')
                 if len(parts) >= 2:
                     assignee = parts[1].strip()
+                    if len(parts) >= 3:
+                        inc_type = parts[2].strip()
                     break
-            
+
+            # Filter by type unless include_all_types is True
+            if not include_all_types and type_filter and inc_type:
+                if inc_type != type_filter:
+                    skipped_incidents.append((inc_no, inc_type, assignee))
+                    continue
+
             if assignee:
                 records.append(FIRecord(
                     incident_no=inc_no,
                     etrack_user_id=assignee,
                     who_added_fi='(unknown)',
-                    fi_ids=[fi_id]
+                    fi_ids=[fi_id],
+                    incident_type=inc_type
                 ))
-        
+
+        # Print warning for skipped incidents
+        if skipped_incidents:
+            print(f"  Note: Skipped {len(skipped_incidents)} non-{type_filter} incident(s):")
+            for inc_no, inc_type, assignee in skipped_incidents:
+                print(f"    - {inc_no} (type: {inc_type}, assignee: {assignee or 'N/A'})")
+
         return records
 
     def parse_from_file(self, filename: str) -> List[FIRecord]:
@@ -397,6 +435,89 @@ class EsqlExecutor:
         for record in records:
             fi_ids.update(record.fi_ids)
         return sorted(fi_ids)
+
+    def fetch_incident_types(self, incident_nos: List[str], timeout: int = 60) -> Dict[str, str]:
+        """
+        Batch fetch incident types for multiple incidents
+
+        Args:
+            incident_nos: List of incident numbers
+            timeout: Command timeout in seconds
+
+        Returns:
+            Dictionary mapping incident_no to incident type
+        """
+        if not incident_nos:
+            return {}
+
+        # Build IN clause for batch query
+        incident_list = ', '.join(incident_nos)
+        sql = f"SELECT incident, type FROM incident WHERE incident IN ({incident_list})"
+        output = self.execute_raw_query(sql, timeout)
+
+        # Parse results
+        type_map = {}
+        for line in output.strip().split('\n'):
+            line = line.strip()
+            if not line or 'type' in line.lower() or line.startswith('---'):
+                continue
+            parts = line.split('\t')
+            if len(parts) >= 2:
+                inc_no = parts[0].strip()
+                inc_type = parts[1].strip()
+                type_map[inc_no] = inc_type
+
+        return type_map
+
+    def filter_records_by_type(self, records: List[FIRecord],
+                               type_filter: str = 'SERVICE_REQUEST',
+                               timeout: int = 60) -> List[FIRecord]:
+        """
+        Filter FI records to only include those with matching incident type.
+        Fetches incident types in batch and updates records.
+
+        Args:
+            records: List of FIRecord objects
+            type_filter: Only include incidents of this type (default: SERVICE_REQUEST)
+            timeout: Command timeout in seconds
+
+        Returns:
+            Filtered list of FIRecord objects with incident_type populated
+        """
+        if not records:
+            return []
+
+        # Get unique incident numbers
+        incident_nos = list(set(r.incident_no for r in records))
+        print(f"  Fetching incident types for {len(incident_nos)} incidents...")
+
+        # Batch fetch types
+        type_map = self.fetch_incident_types(incident_nos, timeout)
+
+        # Filter and update records
+        filtered = []
+        skipped = []
+        for record in records:
+            inc_type = type_map.get(record.incident_no)
+            record.incident_type = inc_type
+
+            if inc_type == type_filter:
+                filtered.append(record)
+            else:
+                skipped.append((record.incident_no, inc_type, record.etrack_user_id))
+
+        # Report skipped incidents
+        if skipped:
+            print(f"  Note: Filtered out {len(skipped)} non-{type_filter} incident(s):")
+            # Group by type for summary
+            type_counts = {}
+            for inc_no, inc_type, assignee in skipped:
+                type_counts[inc_type] = type_counts.get(inc_type, 0) + 1
+            for inc_type, count in sorted(type_counts.items()):
+                print(f"    - {inc_type}: {count} incident(s)")
+
+        print(f"  Remaining after filter: {len(filtered)} incident(s)")
+        return filtered
 
     def get_statistics(self, records: List[FIRecord]) -> Dict[str, Any]:
         """

@@ -404,6 +404,19 @@ validate-fi Query --mock
 
 # Combine options
 validate-fi Query --auto-add --mock
+
+# Filter query to SERVICE_REQUEST incidents only
+validate-fi Query --perform-sr-type-check
+
+# Single or multiple FIs (defaults to SERVICE_REQUEST only)
+validate-fi --fi=FI-59131
+validate-fi --fi=FI-59131,FI-59132,FI-59133
+
+# Single or multiple incidents (comma-separated)
+validate-fi --incident=1234567,1234568
+
+# FI(s) with all incident types
+validate-fi --fi=FI-59131 --all-types
 ```
 
 ---

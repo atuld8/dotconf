@@ -135,6 +135,9 @@ python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fi
 
 # Skip specific FIs during fix
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix --skip-fi=FI-12345,FI-67890
+
+# Filter query to SERVICE_REQUEST only
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --perform-sr-type-check
 ```
 **Note:** `--fix` only updates FIs for accounts with `manual_verified=yes`
 
@@ -159,6 +162,23 @@ python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --sh
 ### Check Single FI
 ```bash
 python3 -m account_manager.cli check-assignee FI-59131
+```
+
+### Validate Single or Multiple FIs / Incident
+```bash
+# Single or multiple FIs (defaults to SERVICE_REQUEST only)
+python3 -m account_manager.cli validate-fi --fi=FI-59131
+python3 -m account_manager.cli validate-fi --fi=FI-59131,FI-59132,FI-59133
+
+# FI(s) with all incident types
+python3 -m account_manager.cli validate-fi --fi=FI-59131 --all-types
+
+# Single or multiple incidents (defaults to SERVICE_REQUEST only)
+python3 -m account_manager.cli validate-fi --incident=1234567
+python3 -m account_manager.cli validate-fi --incident=1234567,1234568,1234569
+
+# Incident(s) with all incident types  
+python3 -m account_manager.cli validate-fi --incident=1234567 --all-types
 ```
 
 ### Assign Etrack and FI
@@ -402,8 +422,10 @@ python3 -m account_manager.cli assign-etrack-fi 1234567 user_one
 | --skip-fi=IDS | With --fix: skip comma-separated FI IDs |
 | --show-conflicts | Show FIs linked to multiple incidents with different assignees |
 | --table | With --show-conflicts: display in table format |
-| --incident=NO | Validate single incident by number |
-| --fi=ID | Validate single FI by ID (e.g., FI-59131 or 59131) |
+| --incident=NO | Validate incident(s) by number (comma-separated) |
+| --fi=ID | Validate FI(s) by ID (comma-separated, e.g., FI-59131,FI-59132) |
+| --all-types | With --fi/--incident: include all incident types (default: SERVICE_REQUEST only) |
+| --perform-sr-type-check | With query: filter to SERVICE_REQUEST only (default: trust query) |
 | --report | Generate formatted reassignment report (no fixes) |
 | --report-from=USER | Generate report for FIs currently assigned to USER |
 

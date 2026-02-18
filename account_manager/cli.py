@@ -134,8 +134,8 @@ Usage:
 
 Arguments:
     query_name    Name of esql query to execute (e.g., RptTerm_Open_SRs_With_Ext_Ref_FI)
-    --incident=   Single incident number to validate (instead of query)
-    --fi=         Single FI ID to validate (e.g., FI-59131 or 59131)
+    --incident=   Incident number(s) to validate (comma-separated)
+    --fi=         FI ID(s) to validate (e.g., FI-59131, 59131, or FI-59131,FI-59132)
 
 Validation Logic:
     The esql query returns: incident_no | etrack_assignee | who_added_fi | FI_ids
@@ -165,19 +165,24 @@ Options:
     --report-from=<user> Generate report for FIs currently assigned to <user>
     --show-conflicts    Show FIs linked to multiple incidents with different assignees
     --table             With --show-conflicts: display in table format
-    --incident=<no>     Validate single incident by number (instead of query)
-    --fi=<id>           Validate single FI by ID (e.g., FI-59131 or 59131)
+    --incident=<no>     Validate incident(s) by number (comma-separated)
+    --fi=<id>           Validate FI(s) by ID (comma-separated, e.g., FI-59131,FI-59132)
+    --all-types         With --fi/--incident: include all incident types
+                        (default: SERVICE_REQUEST only)
+    --perform-sr-type-check  With query: filter to SERVICE_REQUEST only
+                        (default: trust query results)
 
 Examples:
     # Basic validation (warns about missing users and mismatches)
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI
 
-    # Validate single incident
+    # Validate single or multiple incidents
     python3 -m account_manager.cli validate-fi --incident=1234568
+    python3 -m account_manager.cli validate-fi --incident=1234568,1234569
 
-    # Validate single FI
+    # Validate single or multiple FIs
     python3 -m account_manager.cli validate-fi --fi=FI-59131
-    python3 -m account_manager.cli validate-fi --fi=59131
+    python3 -m account_manager.cli validate-fi --fi=FI-59131,FI-59132,FI-59133
 
     # Auto-add missing users (minimal data)
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --auto-add
@@ -203,14 +208,25 @@ Examples:
     # Show conflicts in table format
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --show-conflicts --table
 
-    # Fix single incident
+    # Fix incident(s)
     python3 -m account_manager.cli validate-fi --incident=1234568 --fix
 
-    # Fix single incident (dry-run)
+    # Fix incident(s) (dry-run)
     python3 -m account_manager.cli validate-fi --incident=1234568 --fix --dry-run
 
-    # Fix single FI
+    # Fix FI(s)
     python3 -m account_manager.cli validate-fi --fi=FI-59131 --fix
+
+    # Include all incident types (--fi/--incident default to SERVICE_REQUEST only)
+    python3 -m account_manager.cli validate-fi --fi=FI-59131 --all-types
+    python3 -m account_manager.cli validate-fi --incident=1234568 --all-types
+
+    # Filter query results to SERVICE_REQUEST only
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --perform-sr-type-check
+
+Type Filtering:
+    - For --fi/--incident: Defaults to SERVICE_REQUEST only. Use --all-types for all.
+    - For query-based: Trusts query results. Use --perform-sr-type-check to filter.
 
 Workflow:
     1. Run validation to see mismatches and unknown users
@@ -779,15 +795,16 @@ DATA IMPORT/EXPORT
 
 FI VALIDATION (esql + Jira)
     validate-fi <query> [options]    Validate FI assignees (see help validate-fi)
-    validate-fi --incident=<no>      Validate single incident
-    validate-fi --fi=<id>            Validate single FI
+    validate-fi --incident=<no>      Validate incident(s) (comma-separated)
+    validate-fi --fi=<id>            Validate FI(s) (comma-separated)
     check-assignee <fi_id>           Check single FI assignee
     assign-etrack-fi <et> <user>     Assign etrack and linked FI to user
                                      (requires verified account)
 
     validate-fi options: --auto-add, --interactive, --mock, --fail-on-unknown,
                          --fix, --dry-run, --fix-interactive, --fix-from=USER,
-                         --skip-fi=IDS, --incident=NUMBER, --fi=ID
+                         --skip-fi=IDS, --incident=NUMBER, --fi=ID,
+                         --all-types, --perform-sr-type-check
     assign-etrack-fi options: --dry-run, --mock, --verbose
 
 VERITAS EMAIL UPDATE (euserls)
@@ -1184,8 +1201,8 @@ def main():
                 print("       cli.py validate-fi --incident=<number> [options]")
                 print("       cli.py validate-fi --fi=<fi_id> [options]")
                 print("  Example: cli.py validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI")
-                print("           cli.py validate-fi --incident=1234568")
-                print("           cli.py validate-fi --fi=FI-59131")
+                print("           cli.py validate-fi --incident=1234568,1234569")
+                print("           cli.py validate-fi --fi=FI-59131,FI-59132")
                 print("")
                 print("Options:")
                 print("  --mock              Use mock Jira client (no API calls)")
@@ -1201,8 +1218,10 @@ def main():
                 print("  --report-from=<user> Generate report for FIs from specific assignee")
                 print("  --show-conflicts    Show FIs linked to multiple incidents with different assignees")
                 print("  --table             With --show-conflicts: display in table format")
-                print("  --incident=<no>     Validate single incident by number (instead of query)")
-                print("  --fi=<id>           Validate single FI by ID (e.g., FI-59131 or 59131)")
+                print("  --incident=<no>     Validate incident(s) by number (comma-separated)")
+                print("  --fi=<id>           Validate FI(s) by ID (comma-separated)")
+                print("  --all-types         With --fi/--incident: include all incident types")
+                print("  --perform-sr-type-check  With query: filter to SERVICE_REQUEST only")
                 return
 
             query_name = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else None
@@ -1211,7 +1230,8 @@ def main():
             valid_options = {
                 '--mock', '--fix', '--dry-run', '--fix-interactive',
                 '--report', '--show-conflicts', '--table',
-                '--auto-add', '--interactive', '--fail-on-unknown'
+                '--auto-add', '--interactive', '--fail-on-unknown',
+                '--all-types', '--perform-sr-type-check'
             }
             valid_option_prefixes = {
                 '--fix-from=', '--report-from=', '--skip-fi=', '--incident=', '--fi='
@@ -1242,6 +1262,8 @@ def main():
             generate_report = '--report' in sys.argv
             show_conflicts = '--show-conflicts' in sys.argv
             conflict_table = '--table' in sys.argv
+            include_all_types = '--all-types' in sys.argv  # For --fi/--incident
+            perform_sr_type_check = '--perform-sr-type-check' in sys.argv  # For query-based
 
             # Parse --fix-from=<user>
             fix_from_user = None
@@ -1266,18 +1288,22 @@ def main():
                     skip_fi_ids = set(arg.split('=', 1)[1].split(','))
                     break
 
-            # Parse --incident=<number>
-            single_incident = None
+            # Parse --incident=<number> or --incident=<no1,no2,...>
+            incident_nos = None
             for arg in sys.argv:
                 if arg.startswith('--incident='):
-                    single_incident = arg.split('=', 1)[1]
+                    inc_value = arg.split('=', 1)[1]
+                    # Support comma-separated incident numbers
+                    incident_nos = [inc.strip() for inc in inc_value.split(',') if inc.strip()]
                     break
 
-            # Parse --fi=<id>
-            single_fi = None
+            # Parse --fi=<id> or --fi=<id1,id2,...>
+            fi_ids = None
             for arg in sys.argv:
                 if arg.startswith('--fi='):
-                    single_fi = arg.split('=', 1)[1]
+                    fi_value = arg.split('=', 1)[1]
+                    # Support comma-separated FI IDs
+                    fi_ids = [fi.strip() for fi in fi_value.split(',') if fi.strip()]
                     break
 
             # Determine auto-populate strategy
@@ -1291,23 +1317,48 @@ def main():
                 auto_strategy = AutoPopulateStrategy.SKIP
 
             # Validate that we have either query_name, --incident, or --fi
-            if not query_name and not single_incident and not single_fi:
+            if not query_name and not incident_nos and not fi_ids:
                 print("X Error: Must specify a query name, --incident=<number>, or --fi=<id>")
                 print("\nUsage:")
                 print("  python3 -m account_manager.cli validate-fi <query-name> [options]")
-                print("  python3 -m account_manager.cli validate-fi --incident=<number> [options]")
+                print("  python3 -m account_manager.cli validate-fi --incident=<no1,no2,...> [options]")
                 print("  python3 -m account_manager.cli validate-fi --fi=<fi-id> [options]")
+                print("  python3 -m account_manager.cli validate-fi --fi=<fi1,fi2,...> [options]")
                 return
 
-            if single_fi:
-                # Normalize FI ID display
-                fi_display = single_fi if single_fi.startswith('FI-') else f'FI-{single_fi}'
-                print(f"Fetching by FI: {fi_display}")
-            elif single_incident:
-                print(f"Fetching incident: {single_incident}")
+            if fi_ids:
+                # Normalize FI IDs for display
+                fi_display_list = []
+                for fi in fi_ids:
+                    fi_display_list.append(fi if fi.startswith('FI-') else f'FI-{fi}')
+                if len(fi_display_list) == 1:
+                    print(f"Fetching by FI: {fi_display_list[0]}")
+                else:
+                    print(f"Fetching by FI: {len(fi_display_list)} FIs")
+                    for fi_d in fi_display_list:
+                        print(f"  - {fi_d}")
+            elif incident_nos:
+                if len(incident_nos) == 1:
+                    print(f"Fetching incident: {incident_nos[0]}")
+                else:
+                    print(f"Fetching incidents: {len(incident_nos)} incidents")
+                    for inc in incident_nos:
+                        print(f"  - {inc}")
             else:
                 print(f"Running esql query: {query_name}")
             print(f"Auto-populate strategy: {auto_strategy}")
+            # Type filter info depends on mode
+            if fi_ids or incident_nos:
+                if not include_all_types:
+                    print("Type filter: SERVICE_REQUEST only (use --all-types for all)")
+                else:
+                    print("Type filter: ALL incident types")
+            else:
+                # Query-based mode
+                if perform_sr_type_check:
+                    print("Type filter: SERVICE_REQUEST only (--perform-sr-type-check)")
+                else:
+                    print("Type filter: trusting query results (use --perform-sr-type-check to filter)")
             if fix_mismatches:
                 mode_parts = ["ENABLED"]
                 if fix_dry_run:
@@ -1321,21 +1372,38 @@ def main():
                 print(f"Fix mode: {' | '.join(mode_parts)}")
             print("=" * 60)
 
-            # Execute esql query or fetch single incident/FI
+            # Execute esql query or fetch incident(s)/FI(s)
             executor = EsqlExecutor()
-            if single_fi:
-                records = executor.fetch_by_fi_id(single_fi)
-            elif single_incident:
-                records = executor.fetch_incident_by_id(single_incident)
+            if fi_ids:
+                # Fetch records for each FI ID
+                records = []
+                for fi_id in fi_ids:
+                    fi_records = executor.fetch_by_fi_id(fi_id, include_all_types=include_all_types)
+                    records.extend(fi_records)
+            elif incident_nos:
+                # Fetch records for each incident number
+                records = []
+                for inc_no in incident_nos:
+                    inc_records = executor.fetch_incident_by_id(inc_no, include_all_types=include_all_types)
+                    records.extend(inc_records)
             else:
                 records = executor.execute_and_parse(query_name)
+                # For query-based: apply type filter if --perform-sr-type-check is set
+                if perform_sr_type_check and records:
+                    records = executor.filter_records_by_type(records, type_filter='SERVICE_REQUEST')
 
             if not records:
-                if single_fi:
-                    fi_display = single_fi if single_fi.startswith('FI-') else f'FI-{single_fi}'
-                    print(f"X No records found for {fi_display}")
-                elif single_incident:
-                    print(f"X No FI records found for incident {single_incident}")
+                if fi_ids:
+                    if len(fi_ids) == 1:
+                        fi_display = fi_ids[0] if fi_ids[0].startswith('FI-') else f'FI-{fi_ids[0]}'
+                        print(f"X No records found for {fi_display}")
+                    else:
+                        print(f"X No records found for {len(fi_ids)} FIs")
+                elif incident_nos:
+                    if len(incident_nos) == 1:
+                        print(f"X No FI records found for incident {incident_nos[0]}")
+                    else:
+                        print(f"X No FI records found for {len(incident_nos)} incidents")
                 else:
                     print("X No records found from esql query")
                 return
