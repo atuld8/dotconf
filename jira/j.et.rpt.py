@@ -34,6 +34,7 @@ import os
 import sys
 import re
 import json
+import csv
 import argparse
 import time
 import shutil
@@ -686,6 +687,92 @@ class EtrackClient:
             print(f"\rFetched etrack data for {len(all_data)} incidents.    ", file=sys.stderr)
 
         return all_data
+
+    def fetch_fis_from_incidents(self, incident_ids: List[str], verbose: bool = False) -> Tuple[List[str], Dict[str, List[str]]]:
+        """
+        Fetch FI IDs linked to given incident numbers.
+
+        One incident may have multiple FIs linked to it.
+
+        Args:
+            incident_ids: List of etrack incident numbers
+            verbose: Print progress info
+
+        Returns:
+            Tuple of:
+                - List of unique FI IDs (e.g., ['FI-62380', 'FI-62381'])
+                - Dict mapping incident_id -> list of FI IDs for that incident
+        """
+        if not incident_ids:
+            return [], {}
+
+        unique_ids = list(set(eid.strip() for eid in incident_ids if eid.strip() and eid.strip().isdigit()))
+        if not unique_ids:
+            return [], {}
+
+        all_fis = []
+        incident_to_fis = {}  # incident_id -> [fi_ids]
+
+        # Batch IDs to avoid overly long IN clauses
+        max_ids_per_query = 500
+        batches = [unique_ids[i:i + max_ids_per_query] for i in range(0, len(unique_ids), max_ids_per_query)]
+
+        for batch_num, batch in enumerate(batches, start=1):
+            if verbose or sys.stderr.isatty():
+                print(f"\rFetching FIs for incident batch {batch_num}/{len(batches)} ({len(batch)} incidents)...", end='', file=sys.stderr)
+
+            # Query external_reference table for FI links
+            id_list = ', '.join(batch)
+            query = f"SELECT incident, ext_inc FROM external_reference WHERE incident IN ({id_list}) AND ext_src = 'TOOLS_AGILE'"
+
+            start = time.time()
+
+            try:
+                output = self._execute_esql(query)
+                self.api_calls += 1
+                self.total_time += time.time() - start
+
+                # Parse output: incident_id | FI-xxxxx
+                for line in output.strip().split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Skip header/separator lines
+                    if line.startswith('---') or line.startswith('==='):
+                        continue
+                    if 'incident' in line.lower() and 'ext_inc' in line.lower():
+                        continue
+
+                    parts = line.split('\t')
+                    parts = [p.strip() for p in parts]
+
+                    if len(parts) >= 2 and parts[0].isdigit():
+                        inc_id = parts[0]
+                        fi_id = parts[1]
+                        # Validate FI format
+                        if fi_id.startswith('FI-'):
+                            all_fis.append(fi_id)
+                            if inc_id not in incident_to_fis:
+                                incident_to_fis[inc_id] = []
+                            incident_to_fis[inc_id].append(fi_id)
+
+            except subprocess.TimeoutExpired:
+                print(f"\nWarning: esql timed out for batch {batch_num}", file=sys.stderr)
+            except Exception as e:
+                print(f"\nWarning: esql error: {e}", file=sys.stderr)
+
+        # Deduplicate FI list while preserving order
+        seen = set()
+        unique_fis = []
+        for fi in all_fis:
+            if fi not in seen:
+                seen.add(fi)
+                unique_fis.append(fi)
+
+        if sys.stderr.isatty():
+            print(f"\rFound {len(unique_fis)} FIs linked to {len(incident_to_fis)} incidents.    ", file=sys.stderr)
+
+        return unique_fis, incident_to_fis
 
     def get_stats(self) -> Dict[str, Any]:
         """Get etrack fetch statistics"""
@@ -2360,9 +2447,43 @@ Examples:
     --etrack-fields priority,severity,assigned_to,state \\
     --csv etrack_report.csv
 
+  # ----- From Incident IDs -----
+  # One incident can have multiple FIs linked
+
+  # Report from incident IDs (fetches linked FIs, then Jira + Etrack data)
+  %(prog)s --from-incident=4193241,4220204 \\
+    --fields key,assignee,priority,status,casestatus,etrack \\
+    --show-etrack-data etrack \\
+    --etrack-fields priority,severity,assigned_to,component,state
+
+  # From incident file
+  %(prog)s --incident-file incidents.txt \\
+    --fields key,assignee,priority,status,casestatus,etrack \\
+    --show-etrack-data etrack
+
+  # From stdin (pipe incident list from another command)
+  some_command | %(prog)s --from-incident=- \\
+    --fields key,assignee,priority,status,casestatus,etrack \\
+    --show-etrack-data etrack
+
+  # Combine with analyzer (incidents -> FIs -> Jira+Etrack -> analyze)
+  %(prog)s --from-incident=4193241,4220204 \\
+    --fields key,assignee,priority,status,casestatus,etrack \\
+    --show-etrack-data etrack --etrack-fields state \\
+    --analyzer
+
+  # Pipe incidents and analyze
+  esql_query_output | %(prog)s --from-incident=- \\
+    --fields key,assignee,priority,status,casestatus,etrack \\
+    --show-etrack-data etrack --etrack-fields state \\
+    --analyzer --analyzer-format executive
+
   # ----- Analyzer -----
 
-  # Analyze live data (fetch + analyze)
+  # Analyze live data (fetch + analyze) - works with all input sources:
+  #   -where (JQL), -f (file), --from-incident (incidents -> FIs)
+
+  # JQL-based analyze
   %(prog)s -where "project = FI" \\
     --fields key,assignee,priority,status,casestatus,etrack \\
     --show-etrack-data etrack --etrack-fields priority,severity,assigned_to,component,state \\
@@ -2386,6 +2507,14 @@ Examples:
   # All reports (technical + leadership)
   %(prog)s --analyzer-input saved_report.txt --analyzer-format all
 
+Input Sources:
+  -f FILE             File containing Jira issue IDs (FI-xxxxx)
+  -where JQL          JQL query to fetch issues
+  --from-incident     Etrack incident IDs -> resolves to linked FIs
+  --from-incident=-   Read incident IDs from stdin (pipe from another command)
+  --incident-file     File containing etrack incident IDs
+  stdin (no flag)     Jira issue IDs piped directly
+
 Field Aliases (use instead of field IDs):
   key, summary, status, assignee, priority, reporter, labels
   casestatus (customfield_16200), etrack (customfield_33802)
@@ -2405,6 +2534,14 @@ Etrack Fields:
                              help='JQL where clause (e.g., "project = FI AND status = Open")')
     input_group.add_argument('--jql', metavar='JQL',
                              help='Full JQL query (alias for -where)')
+    input_group.add_argument('--from-incident', '-I', metavar='IDS',
+                             help='Comma-separated etrack incident IDs to fetch FIs from '
+                                  '(e.g., --from-incident=4193241,4220204). '
+                                  'Use --from-incident=- to read from stdin')
+    input_group.add_argument('--incident-file', metavar='FILE',
+                             help='File containing etrack incident IDs (one per line)')
+    input_group.add_argument('--save-no-fi', metavar='PATH',
+                             help='Save incidents without FIs to PATH.csv and PATH.table files')
     input_group.add_argument('ids', nargs='*', metavar='ID',
                              help='Issue IDs directly on command line')
 
@@ -2501,7 +2638,7 @@ def main():
     # If --analyzer is given with NO fetch sources AND stdin has piped table data, parse stdin
 
     # Check for explicit fetch-related args (these indicate we should fetch, not parse)
-    has_fetch_args = args.file or args.where or args.jql or args.ids
+    has_fetch_args = args.file or args.where or args.jql or args.ids or getattr(args, 'from_incident', None) or args.incident_file
     has_fetch_options = args.fields or args.show_etrack_data or args.etrack_only
 
     # Handle analyzer-input mode (parse saved output, skip Jira/Etrack fetch)
@@ -2543,34 +2680,198 @@ def main():
         exclude_set = {f.strip().lower() for f in args.exclude.split(',')}
         fields = [f for f in fields if f.lower() not in exclude_set]
 
-    # Determine input source
+    # Initialize issue_ids
     issue_ids = []
+
+    # Handle --from-incident mode: convert incidents to FI IDs first
+    from_incident_ids = []
+    incident_to_fis_map = {}  # For verbose output
+
+    if getattr(args, 'from_incident', None) or args.incident_file:
+        # Parse incident IDs from --from-incident or --incident-file
+        if getattr(args, 'from_incident', None):
+            if args.from_incident == '-':
+                # Read incident IDs from stdin
+                if sys.stdin.isatty():
+                    print("Error: --from-incident=- requires piped input", file=sys.stderr)
+                    print("\nUsage: some_command | j.et.rpt.py --from-incident=- --fields key,status", file=sys.stderr)
+                    sys.exit(1)
+                stdin_content = sys.stdin.read()
+                # Parse numeric IDs from stdin (space, comma, newline separated)
+                for token in re.split(r'[\s,]+', stdin_content):
+                    token = token.strip()
+                    if token.isdigit():
+                        from_incident_ids.append(token)
+            else:
+                from_incident_ids = [eid.strip() for eid in args.from_incident.split(',') if eid.strip()]
+
+        if args.incident_file:
+            file_ids = read_ids_from_file(args.incident_file)
+            # Filter to numeric IDs only
+            file_ids = [eid for eid in file_ids if eid.isdigit()]
+            from_incident_ids.extend(file_ids)
+
+        if not from_incident_ids:
+            print("Error: --from-incident or --incident-file requires incident IDs", file=sys.stderr)
+            print("\nUsage:", file=sys.stderr)
+            print("  --from-incident=4193241,4220204", file=sys.stderr)
+            print("  --from-incident=-                  # Read from stdin", file=sys.stderr)
+            print("  --incident-file incidents.txt", file=sys.stderr)
+            sys.exit(1)
+
+        # Fetch FI IDs from incident numbers
+        if args.verbose or sys.stderr.isatty():
+            print(f"Resolving FIs for {len(from_incident_ids)} incident(s)...", file=sys.stderr)
+
+        etrack_client_for_fis = EtrackClient()
+        fi_ids_from_incidents, incident_to_fis_map = etrack_client_for_fis.fetch_fis_from_incidents(
+            from_incident_ids, verbose=args.verbose
+        )
+
+        # Identify incidents without FIs
+        incidents_with_fis = set(incident_to_fis_map.keys())
+        incidents_without_fis = [inc for inc in from_incident_ids if inc not in incidents_with_fis]
+
+        # Always show conversion summary
+        print(f"\n--- Incident to FI Conversion Summary ---", file=sys.stderr)
+        print(f"Total incidents provided: {len(from_incident_ids)}", file=sys.stderr)
+        print(f"Incidents with FIs:       {len(incidents_with_fis)}", file=sys.stderr)
+        print(f"Incidents without FIs:    {len(incidents_without_fis)}", file=sys.stderr)
+        print(f"Total unique FIs:         {len(fi_ids_from_incidents)}", file=sys.stderr)
+
+        if incidents_without_fis:
+            print(f"\n--- Incidents Without FIs ({len(incidents_without_fis)}) ---", file=sys.stderr)
+
+            # Fetch etrack details for incidents without FIs
+            no_fi_fields = ['incident', 'priority', 'severity', 'state', 'assigned_to', 'customer', 'component', 'reporter', 'abstract']
+            print(f"Fetching etrack details for {len(incidents_without_fis)} incidents...", file=sys.stderr)
+            no_fi_etrack_data = etrack_client_for_fis.fetch_etrack_data(incidents_without_fis, etrack_fields=no_fi_fields, verbose=args.verbose)
+            print(f"Received etrack data for {len(no_fi_etrack_data)} incidents", file=sys.stderr)
+
+            if no_fi_etrack_data:
+                # Build table data with etrack details
+                table_data = []
+                for inc_id in incidents_without_fis:
+                    row = no_fi_etrack_data.get(inc_id, {})
+                    # Truncate abstract to 80 chars
+                    abstract = row.get('abstract', '')
+                    if len(abstract) > 80:
+                        abstract = abstract[:77] + '...'
+                    table_data.append({
+                        'incident': inc_id,
+                        'priority': row.get('priority', ''),
+                        'severity': row.get('severity', ''),
+                        'state': row.get('state', ''),
+                        'assigned_to': row.get('assigned_to', ''),
+                        'customer': row.get('customer', ''),
+                        'component': row.get('component', ''),
+                        'reporter': row.get('reporter', ''),
+                        'abstract': abstract
+                    })
+            else:
+                # Build table data with just IDs (etrack fetch failed)
+                print("(etrack data fetch failed, showing IDs only)", file=sys.stderr)
+                table_data = [{'incident': inc_id, 'priority': '', 'severity': '', 'state': '',
+                               'assigned_to': '', 'customer': '', 'component': '', 'reporter': '',
+                               'abstract': ''} for inc_id in incidents_without_fis]
+
+            # Print table to stderr (skip if saving to files)
+            if table_data and not args.save_no_fi:
+                if PrettyTable is not None:
+                    pt = PrettyTable()
+                    pt.field_names = no_fi_fields
+                    pt.align = 'l'
+                    for row in table_data:
+                        pt.add_row([row.get(f, '') for f in no_fi_fields])
+                    print(pt.get_string(), file=sys.stderr)
+                else:
+                    # Fallback to simple format
+                    print('\t'.join(no_fi_fields), file=sys.stderr)
+                    for row in table_data:
+                        print('\t'.join(str(row.get(f, '')) for f in no_fi_fields), file=sys.stderr)
+
+            # Save to files if requested (CSV and ASCII table)
+            if table_data and args.save_no_fi:
+                base_path = args.save_no_fi
+                # Remove any existing extension to add our own
+                if base_path.endswith('.csv') or base_path.endswith('.table'):
+                    base_path = base_path.rsplit('.', 1)[0]
+
+                # Save CSV format
+                csv_path = f"{base_path}.csv"
+                with open(csv_path, 'w', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=no_fi_fields)
+                    writer.writeheader()
+                    writer.writerows(table_data)
+                print(f"Saved {len(table_data)} incidents to: {csv_path}", file=sys.stderr)
+
+                # Save ASCII table format
+                table_path = f"{base_path}.table"
+                if PrettyTable is not None:
+                    pt = PrettyTable()
+                    pt.field_names = no_fi_fields
+                    pt.align = 'l'
+                    for row in table_data:
+                        pt.add_row([row.get(f, '') for f in no_fi_fields])
+                    with open(table_path, 'w') as f:
+                        f.write(pt.get_string())
+                        f.write('\n')
+                else:
+                    with open(table_path, 'w') as f:
+                        f.write('\t'.join(no_fi_fields) + '\n')
+                        for row in table_data:
+                            f.write('\t'.join(str(row.get(field, '')) for field in no_fi_fields) + '\n')
+                print(f"Saved {len(table_data)} incidents to: {table_path}", file=sys.stderr)
+        print(file=sys.stderr)
+
+        if not fi_ids_from_incidents:
+            print(f"Error: No FIs found linked to incident(s): {', '.join(from_incident_ids[:10])}", file=sys.stderr)
+            if len(from_incident_ids) > 10:
+                print(f"       ... and {len(from_incident_ids) - 10} more", file=sys.stderr)
+            sys.exit(1)
+
+        if args.verbose:
+            print(f"\nIncident to FI mapping:", file=sys.stderr)
+            for inc_id, fis in incident_to_fis_map.items():
+                print(f"  {inc_id} -> {', '.join(fis)}", file=sys.stderr)
+            print(file=sys.stderr)
+
+        # These FI IDs will be used as the issue_ids for Jira fetch
+        issue_ids = fi_ids_from_incidents
+
+    # Determine input source
     jql_query = args.where or args.jql
 
-    # Parse input sources first (for dry-run)
-    if jql_query:
-        pass  # Will be handled later
-    elif args.file:
-        issue_ids = read_ids_from_file(args.file)
-        if not issue_ids:
-            print(f"No valid issue IDs found in {args.file}", file=sys.stderr)
-            sys.exit(1)
-    elif not sys.stdin.isatty():
-        issue_ids = read_ids_from_stdin()
-        if not issue_ids:
-            print("No valid issue IDs found in stdin", file=sys.stderr)
-            sys.exit(1)
-    elif args.ids:
-        issue_ids = parse_issue_ids(' '.join(args.ids))
-        if not issue_ids:
-            print("No valid issue IDs provided", file=sys.stderr)
-            sys.exit(1)
-    elif not args.list_fields:
-        parser.print_help()
-        return
+    # Parse input sources first (for dry-run) - only if not already set by --from-incident
+    if not issue_ids:  # Skip if already populated from --from-incident
+        if jql_query:
+            pass  # Will be handled later
+        elif args.file:
+            issue_ids = read_ids_from_file(args.file)
+            if not issue_ids:
+                print(f"No valid issue IDs found in {args.file}", file=sys.stderr)
+                sys.exit(1)
+        elif not sys.stdin.isatty():
+            issue_ids = read_ids_from_stdin()
+            if not issue_ids:
+                print("No valid issue IDs found in stdin", file=sys.stderr)
+                sys.exit(1)
+        elif args.ids:
+            issue_ids = parse_issue_ids(' '.join(args.ids))
+            if not issue_ids:
+                print("No valid issue IDs provided", file=sys.stderr)
+                sys.exit(1)
+        elif not args.list_fields:
+            parser.print_help()
+            return
 
     # Handle dry-run (no API calls needed)
     if args.dry_run:
+        if from_incident_ids:
+            print(f"From incidents: {', '.join(from_incident_ids[:10])}")
+            if len(from_incident_ids) > 10:
+                print(f"  ... and {len(from_incident_ids) - 10} more")
+            print(f"Resolved to {len(issue_ids)} FIs")
         if jql_query:
             print(f"Would execute JQL: {jql_query}")
         else:
