@@ -1,0 +1,38 @@
+#/bin/env bash
+
+tz_convert() {
+    local input_tz="$1"
+    local output_tz="$2"
+    local input_date="$3"
+
+    normalize_tz() {
+        case "$1" in
+            IST) echo "Asia/Kolkata" ;;
+            GMT|UTC) echo "UTC" ;;
+            CT|CST) echo "America/Chicago" ;;
+            EST|ET) echo "America/New_York" ;;
+            *) echo "$1" ;;
+        esac
+    }
+
+    input_tz="$(normalize_tz "$input_tz")"
+    output_tz="$(normalize_tz "$output_tz")"
+
+    # If no date provided, use current system date/time
+    if [[ -z "$input_date" ]]; then
+        if [[ "$OSTYPE" == darwin* ]]; then
+            input_date=$(TZ="$input_tz" date +"%Y/%m/%d %H:%M:%S")
+        else
+            input_date=$(TZ="$input_tz" date +"%Y/%m/%d %H:%M:%S")
+        fi
+    fi
+
+    if [[ "$OSTYPE" == darwin* ]]; then
+        epoch=$(TZ="$input_tz" date -jf "%Y/%m/%d %H:%M:%S" "$input_date" +%s)
+        TZ="$output_tz" date -jr "$epoch" +"%Y/%m/%d %H:%M:%S %Z"
+   else
+        TZ="$output_tz" date --date="$input_date $input_tz" \
+        +"%Y/%m/%d %H:%M:%S %Z"
+   fi
+}
+

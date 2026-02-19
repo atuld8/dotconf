@@ -579,6 +579,10 @@ if [ "$OSName" != "Darwin" ]; then
     if [ -f /usr/bin/banner ]; then banner "wel-come" && banner "$USER"; fi
 fi
 
+if  [ -f ~/.vim/bashrc.func ]; then
+    source ~/.vim/bashrc.func
+fi
+
 if [ -f ~/.vim/alias.global ]; then
    source ~/.vim/alias.global
 fi
