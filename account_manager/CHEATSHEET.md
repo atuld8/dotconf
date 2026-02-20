@@ -170,12 +170,20 @@ python3 -m account_manager.cli check-assignee FI-59131
 python3 -m account_manager.cli validate-fi --fi=FI-59131
 python3 -m account_manager.cli validate-fi --fi=FI-59131,FI-59132,FI-59133
 
+# FIs from stdin (one per line or comma-separated)
+cat fi_list.txt | python3 -m account_manager.cli validate-fi --fi=-
+echo "FI-59131,FI-59132" | python3 -m account_manager.cli validate-fi --fi=-
+
 # FI(s) with all incident types
 python3 -m account_manager.cli validate-fi --fi=FI-59131 --all-types
 
 # Single or multiple incidents (defaults to SERVICE_REQUEST only)
 python3 -m account_manager.cli validate-fi --incident=1234567
 python3 -m account_manager.cli validate-fi --incident=1234567,1234568,1234569
+
+# Incidents from stdin (one per line or comma-separated)
+cat incidents.txt | python3 -m account_manager.cli validate-fi --incident=-
+echo "1234567,1234568" | python3 -m account_manager.cli validate-fi --incident=-
 
 # Incident(s) with all incident types  
 python3 -m account_manager.cli validate-fi --incident=1234567 --all-types

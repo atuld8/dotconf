@@ -110,9 +110,11 @@ python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --sh
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --perform-sr-type-check  # Filter to SERVICE_REQUEST
 python3 -m account_manager.cli validate-fi --fi=FI-12345  # Single FI (SERVICE_REQUEST only)
 python3 -m account_manager.cli validate-fi --fi=FI-12345,FI-12346  # Multiple FIs (comma-separated)
+cat fi_list.txt | python3 -m account_manager.cli validate-fi --fi=-  # FIs from stdin
 python3 -m account_manager.cli validate-fi --fi=FI-12345 --all-types  # FI(s) with all types
 python3 -m account_manager.cli validate-fi --incident=1234567  # Single incident (SERVICE_REQUEST only)
 python3 -m account_manager.cli validate-fi --incident=1234567,1234568  # Multiple incidents (comma-separated)
+cat incidents.txt | python3 -m account_manager.cli validate-fi --incident=-  # Incidents from stdin
 python3 -m account_manager.cli validate-fi --incident=1234567 --all-types  # Incident(s) with all types
 python3 -m account_manager.cli check-assignee FI-12345
 

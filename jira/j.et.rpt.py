@@ -1180,8 +1180,8 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
     CASE_ENG_PENDING_STATUSES = {'engineering pending', 'work in progress'}
     CASE_CUSTOMER_STATUSES = {'customer pending', 'customer updated', 'close pending', '3rd party pending'}
 
-    ET_CLOSED_STATES = {'closed', 'fixed', 'verifying'}
-    ET_ACTIVE_STATES = {'open', 'working', 'reopen'}
+    ET_CLOSED_STATES = {'closed'}
+    ET_ACTIVE_STATES = {'open', 'working', 'reopen', 'verifying', 'fixed'}
     ET_WAITING_STATES = {'waiting', 'pending'}
 
     # Analysis categories
@@ -2998,9 +2998,19 @@ def main():
         _, etrack_display_name = client.resolve_field_name(args.show_etrack_data)
 
         # Extract etrack IDs from processed data
+        # Use case-insensitive lookup since display names may vary
         etrack_ids = []
         for row in processed_data:
+            # Try exact match first, then case-insensitive
             etrack_val = row.get(etrack_display_name, '')
+            if not etrack_val:
+                # Case-insensitive fallback
+                etrack_display_lower = etrack_display_name.lower()
+                for key, val in row.items():
+                    if key.lower() == etrack_display_lower:
+                        etrack_val = val
+                        break
+
             if etrack_val:
                 # Handle comma-separated IDs
                 for eid in str(etrack_val).split(','):
@@ -3008,17 +3018,42 @@ def main():
                     if eid and eid.isdigit():
                         etrack_ids.append(eid)
 
+        if args.verbose:
+            print(f"Etrack display name: '{etrack_display_name}'", file=sys.stderr)
+            if processed_data:
+                print(f"Available columns: {list(processed_data[0].keys())}", file=sys.stderr)
+            print(f"Extracted {len(etrack_ids)} etrack IDs", file=sys.stderr)
+
         if etrack_ids:
             # Parse requested etrack fields
             etrack_fields = [f.strip().lower() for f in args.etrack_fields.split(',')]
+
+            # Validate etrack fields
+            invalid_fields = [f for f in etrack_fields if f not in EtrackClient.INCIDENT_FIELDS]
+            if invalid_fields:
+                print(f"Warning: Invalid etrack field(s): {', '.join(invalid_fields)}", file=sys.stderr)
+                print(f"Valid etrack fields: {', '.join(EtrackClient.INCIDENT_FIELDS)}", file=sys.stderr)
+                # Filter to only valid fields
+                etrack_fields = [f for f in etrack_fields if f in EtrackClient.INCIDENT_FIELDS]
+                if not etrack_fields:
+                    print("No valid etrack fields specified. Use --etrack-fields with valid field names.", file=sys.stderr)
+                    etrack_ids = []  # Skip etrack fetch
 
             # Fetch etrack data
             etrack_client = EtrackClient(batch_size=args.etrack_batch_size)
             etrack_data = etrack_client.fetch_etrack_data(etrack_ids, etrack_fields=etrack_fields, verbose=args.verbose)
 
             # Merge etrack data into processed rows with prefixed columns
+            etrack_display_lower = etrack_display_name.lower()
             for row in processed_data:
+                # Case-insensitive lookup for etrack value
                 etrack_val = row.get(etrack_display_name, '')
+                if not etrack_val:
+                    for key, val in row.items():
+                        if key.lower() == etrack_display_lower:
+                            etrack_val = val
+                            break
+
                 # Get first etrack ID if multiple
                 first_eid = str(etrack_val).split(',')[0].strip() if etrack_val else ''
 

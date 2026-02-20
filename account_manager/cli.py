@@ -131,11 +131,13 @@ Usage:
     python3 -m account_manager.cli validate-fi <query_name> [options]
     python3 -m account_manager.cli validate-fi --incident=<incident_no> [options]
     python3 -m account_manager.cli validate-fi --fi=<fi_id> [options]
+    cat file | python3 -m account_manager.cli validate-fi --incident=- [options]
+    cat file | python3 -m account_manager.cli validate-fi --fi=- [options]
 
 Arguments:
     query_name    Name of esql query to execute (e.g., RptTerm_Open_SRs_With_Ext_Ref_FI)
-    --incident=   Incident number(s) to validate (comma-separated)
-    --fi=         FI ID(s) to validate (e.g., FI-59131, 59131, or FI-59131,FI-59132)
+    --incident=   Incident number(s) to validate (comma-separated, or - for stdin)
+    --fi=         FI ID(s) to validate (e.g., FI-59131, 59131, or - for stdin)
 
 Validation Logic:
     The esql query returns: incident_no | etrack_assignee | who_added_fi | FI_ids
@@ -165,8 +167,8 @@ Options:
     --report-from=<user> Generate report for FIs currently assigned to <user>
     --show-conflicts    Show FIs linked to multiple incidents with different assignees
     --table             With --show-conflicts: display in table format
-    --incident=<no>     Validate incident(s) by number (comma-separated)
-    --fi=<id>           Validate FI(s) by ID (comma-separated, e.g., FI-59131,FI-59132)
+    --incident=<no>     Validate incident(s) by number (comma-separated, or - for stdin)
+    --fi=<id>           Validate FI(s) by ID (comma-separated, or - for stdin)
     --all-types         With --fi/--incident: include all incident types
                         (default: SERVICE_REQUEST only)
     --perform-sr-type-check  With query: filter to SERVICE_REQUEST only
@@ -180,9 +182,16 @@ Examples:
     python3 -m account_manager.cli validate-fi --incident=1234568
     python3 -m account_manager.cli validate-fi --incident=1234568,1234569
 
+    # Validate incidents from stdin (one per line or comma-separated)
+    cat incidents.txt | python3 -m account_manager.cli validate-fi --incident=-
+    echo "1234568,1234569" | python3 -m account_manager.cli validate-fi --incident=-
+
     # Validate single or multiple FIs
     python3 -m account_manager.cli validate-fi --fi=FI-59131
     python3 -m account_manager.cli validate-fi --fi=FI-59131,FI-59132,FI-59133
+
+    # Validate FIs from stdin (one per line or comma-separated)
+    cat fi_list.txt | python3 -m account_manager.cli validate-fi --fi=-
 
     # Auto-add missing users (minimal data)
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --auto-add
@@ -795,8 +804,8 @@ DATA IMPORT/EXPORT
 
 FI VALIDATION (esql + Jira)
     validate-fi <query> [options]    Validate FI assignees (see help validate-fi)
-    validate-fi --incident=<no>      Validate incident(s) (comma-separated)
-    validate-fi --fi=<id>            Validate FI(s) (comma-separated)
+    validate-fi --incident=<no>      Validate incident(s) (comma-separated or - for stdin)
+    validate-fi --fi=<id>            Validate FI(s) (comma-separated or - for stdin)
     check-assignee <fi_id>           Check single FI assignee
     assign-etrack-fi <et> <user>     Assign etrack and linked FI to user
                                      (requires verified account)
@@ -1218,8 +1227,8 @@ def main():
                 print("  --report-from=<user> Generate report for FIs from specific assignee")
                 print("  --show-conflicts    Show FIs linked to multiple incidents with different assignees")
                 print("  --table             With --show-conflicts: display in table format")
-                print("  --incident=<no>     Validate incident(s) by number (comma-separated)")
-                print("  --fi=<id>           Validate FI(s) by ID (comma-separated)")
+                print("  --incident=<no>     Validate incident(s) by number (comma-separated or - for stdin)")
+                print("  --fi=<id>           Validate FI(s) by ID (comma-separated or - for stdin)")
                 print("  --all-types         With --fi/--incident: include all incident types")
                 print("  --perform-sr-type-check  With query: filter to SERVICE_REQUEST only")
                 return
@@ -1288,22 +1297,50 @@ def main():
                     skip_fi_ids = set(arg.split('=', 1)[1].split(','))
                     break
 
-            # Parse --incident=<number> or --incident=<no1,no2,...>
+            # Parse --incident=<number> or --incident=<no1,no2,...> or --incident=- (stdin)
             incident_nos = None
             for arg in sys.argv:
                 if arg.startswith('--incident='):
                     inc_value = arg.split('=', 1)[1]
-                    # Support comma-separated incident numbers
-                    incident_nos = [inc.strip() for inc in inc_value.split(',') if inc.strip()]
+                    if inc_value == '-':
+                        # Read incident numbers from stdin
+                        import select
+                        incident_nos = []
+                        if select.select([sys.stdin], [], [], 0.0)[0]:
+                            for line in sys.stdin:
+                                line = line.strip()
+                                if line:
+                                    # Support comma-separated on each line too
+                                    incident_nos.extend([inc.strip() for inc in line.split(',') if inc.strip()])
+                        if not incident_nos:
+                            print("X Error: No incident numbers provided via stdin")
+                            return
+                    else:
+                        # Support comma-separated incident numbers
+                        incident_nos = [inc.strip() for inc in inc_value.split(',') if inc.strip()]
                     break
 
-            # Parse --fi=<id> or --fi=<id1,id2,...>
+            # Parse --fi=<id> or --fi=<id1,id2,...> or --fi=- (stdin)
             fi_ids = None
             for arg in sys.argv:
                 if arg.startswith('--fi='):
                     fi_value = arg.split('=', 1)[1]
-                    # Support comma-separated FI IDs
-                    fi_ids = [fi.strip() for fi in fi_value.split(',') if fi.strip()]
+                    if fi_value == '-':
+                        # Read FI IDs from stdin
+                        import select
+                        fi_ids = []
+                        if select.select([sys.stdin], [], [], 0.0)[0]:
+                            for line in sys.stdin:
+                                line = line.strip()
+                                if line:
+                                    # Support comma-separated on each line too
+                                    fi_ids.extend([fi.strip() for fi in line.split(',') if fi.strip()])
+                        if not fi_ids:
+                            print("X Error: No FI IDs provided via stdin")
+                            return
+                    else:
+                        # Support comma-separated FI IDs
+                        fi_ids = [fi.strip() for fi in fi_value.split(',') if fi.strip()]
                     break
 
             # Determine auto-populate strategy
