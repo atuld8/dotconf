@@ -26,7 +26,7 @@ class ReportGenerator:
         Generate various reports
 
         Args:
-            report_type: Type of report ('full', 'summary', 'missing_fields', 'table')
+            report_type: Type of report ('full', 'summary', 'missing-fields', 'table')
             show_notes: If True, include notes in the report output
 
         Returns:
@@ -36,7 +36,7 @@ class ReportGenerator:
             return self._generate_full_report(show_notes=show_notes)
         elif report_type == 'summary':
             return self._generate_summary_report()
-        elif report_type == 'missing_fields':
+        elif report_type in ('missing-fields', 'missing_fields'):
             return self._generate_missing_fields_report(show_notes=show_notes)
         elif report_type == 'table':
             return self._generate_table_report(show_notes=show_notes)

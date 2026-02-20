@@ -129,7 +129,7 @@ def main():
     print(report_gen.generate_compact_table())
 
     print("\nMissing Fields Report:")
-    print(report_gen.generate_report('missing_fields'))
+    print(report_gen.generate_report('missing-fields'))
 
     # Export example
     print("\n" + "=" * 60)

@@ -7,6 +7,7 @@ python3 -m account_manager.cli help
 
 # Command-specific help
 python3 -m account_manager.cli help <command>
+python3 -m account_manager.cli <command> -h     # Quick help for any command
 
 # Available: help add, help update, help import, help import-log, help export-log, help validate-fi, help report, help list
 ```
@@ -45,8 +46,9 @@ python3 -m account_manager.cli delete john_doe
 
 ### List Accounts
 ```bash
-python3 -m account_manager.cli list                # All accounts
-python3 -m account_manager.cli list-incomplete     # Missing fields only
+python3 -m account_manager.cli list                   # All accounts
+python3 -m account_manager.cli list-incomplete        # Missing fields only
+python3 -m account_manager.cli list-pending-verify    # Complete but unverified
 ```
 
 ### Search
@@ -57,12 +59,12 @@ python3 -m account_manager.cli search cohesity_email=cohesity.com
 
 ### Reports
 ```bash
-python3 -m account_manager.cli report summary         # Statistics
-python3 -m account_manager.cli report table           # Formatted table
-python3 -m account_manager.cli report missing_fields  # Incomplete accounts
-python3 -m account_manager.cli report full            # Complete details
-python3 -m account_manager.cli report compact         # Compact table
-python3 -m account_manager.cli report markdown        # Markdown format
+python3 -m account_manager.cli report summary        # Statistics
+python3 -m account_manager.cli report table          # Formatted table
+python3 -m account_manager.cli report missing-fields # Incomplete accounts
+python3 -m account_manager.cli report full           # Complete details
+python3 -m account_manager.cli report compact        # Compact table
+python3 -m account_manager.cli report markdown       # Markdown format
 ```
 
 ### Translation
@@ -458,7 +460,7 @@ python3 -m account_manager.cli assign-etrack-fi 1234567 user_one
 |------|-------------|
 | full | Complete details |
 | summary | Statistics |
-| missing_fields | Incomplete accounts |
+| missing-fields | Incomplete accounts |
 | table | Formatted table |
 | compact | Compact table |
 | markdown | Markdown format |

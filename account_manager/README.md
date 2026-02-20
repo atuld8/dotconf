@@ -68,6 +68,7 @@ python3 -m account_manager.cli get john_doe
 python3 -m account_manager.cli delete john_doe
 python3 -m account_manager.cli list
 python3 -m account_manager.cli list-incomplete
+python3 -m account_manager.cli list-pending-verify  # Complete but unverified
 
 # Search and Translate
 python3 -m account_manager.cli search cohesity_email=cohesity
@@ -79,7 +80,7 @@ python3 -m account_manager.cli report table
 python3 -m account_manager.cli report table --show-notes
 python3 -m account_manager.cli report compact
 python3 -m account_manager.cli report markdown
-python3 -m account_manager.cli report missing_fields
+python3 -m account_manager.cli report missing-fields
 
 # Import/Export
 python3 -m account_manager.cli export accounts.csv
@@ -236,7 +237,7 @@ CREATE TABLE action_log (
 ### ReportGenerator
 
 - `generate_report(report_type, show_notes=False)` - Generate reports
-  - Types: `'full'`, `'summary'`, `'missing_fields'`, `'table'`
+  - Types: `'full'`, `'summary'`, `'missing-fields'`, `'table'`
 
 ### IOUtils
 

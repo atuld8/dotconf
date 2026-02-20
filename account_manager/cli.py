@@ -86,12 +86,14 @@ List Accounts
 Display accounts in various formats.
 
 Usage:
-    python3 -m account_manager.cli list              # All accounts (brief)
-    python3 -m account_manager.cli list-incomplete   # Only incomplete accounts
+    python3 -m account_manager.cli list                  # All accounts (brief)
+    python3 -m account_manager.cli list-incomplete       # Only incomplete accounts
+    python3 -m account_manager.cli list-pending-verify   # Complete but unverified
 
 Examples:
     python3 -m account_manager.cli list
     python3 -m account_manager.cli list-incomplete
+    python3 -m account_manager.cli list-pending-verify
 """)
 
     elif command == 'report':
@@ -106,7 +108,7 @@ Usage:
 Report Types:
     full            Complete details of all accounts
     summary         Statistics and summary
-    missing_fields  Accounts with incomplete data
+    missing-fields  Accounts with incomplete data
     table           Formatted table view
     compact         Compact table format
     markdown        Markdown-formatted table
@@ -118,7 +120,7 @@ Examples:
     python3 -m account_manager.cli report summary
     python3 -m account_manager.cli report table
     python3 -m account_manager.cli report table --show-notes
-    python3 -m account_manager.cli report missing_fields
+    python3 -m account_manager.cli report missing-fields
 """)
 
     elif command == 'validate-fi':
@@ -781,10 +783,11 @@ ACCOUNT MANAGEMENT
 VIEWING DATA
     list                             List all accounts (brief)
     list-incomplete                  List accounts with missing fields
+    list-pending-verify              List complete accounts pending verification
     search <field=value>             Search accounts by field
     report [type]                    Generate reports (see help report)
 
-    Report types: full, summary, missing_fields, table, compact, markdown
+    Report types: full, summary, missing-fields, table, compact, markdown
 
 TRANSLATION
     translate <id> <field>           Convert between account identifiers
@@ -988,6 +991,10 @@ def main():
             run_demo(db, report_gen)
 
         elif command == 'add':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('add')
+                return
             if len(sys.argv) < 3:
                 print("Usage: cli.py add <etrack_user_id>")
                 print_usage()
@@ -1002,6 +1009,10 @@ def main():
                 print(f"X {e}")
 
         elif command == 'update':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('update')
+                return
             if len(sys.argv) < 3:
                 print("Usage: cli.py update <etrack_user_id> [field=value ...]")
                 return
@@ -1034,6 +1045,10 @@ def main():
                 print("No updates provided")
 
         elif command == 'delete':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('delete')
+                return
             if len(sys.argv) < 3:
                 print("Usage: cli.py delete <etrack_user_id>")
                 return
@@ -1046,6 +1061,10 @@ def main():
                 print(f"X Account not found: {etrack_user_id}")
 
         elif command == 'get':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('get')
+                return
             if len(sys.argv) < 3:
                 print("Usage: cli.py get <etrack_user_id>")
                 return
@@ -1120,9 +1139,58 @@ def main():
                     print(f"  To update: python3 -m account_manager.cli update {acc['etrack_user_id']}")
                 print("\n" + "=" * 80)
                 print(f"\nTotal incomplete: {len(incomplete)} / {len(accounts)}")
-                print(f"\nTo see details: python3 -m account_manager.cli report missing_fields")
+                print(f"\nTo see details: python3 -m account_manager.cli report missing-fields")
+
+        elif command == 'list-pending-verify':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('list')
+                return
+            # List accounts with all fields populated but manual_verified='no'
+            accounts = db.get_all_accounts()
+            pending = []
+
+            for acc in accounts:
+                # Check if all required fields are populated
+                has_all_fields = (
+                    acc.get('first_name') and
+                    acc.get('last_name') and
+                    acc.get('jira_account') and
+                    acc.get('veritas_email') and
+                    acc.get('cohesity_email') and
+                    acc.get('community_account')
+                )
+                # Check if manual_verified is 'no' or not set
+                not_verified = acc.get('manual_verified', 'no') != 'yes'
+
+                if has_all_fields and not_verified:
+                    pending.append(acc)
+
+            if not pending:
+                print("+ No accounts pending verification!")
+                print("  (All complete accounts have been manually verified)")
+            else:
+                print(f"Found {len(pending)} accounts pending verification:\n")
+                print("=" * 80)
+                for acc in pending:
+                    print(f"\nEtrack User ID: {acc['etrack_user_id']}")
+                    print(f"  First:     {acc.get('first_name')}")
+                    print(f"  Last:      {acc.get('last_name')}")
+                    print(f"  Jira:      {acc['jira_account']}")
+                    print(f"  Veritas:   {acc['veritas_email']}")
+                    print(f"  Cohesity:  {acc['cohesity_email']}")
+                    print(f"  Community: {acc['community_account']}")
+                    if acc.get('notes'):
+                        print(f"  Notes:     {acc['notes']}")
+                    print(f"  To verify: python3 -m account_manager.cli update-verified {acc['etrack_user_id']} yes")
+                print("\n" + "=" * 80)
+                print(f"\nTotal pending: {len(pending)} / {len(accounts)}")
 
         elif command == 'search':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('search')
+                return
             if len(sys.argv) < 3:
                 print("Usage: cli.py search <field=value>")
                 return
@@ -1138,6 +1206,10 @@ def main():
                 print(f"  {acc['etrack_user_id']}: {acc['jira_account']}")
 
         elif command == 'translate':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('translate')
+                return
             if len(sys.argv) < 4:
                 print("Usage: cli.py translate <identifier> <return_field>")
                 return
@@ -1153,9 +1225,26 @@ def main():
             report_type = sys.argv[2] if len(sys.argv) > 2 else 'summary'
             show_notes = '--show-notes' in sys.argv
 
+            # Handle help flag
+            if report_type in ['-h', '--help']:
+                print_usage('report')
+                return
+
             # Remove --show-notes from report_type if it was captured
             if report_type == '--show-notes':
                 report_type = 'summary'
+
+            # Normalize underscore to dash for backward compatibility
+            if report_type == 'missing_fields':
+                report_type = 'missing-fields'
+
+            # Validate report type
+            valid_types = ['full', 'summary', 'missing-fields', 'table', 'compact', 'markdown']
+            if report_type not in valid_types:
+                print(f"X Unknown report type: {report_type}")
+                print(f"  Valid types: {', '.join(valid_types)}")
+                print(f"  Use 'report -h' for help")
+                return
 
             # Handle special compact and markdown reports
             if report_type == 'compact':
@@ -1166,10 +1255,18 @@ def main():
                 print(report_gen.generate_report(report_type, show_notes=show_notes))
 
         elif command == 'export':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('export')
+                return
             filename = sys.argv[2] if len(sys.argv) > 2 else 'accounts_export.csv'
             io_utils.export_to_csv(filename)
 
         elif command == 'export-log':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('export-log')
+                return
             # Parse options
             filename = 'action_log_export.csv'
             limit = None
@@ -1184,6 +1281,10 @@ def main():
             io_utils.export_action_log(filename, limit=limit, since=since)
 
         elif command == 'import':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('import')
+                return
             if len(sys.argv) < 3:
                 print("Usage: python3 -m account_manager.cli import <csv_file> [conflict_mode] [--allow-empty]")
                 print("  conflict_mode: skip (default), update, or fail")
@@ -1197,6 +1298,10 @@ def main():
             io_utils.import_from_csv(filename, conflict_mode, allow_empty)
 
         elif command == 'import-log':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('import-log')
+                return
             if len(sys.argv) < 3:
                 print("Usage: python3 -m account_manager.cli import-log <csv_file>")
                 return
@@ -1204,6 +1309,10 @@ def main():
             io_utils.import_action_log(filename)
 
         elif command == 'validate-fi':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('validate-fi')
+                return
             # Validate FI assignees from esql query
             if len(sys.argv) < 3:
                 print("Usage: cli.py validate-fi <esql_query_name> [options]")

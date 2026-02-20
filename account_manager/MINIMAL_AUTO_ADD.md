@@ -72,7 +72,7 @@ Etrack User ID: jane_smith
 
 Total incomplete: 2 / 2
 
-To see details: python3 -m account_manager.cli report missing_fields
+To see details: python3 -m account_manager.cli report missing-fields
 ```
 
 ---
@@ -112,7 +112,7 @@ python3 -m account_manager.cli get john_doe
 python3 -m account_manager.cli list-incomplete
 
 # Generate report
-python3 -m account_manager.cli report missing_fields
+python3 -m account_manager.cli report missing-fields
 ```
 
 ---
@@ -211,7 +211,7 @@ python3 -m account_manager.cli list
 python3 -m account_manager.cli list-incomplete
 
 # Show detailed missing fields report
-python3 -m account_manager.cli report missing_fields
+python3 -m account_manager.cli report missing-fields
 ```
 
 ### Update Commands
