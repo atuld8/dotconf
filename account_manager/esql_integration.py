@@ -5,6 +5,7 @@ ESQL Query Executor - Execute and parse esql queries
 import subprocess
 import os
 import shutil
+import sys
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import re
@@ -309,6 +310,124 @@ class EsqlExecutor:
             fi_ids=sorted(fi_ids),
             incident_type=inc_type
         )]
+
+    def fetch_incidents_batch(self, incident_nos: List[str], timeout: int = 120,
+                               type_filter: str = 'SERVICE_REQUEST',
+                               include_all_types: bool = False,
+                               batch_size: int = 100,
+                               verbose: bool = False) -> List['FIRecord']:
+        """
+        Fetch FI records for multiple incident numbers in batches (more efficient than individual fetches)
+
+        Args:
+            incident_nos: List of etrack incident numbers
+            timeout: Command timeout in seconds
+            type_filter: Only include if incident is this type (default: SERVICE_REQUEST)
+            include_all_types: If True, include all incident types (ignore type_filter)
+            batch_size: Number of incidents per batch query
+            verbose: Print progress info
+
+        Returns:
+            List of FIRecord objects for incidents with FIs
+        """
+        if not incident_nos:
+            return []
+
+        # Deduplicate and clean
+        unique_incidents = list(set(str(i).strip() for i in incident_nos if str(i).strip().isdigit()))
+        if not unique_incidents:
+            return []
+
+        records = []
+        total = len(unique_incidents)
+        skipped_type = []
+
+        # Process in batches
+        for batch_start in range(0, total, batch_size):
+            batch = unique_incidents[batch_start:batch_start + batch_size]
+            batch_num = batch_start // batch_size + 1
+            total_batches = (total + batch_size - 1) // batch_size
+
+            if verbose or sys.stderr.isatty():
+                print(f"\rFetching incidents batch {batch_num}/{total_batches} ({len(batch)} incidents)...", end='', file=sys.stderr)
+
+            # Step 1: Get assignee and type for all incidents in batch
+            incident_list = ', '.join(batch)
+            assignee_sql = f"SELECT incident, assigned_to, type FROM incident WHERE incident IN ({incident_list})"
+            try:
+                assignee_output = self.execute_raw_query(assignee_sql, timeout)
+            except Exception as e:
+                print(f"\nWarning: Error fetching incident batch: {e}", file=sys.stderr)
+                continue
+
+            # Parse assignee data: incident -> (assignee, type)
+            incident_info = {}
+            for line in assignee_output.strip().split('\n'):
+                line = line.strip()
+                if not line or 'assigned_to' in line.lower() or line.startswith('---'):
+                    continue
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    inc_no = parts[0].strip()
+                    assignee = parts[1].strip()
+                    inc_type = parts[2].strip() if len(parts) >= 3 else None
+                    incident_info[inc_no] = (assignee, inc_type)
+
+            # Filter by type if needed
+            valid_incidents = []
+            for inc_no, (assignee, inc_type) in incident_info.items():
+                if not include_all_types and type_filter and inc_type:
+                    if inc_type != type_filter:
+                        skipped_type.append((inc_no, inc_type))
+                        continue
+                valid_incidents.append((inc_no, assignee, inc_type))
+
+            if not valid_incidents:
+                continue
+
+            # Step 2: Get FI links for valid incidents
+            valid_incident_list = ', '.join(inc for inc, _, _ in valid_incidents)
+            fi_sql = f"SELECT incident, ext_inc FROM external_reference WHERE incident IN ({valid_incident_list}) AND ext_src = 'TOOLS_AGILE'"
+            try:
+                fi_output = self.execute_raw_query(fi_sql, timeout)
+            except Exception as e:
+                print(f"\nWarning: Error fetching FI links: {e}", file=sys.stderr)
+                continue
+
+            # Parse FI links: incident -> [fi_ids]
+            incident_fis = {}
+            for line in fi_output.strip().split('\n'):
+                line = line.strip()
+                if not line or 'ext_inc' in line.lower() or line.startswith('---'):
+                    continue
+                parts = re.split(r'[\t|]+', line)
+                parts = [p.strip() for p in parts if p.strip()]
+                if len(parts) >= 2 and parts[0].isdigit():
+                    inc_no = parts[0]
+                    fi_id = parts[1]
+                    if re.match(r'^FI-\d+$', fi_id):
+                        if inc_no not in incident_fis:
+                            incident_fis[inc_no] = []
+                        incident_fis[inc_no].append(fi_id)
+
+            # Create records for incidents with FIs
+            for inc_no, assignee, inc_type in valid_incidents:
+                if inc_no in incident_fis:
+                    records.append(FIRecord(
+                        incident_no=inc_no,
+                        etrack_user_id=assignee,
+                        who_added_fi='(unknown)',
+                        fi_ids=sorted(incident_fis[inc_no]),
+                        incident_type=inc_type
+                    ))
+
+        if sys.stderr.isatty():
+            print(f"\r{' ' * 60}\r", end='', file=sys.stderr)
+
+        if skipped_type and verbose:
+            print(f"  Note: Skipped {len(skipped_type)} non-{type_filter} incidents", file=sys.stderr)
+
+        return records
 
     def fetch_by_fi_id(self, fi_id: str, timeout: int = 60,
                         type_filter: str = 'SERVICE_REQUEST',

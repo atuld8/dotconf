@@ -1418,11 +1418,16 @@ def main():
                     fi_records = executor.fetch_by_fi_id(fi_id, include_all_types=include_all_types)
                     records.extend(fi_records)
             elif incident_nos:
-                # Fetch records for each incident number
-                records = []
-                for inc_no in incident_nos:
-                    inc_records = executor.fetch_incident_by_id(inc_no, include_all_types=include_all_types)
-                    records.extend(inc_records)
+                # Use batch method for multiple incidents (more efficient)
+                if len(incident_nos) > 1:
+                    records = executor.fetch_incidents_batch(
+                        incident_nos,
+                        include_all_types=include_all_types,
+                        verbose=True
+                    )
+                else:
+                    # Single incident - use original method
+                    records = executor.fetch_incident_by_id(incident_nos[0], include_all_types=include_all_types)
             else:
                 records = executor.execute_and_parse(query_name)
                 # For query-based: apply type filter if --perform-sr-type-check is set
