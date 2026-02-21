@@ -12,22 +12,25 @@ The key difference from equery_formatter.py is:
 Supports both LOCAL and REMOTE execution modes.
 
 USAGE:
-    esql_formatter.py [--file FILE | --stdin | --command COMMAND] --headers HEADERS [--cols COLS] [--ssh SSH]
+    esql_formatter.py [--file FILE | --stdin | --command COMMAND | --query QUERYNAME] --headers HEADERS [--cols COLS] [--ssh SSH]
 
 REQUIRED ARGUMENTS:
     --headers, -H     Comma-separated header names in order (e.g., INCIDENT,STATE,ABSTRACT)
                      Headers MUST match the order of columns in the data.
+                     Optional: specify custom width with HEADER:WIDTH format
+                     Example: INCIDENT:20,STATE:30,ABSTRACT (ABSTRACT uses default width)
 
 INPUT SOURCE (one required):
     --file, -f       Read data from a file
     --stdin          Read data from standard input
     --command        Execute a command and format its output
+    --query, -r      Run a named esql query (executes: esql -r <queryname>)
 
 OPTIONAL ARGUMENTS:
     --cols, -c       Comma-separated column names to display (subset/reorder of headers)
                      Use "*" to display all columns (default)
-    --ssh            SSH target for remote command execution (format: user@host)
-                     Only valid with --command option
+    --ssh            SSH target for remote execution (format: user@host)
+                     Valid with --command or --query options
 
 EXAMPLES:
 
@@ -91,6 +94,24 @@ EXAMPLES:
     $ ./esql_formatter.py --file data.txt --headers COL1,COL2,COL3,COL4
     # or explicitly
     $ ./esql_formatter.py --file data.txt --headers COL1,COL2,COL3,COL4 --cols '*'
+
+11. Run a named esql query:
+    $ ./esql_formatter.py --query my_incidents --headers INCIDENT,STATE,ABSTRACT
+    # or using short form
+    $ ./esql_formatter.py -r my_incidents -H INCIDENT,STATE,ABSTRACT --cols INCIDENT,STATE
+
+12. Custom column widths:
+    $ ./esql_formatter.py --file data.txt --headers INCIDENT:20,STATE:30,ABSTRACT
+    # INCIDENT=20 chars, STATE=30 chars, ABSTRACT=default width (90)
+    
+    $ ./esql_formatter.py -r my_query -H INCIDENT:15,STATE:25,PRIORITY:5,ABSTRACT:100
+
+13. Run esql query on a remote system:
+    $ ./esql_formatter.py -r my_incidents --ssh user@remote.com -H INCIDENT,STATE,ABSTRACT
+    # Executes: ssh user@remote.com "esql -r my_incidents"
+    
+    $ ./esql_formatter.py --query open_tickets --ssh admin@dbserver.com \
+        --headers INCIDENT:15,STATE,PRIORITY,ABSTRACT:80 --cols INCIDENT,STATE,ABSTRACT
 
 COMMON USE CASES:
 
@@ -164,16 +185,19 @@ class EsqlFormatter:
         'VERSION': 8,
     }
 
-    def __init__(self, headers: List[str], columns: Optional[List[str]] = None):
+    def __init__(self, headers: List[str], columns: Optional[List[str]] = None,
+                 custom_widths: Optional[Dict[str, int]] = None):
         """
         Initialize formatter with specified headers and optional column selection.
 
         Args:
             headers: List of header names in order (matches data columns)
             columns: List of column names to display, or None for all columns
+            custom_widths: Dict mapping header names to custom widths (optional)
         """
         self.headers = headers
         self.columns = columns
+        self.custom_widths = custom_widths or {}
         self.column_indices = {}
         self.display_columns = []
         self.column_widths = {}
@@ -181,7 +205,9 @@ class EsqlFormatter:
         self._setup_columns()
 
     def get_column_width(self, column_name: str) -> int:
-        """Get the width for a column, using default if not defined."""
+        """Get the width for a column. Priority: custom > predefined > default."""
+        if column_name in self.custom_widths:
+            return self.custom_widths[column_name]
         return self.COLUMN_WIDTHS.get(column_name, self.COLUMN_WIDTHS['DEFAULT'])
 
     def _setup_columns(self) -> None:
@@ -362,6 +388,46 @@ def parse_list_arg(arg: str) -> List[str]:
     return [item.strip() for item in arg.split(',') if item.strip()]
 
 
+def parse_headers_with_widths(arg: str) -> tuple:
+    """
+    Parse headers with optional width specification.
+    
+    Format: HEADER or HEADER:WIDTH
+    Example: "INCIDENT:20,STATE:30,ABSTRACT" -> 
+             headers=['INCIDENT','STATE','ABSTRACT'], widths={'INCIDENT':20,'STATE':30}
+
+    Args:
+        arg: Comma-separated headers with optional :WIDTH suffix
+
+    Returns:
+        Tuple of (list of header names, dict of custom widths)
+    """
+    headers = []
+    custom_widths = {}
+    
+    for item in arg.split(','):
+        item = item.strip()
+        if not item:
+            continue
+        
+        if ':' in item:
+            parts = item.split(':', 1)
+            header_name = parts[0].strip()
+            try:
+                width = int(parts[1].strip())
+                if width > 0:
+                    custom_widths[header_name] = width
+                else:
+                    print(f"Warning: Invalid width for {header_name}, using default", file=sys.stderr)
+            except ValueError:
+                print(f"Warning: Invalid width '{parts[1]}' for {header_name}, using default", file=sys.stderr)
+            headers.append(header_name)
+        else:
+            headers.append(item)
+    
+    return headers, custom_widths
+
+
 def parse_columns(cols_arg: Optional[str]) -> Optional[List[str]]:
     """
     Parse column specification.
@@ -398,8 +464,16 @@ Examples:
   
   # Local command execution
   %(prog)s --command "psql -t -c 'SELECT * FROM table'" --headers ID,NAME,STATUS
+  
+  # Run named esql query
+  %(prog)s --query my_incidents --headers INCIDENT,STATE,ABSTRACT
+  %(prog)s -r my_incidents -H INCIDENT,STATE,ABSTRACT --cols INCIDENT,STATE
+  
+  # Custom column widths (HEADER:WIDTH format)
+  %(prog)s --file data.txt --headers INCIDENT:20,STATE:30,ABSTRACT
 
 Note: Headers MUST be provided via --headers in the same order as data columns.
+      Use HEADER:WIDTH format for custom widths (e.g., INCIDENT:20,STATE:30,ABSTRACT).
       Use --cols to select which columns to display and in what order.
         """
     )
@@ -419,6 +493,10 @@ Note: Headers MUST be provided via --headers in the same order as data columns.
         '--command',
         help='Command to execute (output should be tab-separated data without headers)'
     )
+    input_group.add_argument(
+        '--query', '-r',
+        help='Named esql query to run (executes: esql -r <queryname>)'
+    )
 
     # Headers (REQUIRED)
     parser.add_argument(
@@ -430,7 +508,7 @@ Note: Headers MUST be provided via --headers in the same order as data columns.
     # SSH target for remote execution
     parser.add_argument(
         '--ssh',
-        help='SSH target to run command on (format: user@host). Only used with --command.'
+        help='SSH target for remote execution (format: user@host). Use with --command or --query.'
     )
 
     # Column specification
@@ -443,15 +521,15 @@ Note: Headers MUST be provided via --headers in the same order as data columns.
     args = parser.parse_args()
 
     # Validate input
-    if not args.file and not args.stdin and not args.command:
-        parser.error("Must specify either --file, --stdin, or --command")
+    if not args.file and not args.stdin and not args.command and not args.query:
+        parser.error("Must specify either --file, --stdin, --command, or --query")
 
     # Validate SSH usage
-    if args.ssh and not args.command:
-        parser.error("--ssh can only be used with --command")
+    if args.ssh and not args.command and not args.query:
+        parser.error("--ssh can only be used with --command or --query")
 
-    # Parse headers
-    headers = parse_list_arg(args.headers)
+    # Parse headers (with optional custom widths)
+    headers, custom_widths = parse_headers_with_widths(args.headers)
     if not headers:
         parser.error("--headers cannot be empty")
 
@@ -467,11 +545,14 @@ Note: Headers MUST be provided via --headers in the same order as data columns.
         lines = read_from_file(args.file)
     elif args.command:
         lines = run_command(args.command, ssh_target=args.ssh)
+    elif args.query:
+        esql_command = f"esql -r {args.query}"
+        lines = run_command(esql_command, ssh_target=args.ssh)
     else:
         parser.error("No input source specified")
 
     # Format and display
-    formatter = EsqlFormatter(headers=headers, columns=columns)
+    formatter = EsqlFormatter(headers=headers, columns=columns, custom_widths=custom_widths)
     formatter.format_data(lines)
 
 
