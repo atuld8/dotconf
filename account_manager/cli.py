@@ -483,15 +483,23 @@ Description:
     - manual_verified is 'no'
 
     Uses JIRA API to search for users by name and updates:
-    - jira_account (JIRA account key)
-    - cohesity_email (from JIRA emailAddress field, if missing locally)
+    - jira_account (JIRA display name)
+    - cohesity_email (ONLY if it's a @cohesity.com domain)
 
 Multiple Match Handling:
     When multiple JIRA users match, disambiguation is attempted using:
-    1. Exact display name match
-    2. Email prefix match (compares with veritas_email)
-    3. Email pattern match (firstname.lastname)
-    If cannot disambiguate, the account is skipped.
+    1. Exact display name match + cohesity.com email (highest priority)
+    2. Exact display name match only
+    3. Email matches firstname.lastname@cohesity.com exactly
+
+    CONFLICT BEHAVIOR: If there are multiple candidates at any priority level,
+    the account is SKIPPED and reported as a conflict. You must update manually:
+        python3 -m account_manager.cli update <etrack_user_id> jira_account=<value>
+
+Output:
+    - Successfully updated: accounts that were updated
+    - Conflicts: accounts with multiple JIRA matches (need manual update)
+    - Failed: accounts where no JIRA user was found
 
 Examples:
     # Preview what will be updated
@@ -528,8 +536,12 @@ Options:
 Description:
     Requires first_name and last_name to be set for the account.
     Fetches from JIRA and updates:
-    - jira_account (JIRA account key)
-    - cohesity_email (if available from JIRA and missing locally)
+    - jira_account (JIRA display name)
+    - cohesity_email (ONLY if it's a @cohesity.com domain)
+
+    If multiple JIRA users match and cannot be disambiguated, shows
+    all candidates and does NOT update. You must set manually:
+        python3 -m account_manager.cli update <etrack_user_id> jira_account=<value>
 
 Examples:
     # Fetch and update
@@ -1021,6 +1033,22 @@ def main():
             updates = {}
             allowed_fields = ['first_name', 'last_name', 'veritas_email', 'cohesity_email',
                              'community_account', 'jira_account', 'manual_verified', 'notes']
+
+            # Validate etrack_user_id is not a field=value pair
+            if '=' in etrack_user_id:
+                field_part = etrack_user_id.split('=', 1)[0]
+                if field_part in allowed_fields:
+                    print(f"X Missing etrack_user_id. First argument looks like a field=value pair.")
+                    print("Usage: cli.py update <etrack_user_id> [field=value ...]")
+                    return
+
+            # Check if account exists
+            existing_account = db.get_account(etrack_user_id=etrack_user_id)
+            if not existing_account:
+                print(f"X Account not found: {etrack_user_id}")
+                print(f"  Use 'add' command to create it first: cli.py add {etrack_user_id}")
+                return
+
             invalid_fields = []
             for arg in sys.argv[3:]:
                 if '=' in arg:
@@ -1035,8 +1063,7 @@ def main():
                 return
             if updates:
                 # Get old values for logging
-                old_account = db.get_account(etrack_user_id=etrack_user_id)
-                old_vals = {k: old_account.get(k) if old_account else None for k in updates.keys()}
+                old_vals = {k: existing_account.get(k) for k in updates.keys()}
                 db.update_account(etrack_user_id, **updates)
                 db.log_action('update_account', 'account', etrack_user_id,
                              old_value=str(old_vals), new_value=str(updates), status='success')
@@ -2167,6 +2194,10 @@ def main():
                 print(f"+ Updated notes for {etrack_user_id}")
 
         elif command == 'update-jira-ids':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('update-jira-ids')
+                return
             # Update missing JIRA IDs using first/last name
             dry_run = '--dry-run' in sys.argv
             verbose = '--verbose' in sys.argv
@@ -2191,8 +2222,13 @@ def main():
                 print(f"Accounts needing update: {stats['total']}")
                 print(f"Successfully updated: {stats['updated']}")
                 print(f"Cohesity emails also updated: {stats.get('emails_updated', 0)}")
-                print(f"Failed: {stats['failed']}")
+                print(f"Conflicts (need manual update): {stats.get('conflicts', 0)}")
+                print(f"Failed (no JIRA user found): {stats['failed']}")
                 print(f"Skipped: {stats['skipped']}")
+
+                if stats.get('conflicts', 0) > 0:
+                    print(f"\n! {stats['conflicts']} accounts had conflicts - see details above")
+                    print("  Use: python3 -m account_manager.cli update <etrack_user_id> jira_account=<value>")
 
                 if not dry_run and stats['updated'] > 0:
                     print(f"\n+ Updated {stats['updated']} accounts")
@@ -2208,6 +2244,10 @@ def main():
                 print("  3. Use --mock for testing without real JIRA connection")
 
         elif command == 'fetch-jira-id':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('fetch-jira-id')
+                return
             # Fetch JIRA ID for a single user
             if len(sys.argv) < 3:
                 print("Usage: cli.py fetch-jira-id <etrack_user_id> [--dry-run] [--mock]")
@@ -2864,13 +2904,14 @@ def main():
         else:
             print(f"X Unknown command: {command}")
             print("\nAvailable commands: add, update, delete, get, list, list-incomplete,")
-            print("                    search, translate, report, export, import,")
-            print("                    export-log, import-log, validate-fi, check-assignee,")
-            print("                    assign-etrack-fi, update-emails, fetch-email,")
-            print("                    update-jira-ids, fetch-jira-id, update-verified,")
-            print("                    update-notes, action-log, action-summary,")
-            print("                    action-history, action-clear, lookup-etrack-emails,")
-            print("                    config, demo, help")
+            print("                    list-pending-verify, search, translate, report,")
+            print("                    export, import, export-log, import-log,")
+            print("                    validate-fi, check-assignee, assign-etrack-fi,")
+            print("                    update-emails, fetch-email, update-jira-ids,")
+            print("                    fetch-jira-id, update-verified, update-notes,")
+            print("                    action-log, action-summary, action-history,")
+            print("                    action-clear, lookup-etrack-emails, config,")
+            print("                    demo, help")
             print("\nFor detailed help: python3 -m account_manager.cli help [command]")
 
     except DatabaseLockedError as e:

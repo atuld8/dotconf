@@ -2,8 +2,7 @@
 JIRA Integration - Fetch JIRA IDs using first and last names
 """
 
-import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from dataclasses import dataclass
 from .jira_client import JiraClient, MockJiraClient
 
@@ -27,6 +26,7 @@ class JiraIdFetcher:
             use_mock: If True, use mock client for testing
         """
         self.use_mock = use_mock
+        self.last_search_was_conflict = False  # Track if last search had multiple matches
 
         if use_mock:
             self.client = MockJiraClient()
@@ -49,6 +49,8 @@ class JiraIdFetcher:
         Returns:
             JiraUserInfo if user found, None otherwise
         """
+        self.last_search_was_conflict = False  # Reset flag
+        
         if not first_name or not last_name:
             print("Warning: Both first name and last name are required")
             return None
@@ -80,12 +82,15 @@ class JiraIdFetcher:
                 # Multiple matches - try to find best match
                 user = self._find_best_match(users, first_name, last_name, veritas_email)
                 if not user:
-                    print(f"Warning: Multiple JIRA users found for {first_name} {last_name}, cannot disambiguate:")
+                    self.last_search_was_conflict = True  # Mark as conflict
+                    print(f"CONFLICT: Multiple JIRA users found for {first_name} {last_name}")
+                    print("  Candidates:")
                     for u in users[:5]:  # Show first 5
-                        print(f"  - {u.get('displayName', 'N/A')} ({u.get('emailAddress', 'N/A')})")
+                        print(f"    - {u.get('displayName', 'N/A')} ({u.get('emailAddress', 'N/A')})")
                     if len(users) > 5:
-                        print(f"  ... and {len(users) - 5} more")
-                    print(f"  Skipping - please update manually")
+                        print(f"    ... and {len(users) - 5} more")
+                    print("  Action: Please update manually using:")
+                    print(f"    python3 -m account_manager.cli update <etrack_user_id> jira_account=<correct_value>")
                     return None
 
             return JiraUserInfo(
@@ -99,65 +104,81 @@ class JiraIdFetcher:
             return None
 
     def _find_best_match(self, users: list, first_name: str, last_name: str,
-                         veritas_email: str = None) -> Optional[dict]:
+                         veritas_email: str = None) -> Optional[dict]:  # noqa: ARG002
         """
         Find the best matching user from multiple results.
 
-        Strategy:
-        1. Exact display name match (FirstName LastName)
-        2. Email match if veritas_email provided (compare prefix)
-        3. Email contains first.last pattern
+        Only returns a match when there is exactly ONE unambiguous candidate.
+        If there are conflicts, returns None and lets the caller report them.
+
+        Strategy (priority order):
+        1. Exact display name match with cohesity email (most reliable)
+        2. Exact display name match (FirstName LastName) - only if exactly one
+        3. Email matches firstname.lastname@cohesity.com exactly - only if exactly one
 
         Args:
             users: List of user dicts from JIRA API
             first_name: Expected first name
             last_name: Expected last name
-            veritas_email: Optional Veritas email for comparison
+            veritas_email: Kept for API compatibility (not currently used)
 
         Returns:
-            Best matching user dict or None if can't disambiguate
+            Best matching user dict or None if can't disambiguate (conflicts exist)
         """
+        # Note: veritas_email kept in signature for API compatibility but not used
+        # The veritas email prefix matching was removed as it caused false matches
+        # when veritas email has numeric suffix (e.g., swapnil.mahajan1)
         expected_name = f"{first_name} {last_name}".lower()
-        email_prefix = veritas_email.split('@')[0].lower() if veritas_email else None
+        # Standard pattern is firstname.lastname (without numeric suffix)
         expected_email_pattern = f"{first_name.lower()}.{last_name.lower()}"
 
+        exact_name_with_cohesity = []
         exact_name_matches = []
-        email_matches = []
-        pattern_matches = []
+        cohesity_pattern_matches = []
 
         for user in users:
             display_name = user.get('displayName', '').lower()
             user_email = user.get('emailAddress', '').lower()
+            user_email_prefix = user_email.split('@')[0] if user_email else ''
 
             # Check for exact name match
-            if display_name == expected_name:
+            is_exact_name = (display_name == expected_name)
+            is_cohesity_email = '@cohesity.com' in user_email
+            
+            # Exact name + cohesity email (highest priority)
+            if is_exact_name and is_cohesity_email:
+                exact_name_with_cohesity.append(user)
+            
+            # Exact name match
+            if is_exact_name:
                 exact_name_matches.append(user)
 
-            # Check if email prefix matches veritas email prefix
-            if email_prefix and user_email:
-                user_email_prefix = user_email.split('@')[0]
-                if user_email_prefix == email_prefix:
-                    email_matches.append(user)
+            # Cohesity email follows first.last pattern exactly (without numeric suffix)
+            if is_cohesity_email and user_email_prefix == expected_email_pattern:
+                cohesity_pattern_matches.append(user)
 
-            # Check if email follows first.last pattern
-            if user_email and expected_email_pattern in user_email:
-                pattern_matches.append(user)
+        # Return match ONLY if there's exactly ONE unambiguous candidate
+        # If multiple matches at any level, return None (conflict)
+        
+        if len(exact_name_with_cohesity) == 1:
+            return exact_name_with_cohesity[0]
+        elif len(exact_name_with_cohesity) > 1:
+            # Multiple exact name matches with cohesity emails - conflict
+            return None
 
-        # Return best match in priority order
         if len(exact_name_matches) == 1:
             return exact_name_matches[0]
+        elif len(exact_name_matches) > 1:
+            # Multiple exact name matches - conflict
+            return None
 
-        if len(email_matches) == 1:
-            return email_matches[0]
+        if len(cohesity_pattern_matches) == 1:
+            return cohesity_pattern_matches[0]
+        elif len(cohesity_pattern_matches) > 1:
+            # Multiple pattern matches - conflict
+            return None
 
-        if len(pattern_matches) == 1:
-            return pattern_matches[0]
-
-        # If exact name match found multiple, use first
-        if exact_name_matches:
-            return exact_name_matches[0]
-
-        # Can't disambiguate
+        # No matches found at all - can't disambiguate
         return None
 
 
@@ -191,9 +212,9 @@ class JiraIdUpdater:
             dry_run: If True, don't actually update the database
 
         Returns:
-            Dictionary with stats: {'total': n, 'updated': n, 'skipped': n, 'failed': n}
+            Dictionary with stats: {'total': n, 'updated': n, 'skipped': n, 'failed': n, 'conflicts': n}
         """
-        stats = {'total': 0, 'updated': 0, 'skipped': 0, 'failed': 0, 'emails_updated': 0}
+        stats = {'total': 0, 'updated': 0, 'skipped': 0, 'failed': 0, 'conflicts': 0, 'emails_updated': 0}
 
         # Get all accounts
         accounts = self.account_manager.get_all_accounts()
@@ -248,8 +269,11 @@ class JiraIdUpdater:
             user_info = self.fetcher.search_user_by_name(first_name, last_name, veritas_email)
 
             if not user_info or not user_info.account_id:
-                print(f"Failed to find JIRA user")
-                stats['failed'] += 1
+                # search_user_by_name already prints the conflict details
+                if self.fetcher.last_search_was_conflict:
+                    stats['conflicts'] += 1
+                else:
+                    stats['failed'] += 1
                 continue
 
             # Build update fields
@@ -260,10 +284,14 @@ class JiraIdUpdater:
                 update_fields['jira_account'] = user_info.display_name
                 updates_desc.append(f"jira_account={user_info.display_name}")
 
+            # Only set cohesity_email if it's actually a cohesity.com domain
             if needs_cohesity_email and user_info.email_address:
-                update_fields['cohesity_email'] = user_info.email_address
-                updates_desc.append(f"cohesity_email={user_info.email_address}")
-                stats['emails_updated'] += 1
+                if '@cohesity.com' in user_info.email_address.lower():
+                    update_fields['cohesity_email'] = user_info.email_address
+                    updates_desc.append(f"cohesity_email={user_info.email_address}")
+                    stats['emails_updated'] += 1
+                elif self.verbose:
+                    print(f"(skipping non-cohesity email: {user_info.email_address})", end=" ")
 
             # Update the account
             if dry_run:
@@ -302,19 +330,20 @@ class JiraIdUpdater:
 
         first_name = account.get('first_name')
         last_name = account.get('last_name')
+        veritas_email = account.get('veritas_email')
 
         if not first_name or not last_name:
-            print(f"Error: Account must have both first_name and last_name")
+            print("Error: Account must have both first_name and last_name")
             print(f"  First Name: {first_name or '(missing)'}")
             print(f"  Last Name:  {last_name or '(missing)'}")
             return False
 
         print(f"Searching JIRA for: {first_name} {last_name}")
 
-        user_info = self.fetcher.search_user_by_name(first_name, last_name)
+        user_info = self.fetcher.search_user_by_name(first_name, last_name, veritas_email)
 
         if not user_info or not user_info.account_id:
-            print("Failed to find JIRA user")
+            # search_user_by_name already prints the conflict details
             return False
 
         print(f"\nFound JIRA user:")
@@ -329,8 +358,12 @@ class JiraIdUpdater:
         if not account.get('jira_account'):
             update_fields['jira_account'] = user_info.display_name
 
+        # Only set cohesity_email if it's actually a cohesity.com domain
         if not account.get('cohesity_email') and user_info.email_address:
-            update_fields['cohesity_email'] = user_info.email_address
+            if '@cohesity.com' in user_info.email_address.lower():
+                update_fields['cohesity_email'] = user_info.email_address
+            else:
+                print(f"  Note: Skipping non-cohesity email: {user_info.email_address}")
 
         if not update_fields:
             print("\nNo fields need updating (already has JIRA ID and Cohesity email)")
