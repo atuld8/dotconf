@@ -12,6 +12,33 @@ DB_LOCK_DELAY = 0.5  # seconds
 # Invalid etrack_user_id values (placeholders, empty, etc.)
 INVALID_ETRACK_USER_IDS = {'-', 'n/a', 'na', 'none', 'null', 'unknown', 'unassigned', ''}
 
+# Valid values for manual_verified field
+VALID_VERIFICATION_STATUSES = {
+    'no',        # Not yet verified (default)
+    'yes',       # Verified and active
+    'invalid',   # Verified but entry has incorrect/bad data
+    'departed',  # Person left the organization
+    'pending',   # Verification in progress, awaiting response
+    'duplicate', # Duplicate entry (another record exists for same person)
+    'suspended', # Account temporarily inactive/on hold
+    'external',  # External contractor or vendor (different verification rules)
+}
+
+
+def is_valid_verification_status(status: str) -> bool:
+    """
+    Validate that manual_verified status is a valid value.
+
+    Args:
+        status: The verification status to validate
+
+    Returns:
+        True if valid, False otherwise
+    """
+    if not status:
+        return False
+    return status.strip().lower() in VALID_VERIFICATION_STATUSES
+
 
 def is_valid_etrack_user_id(etrack_user_id: str) -> bool:
     """
@@ -168,18 +195,34 @@ class AccountManager:
             cohesity_email: Cohesity email address
             community_account: Community account name
             jira_account: Jira account name
-            manual_verified: Manual verification status ('yes' or 'no', default: 'no')
+            manual_verified: Verification status. Valid values:
+                - 'no': Not yet verified (default)
+                - 'yes': Verified and active
+                - 'invalid': Verified but entry has incorrect/bad data
+                - 'departed': Person left the organization
+                - 'pending': Verification in progress
+                - 'duplicate': Duplicate entry
+                - 'suspended': Account temporarily inactive
+                - 'external': External contractor or vendor
             notes: Additional notes (multi-line text)
 
         Returns:
             ID of the newly created record
             
         Raises:
-            ValueError: If etrack_user_id is invalid (e.g., '-', 'N/A', empty)
+            ValueError: If etrack_user_id is invalid or manual_verified has invalid value
         """
         # Validate etrack_user_id
         if not is_valid_etrack_user_id(etrack_user_id):
             raise ValueError(f"Invalid etrack_user_id: '{etrack_user_id}' (cannot be empty, '-', 'N/A', etc.)")
+        
+        # Validate manual_verified
+        if not is_valid_verification_status(manual_verified):
+            valid_options = ', '.join(sorted(VALID_VERIFICATION_STATUSES))
+            raise ValueError(f"Invalid manual_verified value: '{manual_verified}'. Valid options: {valid_options}")
+        
+        # Normalize to lowercase
+        manual_verified = manual_verified.strip().lower()
         
         try:
             self.cursor.execute("""
@@ -204,9 +247,15 @@ class AccountManager:
             etrack_user_id: Etrack User ID to identify the record
             **kwargs: Fields to update (first_name, last_name, veritas_email, cohesity_email,
                      community_account, jira_account, manual_verified, notes)
+                     
+                     For manual_verified, valid values are:
+                     'no', 'yes', 'invalid', 'departed', 'pending', 'duplicate', 'suspended', 'external'
 
         Returns:
             True if update successful, False if record not found
+            
+        Raises:
+            ValueError: If manual_verified has invalid value
         """
         allowed_fields = ['first_name', 'last_name', 'veritas_email', 'cohesity_email',
                          'community_account', 'jira_account', 'manual_verified', 'notes']
@@ -214,6 +263,14 @@ class AccountManager:
 
         if not updates:
             return False
+
+        # Validate manual_verified if being updated
+        if 'manual_verified' in updates:
+            if not is_valid_verification_status(updates['manual_verified']):
+                valid_options = ', '.join(sorted(VALID_VERIFICATION_STATUSES))
+                raise ValueError(f"Invalid manual_verified value: '{updates['manual_verified']}'. Valid options: {valid_options}")
+            # Normalize to lowercase
+            updates['manual_verified'] = updates['manual_verified'].strip().lower()
 
         # Build UPDATE query dynamically
         set_clause = ", ".join([f"{field} = ?" for field in updates.keys()])

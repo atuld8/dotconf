@@ -188,7 +188,15 @@ echo "123456" | python3 -m account_manager.cli lookup-etrack-emails             
 - **Database Lock Handling**: Automatic retry on database locks
 
 ### Verification & Notes
-- **manual_verified**: Track whether account has been manually verified (yes/no)
+- **manual_verified**: Track account verification status:
+  - `no` - Not yet verified (default)
+  - `yes` - Verified and active
+  - `pending` - Verification in progress
+  - `invalid` - Verified but entry has incorrect data
+  - `departed` - Person left the organization
+  - `duplicate` - Duplicate entry exists
+  - `suspended` - Account temporarily inactive
+  - `external` - External contractor or vendor
 - **notes**: Free-form text field for additional information
 
 ## Database Schema

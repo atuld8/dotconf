@@ -48,7 +48,7 @@ python3 -m account_manager.cli delete john_doe
 ```bash
 python3 -m account_manager.cli list                   # All accounts
 python3 -m account_manager.cli list-incomplete        # Missing fields only
-python3 -m account_manager.cli list-pending-verify    # Complete but unverified
+python3 -m account_manager.cli list-pending-verify    # Complete with status 'no' or 'pending'
 ```
 
 ### Search
@@ -404,6 +404,14 @@ python3 -m account_manager.cli translate john.doe@vcompany.com jira_account
 python3 -m account_manager.cli get user_one
 python3 -m account_manager.cli update-verified user_one yes
 
+# Valid verification statuses:
+#   yes      - Verified and active (required for FI fixes)
+#   no       - Not yet verified (default)
+#   pending  - Verification in progress
+#   invalid  - Entry has incorrect data
+#   departed - Person left the organization
+#   duplicate, suspended, external
+
 # Step 2: Preview (dry-run)
 python3 -m account_manager.cli assign-etrack-fi 1234567 user_one --dry-run
 
@@ -546,8 +554,10 @@ python3 -m account_manager.cli validate-fi Query --mock
 # Check account status
 python3 -m account_manager.cli get user_one
 
-# Verify the account
+# Verify the account (must be 'yes' for FI operations)
 python3 -m account_manager.cli update-verified user_one yes
+
+# Other status options: no, pending, invalid, departed, duplicate, suspended, external
 ```
 
 ### "No FI found" (assign-etrack-fi)

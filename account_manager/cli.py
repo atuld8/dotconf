@@ -58,7 +58,9 @@ Fields (optional):
     veritas_email=<value>     Veritas email address
     cohesity_email=<value>    Cohesity email address
     community_account=<value> Community account name
-    manual_verified=<yes|no>  Manual verification status
+    manual_verified=<status>  Verification status:
+                              yes, no, pending, invalid, departed,
+                              duplicate, suspended, external
     notes=<value>             Free-form notes
 
 Examples:
@@ -88,7 +90,8 @@ Display accounts in various formats.
 Usage:
     python3 -m account_manager.cli list                  # All accounts (brief)
     python3 -m account_manager.cli list-incomplete       # Only incomplete accounts
-    python3 -m account_manager.cli list-pending-verify   # Complete but unverified
+    python3 -m account_manager.cli list-pending-verify   # Complete but pending verification
+                                                         # (shows 'no' and 'pending' status only)
 
 Examples:
     python3 -m account_manager.cli list
@@ -109,6 +112,7 @@ Report Types:
     full            Complete details of all accounts
     summary         Statistics and summary
     missing-fields  Accounts with incomplete data
+    verification    Breakdown by verification status
     table           Formatted table view
     compact         Compact table format
     markdown        Markdown-formatted table
@@ -412,16 +416,25 @@ Update Manual Verification Status
 Mark an account as manually verified or not.
 
 Usage:
-    python3 -m account_manager.cli update-verified <etrack_user_id> <yes|no>
+    python3 -m account_manager.cli update-verified <etrack_user_id> <status>
 
 Arguments:
     etrack_user_id    Account to update
-    yes|no           Verification status
+    status            Verification status (one of):
+                      - no        Not yet verified (default)
+                      - yes       Verified and active
+                      - pending   Verification in progress
+                      - invalid   Verified but entry has incorrect data
+                      - departed  Person left the organization
+                      - duplicate Duplicate entry exists
+                      - suspended Account temporarily inactive
+                      - external  External contractor or vendor
 
 Description:
-    Sets the manual_verified field to 'yes' or 'no'.
-    This field is used to indicate whether account data has been
-    manually reviewed and verified for accuracy.
+    Sets the manual_verified field.
+    - 'no' and 'pending': Account appears in list-pending-verify
+    - 'yes': Account is verified and can be used for FI fixes
+    - Other statuses: Account has been reviewed but is not active
 
 Examples:
     # Mark as verified
@@ -429,6 +442,15 @@ Examples:
 
     # Mark as not verified
     python3 -m account_manager.cli update-verified john_doe no
+
+    # Mark as pending verification
+    python3 -m account_manager.cli update-verified john_doe pending
+
+    # Mark as departed (person left org)
+    python3 -m account_manager.cli update-verified john_doe departed
+
+    # Mark as invalid data
+    python3 -m account_manager.cli update-verified john_doe invalid
 """)
 
     elif command == 'update-notes':
@@ -787,7 +809,8 @@ ACCOUNT MANAGEMENT
     update <etrack_user_id> [...]    Update account fields
     delete <etrack_user_id>          Delete account
     get <etrack_user_id>             Show account details
-    update-verified <id> <yes|no>    Update manual verification status
+    update-verified <id> <status>    Update verification status
+                                     (yes|no|pending|invalid|departed|...)
     update-notes <id> <notes>        Update notes field
 
     Type: help add, help update for detailed usage
@@ -799,7 +822,8 @@ VIEWING DATA
     search <field=value>             Search accounts by field
     report [type]                    Generate reports (see help report)
 
-    Report types: full, summary, missing-fields, table, compact, markdown
+    Report types: full, summary, missing-fields, table, compact, markdown,
+                  verification
 
 TRANSLATION
     translate <id> <field>           Convert between account identifiers
@@ -1187,8 +1211,9 @@ def main():
                     acc.get('cohesity_email') and
                     acc.get('community_account')
                 )
-                # Check if manual_verified is 'no' or not set
-                not_verified = acc.get('manual_verified', 'no') != 'yes'
+                # Check if manual_verified is 'no' or 'pending' (needs verification)
+                # Other statuses like 'invalid', 'departed', 'duplicate', etc. are already reviewed
+                not_verified = acc.get('manual_verified', 'no') in ('no', 'pending')
 
                 if has_all_fields and not_verified:
                     pending.append(acc)
@@ -1266,7 +1291,7 @@ def main():
                 report_type = 'missing-fields'
 
             # Validate report type
-            valid_types = ['full', 'summary', 'missing-fields', 'table', 'compact', 'markdown']
+            valid_types = ['full', 'summary', 'missing-fields', 'table', 'compact', 'markdown', 'verification']
             if report_type not in valid_types:
                 print(f"X Unknown report type: {report_type}")
                 print(f"  Valid types: {', '.join(valid_types)}")
@@ -2150,14 +2175,19 @@ def main():
         elif command == 'update-verified':
             # Update manual verification status
             if len(sys.argv) < 4:
-                print("Usage: cli.py update-verified <etrack_user_id> <yes|no>")
+                print("Usage: cli.py update-verified <etrack_user_id> <status>")
+                print("  Valid statuses: yes, no, pending, invalid, departed, duplicate, suspended, external")
                 return
 
             etrack_user_id = sys.argv[2]
-            verified_value = sys.argv[3].lower()
+            verified_value = sys.argv[3].lower().strip()
 
-            if verified_value not in ['yes', 'no']:
-                print("X Error: Verification value must be 'yes' or 'no'")
+            # Import valid statuses from models
+            from .models import VALID_VERIFICATION_STATUSES
+            if verified_value not in VALID_VERIFICATION_STATUSES:
+                valid_list = ', '.join(sorted(VALID_VERIFICATION_STATUSES))
+                print(f"X Error: Invalid status '{verified_value}'")
+                print(f"  Valid statuses: {valid_list}")
                 return
 
             account = db.get_account(etrack_user_id=etrack_user_id)

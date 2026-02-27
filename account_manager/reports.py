@@ -5,6 +5,8 @@ Report generation functionality for account data
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, List, Dict, Any
 
+from .models import VALID_VERIFICATION_STATUSES
+
 if TYPE_CHECKING:
     from .models import AccountManager
 
@@ -26,7 +28,7 @@ class ReportGenerator:
         Generate various reports
 
         Args:
-            report_type: Type of report ('full', 'summary', 'missing-fields', 'table')
+            report_type: Type of report ('full', 'summary', 'missing-fields', 'table', 'verification')
             show_notes: If True, include notes in the report output
 
         Returns:
@@ -40,6 +42,8 @@ class ReportGenerator:
             return self._generate_missing_fields_report(show_notes=show_notes)
         elif report_type == 'table':
             return self._generate_table_report(show_notes=show_notes)
+        elif report_type == 'verification':
+            return self._generate_verification_report()
         else:
             raise ValueError(f"Unknown report type: {report_type}")
 
@@ -125,6 +129,15 @@ class ReportGenerator:
         self.am.cursor.execute("SELECT COUNT(*) FROM accounts WHERE manual_verified = 'yes'")
         manually_verified = self.am.cursor.fetchone()[0]
 
+        # Get breakdown by verification status
+        self.am.cursor.execute("""
+            SELECT COALESCE(manual_verified, 'no') as status, COUNT(*) as count
+            FROM accounts
+            GROUP BY COALESCE(manual_verified, 'no')
+            ORDER BY count DESC
+        """)
+        verification_breakdown = {row[0]: row[1] for row in self.am.cursor.fetchall()}
+
         self.am.cursor.execute("SELECT COUNT(*) FROM accounts WHERE notes IS NOT NULL AND notes != ''")
         with_notes = self.am.cursor.fetchone()[0]
 
@@ -144,8 +157,16 @@ class ReportGenerator:
             report.append(f"With Cohesity Email:        {with_cohesity} ({with_cohesity/total*100:.1f}%)")
             report.append(f"With Community Account:     {with_community} ({with_community/total*100:.1f}%)")
             report.append(f"With Jira Account:          {with_jira} ({with_jira/total*100:.1f}%)")
-            report.append(f"Manually Verified:          {manually_verified} ({manually_verified/total*100:.1f}%)")
+            report.append(f"Manually Verified (yes):    {manually_verified} ({manually_verified/total*100:.1f}%)")
             report.append(f"With Notes:                 {with_notes} ({with_notes/total*100:.1f}%)")
+            
+            # Show verification status breakdown
+            report.append("")
+            report.append("Verification Status Breakdown:")
+            for status in sorted(VALID_VERIFICATION_STATUSES):
+                count = verification_breakdown.get(status, 0)
+                if count > 0 or status in ('yes', 'no'):
+                    report.append(f"  {status:<12}              {count} ({count/total*100:.1f}%)")
         else:
             report.append("With First Name:            0 (0.0%)")
             report.append("With Last Name:             0 (0.0%)")
@@ -154,11 +175,76 @@ class ReportGenerator:
             report.append("With Cohesity Email:        0 (0.0%)")
             report.append("With Community Account:     0 (0.0%)")
             report.append("With Jira Account:          0 (0.0%)")
-            report.append("Manually Verified:          0 (0.0%)")
+            report.append("Manually Verified (yes):    0 (0.0%)")
             report.append("With Notes:                 0 (0.0%)")
 
         report.append("=" * 60)
 
+        return "\n".join(report)
+
+    def _generate_verification_report(self) -> str:
+        """Generate a report showing accounts grouped by verification status"""
+        accounts = self.am.get_all_accounts()
+        
+        if not accounts:
+            return "No accounts found"
+        
+        # Group accounts by verification status
+        by_status = {}
+        for acc in accounts:
+            status = acc.get('manual_verified', 'no') or 'no'
+            if status not in by_status:
+                by_status[status] = []
+            by_status[status].append(acc)
+        
+        report = []
+        report.append("=" * 80)
+        report.append("VERIFICATION STATUS REPORT")
+        report.append("=" * 80)
+        report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report.append(f"Total Accounts: {len(accounts)}")
+        report.append("")
+        
+        # Summary table
+        report.append("Status Summary:")
+        report.append("-" * 40)
+        for status in sorted(VALID_VERIFICATION_STATUSES):
+            count = len(by_status.get(status, []))
+            pct = (count / len(accounts) * 100) if accounts else 0
+            bar = "#" * int(pct / 5)  # Visual bar (20 chars max)
+            report.append(f"  {status:<12} {count:>4} ({pct:>5.1f}%)  {bar}")
+        report.append("-" * 40)
+        report.append("")
+        
+        # Status descriptions
+        status_desc = {
+            'no': 'Not yet verified (default)',
+            'yes': 'Verified and active',
+            'pending': 'Verification in progress',
+            'invalid': 'Entry has incorrect data',
+            'departed': 'Person left org',
+            'duplicate': 'Duplicate entry',
+            'suspended': 'Temporarily inactive',
+            'external': 'External contractor/vendor'
+        }
+        
+        # Detail by status (only show statuses that have accounts)
+        for status in ['no', 'pending', 'yes', 'invalid', 'departed', 'duplicate', 'suspended', 'external']:
+            if status not in by_status or not by_status[status]:
+                continue
+            
+            accs = by_status[status]
+            report.append("=" * 80)
+            report.append(f"{status.upper()} - {status_desc.get(status, '')} ({len(accs)} accounts)")
+            report.append("=" * 80)
+            
+            for acc in accs:
+                report.append(f"  {acc['etrack_user_id']:<20} {acc.get('first_name', '') or '':<15} {acc.get('last_name', '') or '':<15} {acc.get('jira_account', '') or 'N/A'}")
+                if acc.get('notes'):
+                    notes_preview = acc['notes'].replace('\n', ' ')[:60]
+                    report.append(f"    Notes: {notes_preview}..." if len(acc.get('notes', '')) > 60 else f"    Notes: {notes_preview}")
+            report.append("")
+        
         return "\n".join(report)
 
     def _generate_missing_fields_report(self, show_notes: bool = False) -> str:
