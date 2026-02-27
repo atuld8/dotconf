@@ -50,7 +50,7 @@ class JiraIdFetcher:
             JiraUserInfo if user found, None otherwise
         """
         self.last_search_was_conflict = False  # Reset flag
-        
+
         if not first_name or not last_name:
             print("Warning: Both first name and last name are required")
             return None
@@ -144,11 +144,11 @@ class JiraIdFetcher:
             # Check for exact name match
             is_exact_name = (display_name == expected_name)
             is_cohesity_email = '@cohesity.com' in user_email
-            
+
             # Exact name + cohesity email (highest priority)
             if is_exact_name and is_cohesity_email:
                 exact_name_with_cohesity.append(user)
-            
+
             # Exact name match
             if is_exact_name:
                 exact_name_matches.append(user)
@@ -159,7 +159,7 @@ class JiraIdFetcher:
 
         # Return match ONLY if there's exactly ONE unambiguous candidate
         # If multiple matches at any level, return None (conflict)
-        
+
         if len(exact_name_with_cohesity) == 1:
             return exact_name_with_cohesity[0]
         elif len(exact_name_with_cohesity) > 1:
