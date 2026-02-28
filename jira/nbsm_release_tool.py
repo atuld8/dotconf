@@ -353,6 +353,33 @@ class GitExtractor:
             # Prepend the commit ref as starting point
             return [from_tag] + tags_in_range
 
+    def tag_exists(self, tag: str) -> bool:
+        """Check if a tag exists in the repository."""
+        try:
+            self._run_git('rev-parse', '--verify', f'refs/tags/{tag}')
+            return True
+        except RuntimeError:
+            return False
+
+    def ref_exists(self, ref: str) -> bool:
+        """Check if a ref (tag or commit) exists in the repository."""
+        try:
+            self._run_git('rev-parse', '--verify', ref)
+            return True
+        except RuntimeError:
+            return False
+
+    def validate_ref(self, ref: str, ref_name: str = 'reference') -> None:
+        """Validate that a ref exists, raising ValueError if not."""
+        if TAG_PATTERN.match(ref):
+            # It's a tag format - check if tag exists
+            if not self.tag_exists(ref):
+                raise ValueError(f"Tag not found in repository: {ref}")
+        else:
+            # It's a commit or other ref
+            if not self.ref_exists(ref):
+                raise ValueError(f"Invalid {ref_name} (not found): {ref}")
+
     def get_commits_between(self, from_ref: str, to_ref: str) -> str:
         """Get git log between two refs (full commit messages)."""
         return self._run_git('log', f'{from_ref}..{to_ref}', '--pretty=format:%H %s%n%b')
@@ -421,11 +448,16 @@ class ReleaseProcessor:
 
         return jira_repos
 
-    def walk_tag_range(self, from_tag: str, to_tag: str) -> OrderedDict:
+    def walk_tag_range(self, from_tag: str, to_tag: str, base_ref: str = None) -> OrderedDict:
         """Walk through tag range and extract Jiras for each step.
 
         If a Jira appears in multiple tag ranges, it is assigned to the
         HIGHEST (latest) build number.
+
+        Args:
+            from_tag: Starting tag (e.g., NBSM_2.8_0001)
+            to_tag: Ending tag (e.g., NBSM_2.8_0010)
+            base_ref: Optional base commit/tag for what went INTO from_tag
 
         Returns:
             OrderedDict: {to_tag: [jira_ids]} for each tag pair
@@ -433,12 +465,20 @@ class ReleaseProcessor:
         # Get tags in range from first extractor
         tags = self.extractors[0].get_tags_in_range(from_tag, to_tag)
 
-        if len(tags) < 2:
-            raise ValueError(f"Need at least 2 tags in range, found: {tags}")
+        if len(tags) < 1:
+            raise ValueError(f"Need at least 1 tag in range, found: {tags}")
 
         # Track Jira -> latest tag mapping (higher tag wins)
         jira_to_tag: Dict[str, str] = {}
 
+        # If base_ref provided, extract Jiras that went INTO the first tag
+        if base_ref:
+            first_tag = tags[0]
+            jira_repos = self.extract_jiras_single(base_ref, first_tag)
+            for jira in jira_repos.keys():
+                jira_to_tag[jira] = first_tag
+
+        # Walk through consecutive tag pairs
         for i in range(len(tags) - 1):
             tag_from = tags[i]
             tag_to = tags[i + 1]
@@ -451,7 +491,8 @@ class ReleaseProcessor:
 
         # Invert mapping: tag -> list of Jiras
         result = OrderedDict()
-        for tag in tags[1:]:  # Skip the from_tag, only include to_tags
+        # Include all tags (including first if base_ref was used)
+        for tag in tags:
             result[tag] = []
 
         for jira, tag in jira_to_tag.items():
@@ -473,11 +514,84 @@ class ReleaseProcessor:
 
         Args:
             jiras_by_tag: Dict mapping tag to list of Jira IDs
-            format: 'table', 'json', 'csv', 'markdown'
+            format: 'table', 'json', 'csv', 'markdown', 'club'
             fetch_details: Whether to fetch Jira details from API
         """
+        # For JSON, CSV and club with details, we need to collect all data first
+        if format in ('json', 'csv', 'club') and fetch_details:
+            all_data = []
+            for tag, jiras in jiras_by_tag.items():
+                if jiras:
+                    details = self.get_issue_details(jiras)
+                    for issue in details:
+                        fields = issue.get('fields', {})
+                        all_data.append({
+                            'build': tag,
+                            'key': issue.get('key', ''),
+                            'summary': fields.get('summary', ''),
+                            'status': fields.get('status', {}).get('name', ''),
+                            'assignee': (fields.get('assignee', {}).get('displayName', 'Unassigned')
+                                        if fields.get('assignee') else 'Unassigned'),
+                            'priority': fields.get('priority', {}).get('name', ''),
+                        })
+
+            if format == 'json':
+                return json.dumps(all_data, indent=2)
+            elif format == 'csv':
+                lines = ['Build,Key,Summary,Status,Assignee,Priority']
+                for row in all_data:
+                    # Escape quotes in summary
+                    summary = row['summary'].replace('"', '""')
+                    lines.append(f'"{row["build"]}","{row["key"]}","{summary}","{row["status"]}","{row["assignee"]}","{row["priority"]}"')
+                return '\n'.join(lines)
+            elif format == 'club':
+                if HAS_TABULATE:
+                    rows = []
+                    for row in all_data:
+                        summary = (row['summary'][:80] + '...') if len(row['summary']) > 80 else row['summary']
+                        rows.append([
+                            row['build'],
+                            row['key'],
+                            row['status'],
+                            row['assignee'],
+                            row['priority'],
+                            summary,
+                        ])
+                    return tabulate(
+                        rows,
+                        headers=['Build', 'Key', 'Status', 'Assignee', 'Priority', 'Summary'],
+                        tablefmt='simple'
+                    )
+                else:
+                    lines = []
+                    for row in all_data:
+                        lines.append(f"{row['build']}  {row['key']}  {row['status']}  {row['assignee']}  {row['priority']}  {row['summary'][:80]}")
+                    return '\n'.join(lines)
+
         if format == 'json':
             return json.dumps(jiras_by_tag, indent=2)
+
+        # CSV without details - simple format
+        if format == 'csv':
+            lines = ['Build,Key']
+            for tag, jiras in jiras_by_tag.items():
+                for jira in jiras:
+                    lines.append(f'"{tag}","{jira}"')
+            return '\n'.join(lines)
+
+        # Club without details - simple table
+        if format == 'club':
+            rows = []
+            for tag, jiras in jiras_by_tag.items():
+                for jira in jiras:
+                    rows.append([tag, jira])
+            if HAS_TABULATE:
+                return tabulate(rows, headers=['Build', 'Key'], tablefmt='simple')
+            else:
+                lines = []
+                for row in rows:
+                    lines.append(f"{row[0]}  {row[1]}")
+                return '\n'.join(lines)
 
         lines = []
         all_jiras = []
@@ -500,8 +614,8 @@ class ReleaseProcessor:
                         fields = issue.get('fields', {})
                         rows.append([
                             issue.get('key', ''),
-                            (fields.get('summary', '')[:60] + '...')
-                                if len(fields.get('summary', '')) > 60
+                            (fields.get('summary', '')[:80] + '...')
+                                if len(fields.get('summary', '')) > 80
                                 else fields.get('summary', ''),
                             fields.get('status', {}).get('name', ''),
                             fields.get('assignee', {}).get('displayName', 'Unassigned')
@@ -518,7 +632,13 @@ class ReleaseProcessor:
                 elif format == 'markdown':
                     for issue in details:
                         fields = issue.get('fields', {})
-                        lines.append(f"- **{issue.get('key')}**: {fields.get('summary', '')}")
+                        key = issue.get('key', '')
+                        summary = fields.get('summary', '')
+                        status = fields.get('status', {}).get('name', '')
+                        assignee = (fields.get('assignee', {}).get('displayName', 'Unassigned')
+                                   if fields.get('assignee') else 'Unassigned')
+                        priority = fields.get('priority', {}).get('name', '')
+                        lines.append(f"- **{key}**: {summary} ({status}, {assignee}, {priority})")
                 else:
                     for issue in details:
                         fields = issue.get('fields', {})
@@ -662,9 +782,17 @@ EXTRACT-JIRAS - Extract Jira IDs from git
   # Walk entire range (process all intermediate tags)
   %(prog)s extract-jiras --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
 
-  # Use commit hash as start (when first tag has no predecessor)
-  %(prog)s extract-jiras --from abc1234 --to NBSM_2.9_0001
-  %(prog)s extract-jiras --from abc1234 --to NBSM_2.9_0005 --walk-range
+  # Full version range - auto-resolve first to latest tag
+  %(prog)s extract-jiras --full-range NBSM_2.9 --walk-range
+  %(prog)s extract-jiras --full-range NBSVRUP_3.0 --walk-range
+
+  # Include what went INTO the first tag (using explicit base)
+  %(prog)s extract-jiras --from NBSM_2.8_0001 --to NBSM_2.8_0010 --base NBSM_2.7_0050 --walk-range
+  %(prog)s extract-jiras --full-range NBSM_2.8 --base abc1234 --walk-range
+
+  # Auto-detect base from previous version (NBSM_2.7's last tag)
+  %(prog)s extract-jiras --from NBSM_2.8_0001 --to NBSM_2.8_0010 --auto-base --walk-range
+  %(prog)s extract-jiras --full-range NBSM_2.8 --auto-base --walk-range
 
   # Output as JSON
   %(prog)s extract-jiras --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --format json
@@ -679,6 +807,12 @@ REPORT - Generate Jira report
 
   # Walk range and show all builds
   %(prog)s report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+
+  # Full version range with auto-base (includes first tag's Jiras)
+  %(prog)s report --full-range NBSM_2.8 --auto-base --walk-range --format club
+
+  # Full version range - auto-resolve first to latest tag
+  %(prog)s report --full-range NBSM_2.9 --walk-range --format club
 
   # Markdown format (for release notes)
   %(prog)s report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --format markdown
@@ -786,6 +920,12 @@ ENVIRONMENT VARIABLES
         p.add_argument('--tag', help='Single tag (compare with predecessor)')
         p.add_argument('--from', dest='from_tag', help='Starting tag')
         p.add_argument('--to', dest='to_tag', help='Ending tag')
+        p.add_argument('--full-range', dest='full_range',
+                       help='Version series (e.g., NBSM_2.9) - auto-resolve first to latest tag')
+        p.add_argument('--base', dest='base_ref',
+                       help='Base commit/tag for first build (what went INTO first tag)')
+        p.add_argument('--auto-base', action='store_true',
+                       help='Auto-detect base from previous version (e.g., last tag of NBSM_2.7 for NBSM_2.8)')
         p.add_argument('--walk-range', action='store_true',
                        help='Process all intermediate tags in range')
         p.add_argument('--commits', type=int, help='Last N commits instead of tags')
@@ -816,7 +956,7 @@ ENVIRONMENT VARIABLES
         description='Generate a report showing Jira details for tickets found in git history.')
     add_common_args(p_report)
     add_range_args(p_report)
-    p_report.add_argument('--format', choices=['table', 'json', 'csv', 'markdown'],
+    p_report.add_argument('--format', choices=['table', 'json', 'csv', 'markdown', 'club'],
                           default='table', help='Output format (default: table)')
     p_report.add_argument('--no-fetch', action='store_true',
                           help='Skip fetching Jira details (just show IDs)')
@@ -875,23 +1015,132 @@ and update Jira tickets with build ID and labels. This is the recommended comman
     return parser.parse_args()
 
 
-def resolve_tags(args, extractor: GitExtractor) -> Tuple[str, str]:
-    """Resolve from_tag and to_tag from arguments."""
+def validate_jira_ids(jira_ids: List[str]) -> None:
+    """Validate Jira ID format."""
+    invalid = []
+    for jira_id in jira_ids:
+        if not JIRA_PATTERN.match(jira_id):
+            invalid.append(jira_id)
+    if invalid:
+        raise ValueError(f"Invalid Jira ID format: {', '.join(invalid)}. Expected: NBU-NNNNN")
+
+
+def resolve_tags(args, extractor: GitExtractor) -> Tuple[str, str, Optional[str]]:
+    """Resolve from_tag, to_tag, and base_ref from arguments.
+
+    Returns:
+        Tuple of (from_tag, to_tag, base_ref) where base_ref is optional
+    """
+    base_ref = None
+
+    # Handle explicit --base
+    if hasattr(args, 'base_ref') and args.base_ref:
+        base_ref = args.base_ref
+        extractor.validate_ref(base_ref, 'base')
+
     if args.tag:
         to_tag = args.tag
+        extractor.validate_ref(to_tag, 'tag')  # Validate tag exists
         from_tag = extractor.get_previous_tag(to_tag)
         if not from_tag:
             raise ValueError(f"Could not find predecessor for tag: {to_tag}")
-        return from_tag, to_tag
+        return from_tag, to_tag, base_ref
+
+    # Handle --full-range (e.g., NBSM_2.9)
+    if hasattr(args, 'full_range') and args.full_range:
+        version_spec = args.full_range
+        # Parse prefix_version format (e.g., NBSM_2.9 or NBSVRUP_3.0)
+        match = re.match(r'^(NBSM|NBSVRUP)_([0-9]+\.[0-9]+)$', version_spec)
+        if not match:
+            raise ValueError(f"Invalid version format: {version_spec}. Expected: NBSM_X.Y or NBSVRUP_X.Y")
+
+        prefix, version = match.groups()
+        matching_tags = extractor.list_matching_tags(prefix=prefix, version=version)
+
+        if not matching_tags:
+            raise ValueError(f"No tags found for {version_spec}")
+
+        # matching_tags is sorted by build number: [(tag, build_num), ...]
+        from_tag = matching_tags[0][0]   # First tag (lowest build num)
+        to_tag = matching_tags[-1][0]    # Last tag (highest build num)
+
+        # Handle --auto-base: find last tag of previous version
+        if hasattr(args, 'auto_base') and args.auto_base and not base_ref:
+            # Parse current version to find previous
+            major, minor = version.split('.')
+            prev_version = None
+
+            # Try previous minor version first (e.g., 2.8 -> 2.7)
+            if int(minor) > 0:
+                prev_version = f"{major}.{int(minor) - 1}"
+            else:
+                # Try previous major version last minor (e.g., 3.0 -> 2.x)
+                prev_major = int(major) - 1
+                if prev_major >= 0:
+                    # Find highest minor version of previous major
+                    all_tags = extractor.list_matching_tags(prefix=prefix)
+                    prev_majors = [t for t, _ in all_tags if t.startswith(f"{prefix}_{prev_major}.")]
+                    if prev_majors:
+                        # Extract version from first matching tag
+                        m = TAG_PATTERN.match(prev_majors[-1])
+                        if m:
+                            prev_version = m.group(2)
+
+            if prev_version:
+                prev_tags = extractor.list_matching_tags(prefix=prefix, version=prev_version)
+                if prev_tags:
+                    base_ref = prev_tags[-1][0]  # Last tag of previous version
+                    print(f"Auto-detected base: {base_ref}")
+
+        print(f"Resolved {version_spec} -> {from_tag} to {to_tag} ({len(matching_tags)} tags)")
+        if base_ref:
+            print(f"Using base ref: {base_ref} (for commits INTO {from_tag})")
+        return from_tag, to_tag, base_ref
 
     if args.from_tag and args.to_tag:
-        return args.from_tag, args.to_tag
+        extractor.validate_ref(args.to_tag, 'to_tag')  # Validate to_tag exists
+        extractor.validate_ref(args.from_tag, 'from_tag')  # Validate from_tag exists
+
+        from_tag = args.from_tag
+        to_tag = args.to_tag
+
+        # Handle --auto-base: find predecessor of from_tag
+        if hasattr(args, 'auto_base') and args.auto_base and not base_ref:
+            # Parse from_tag to find prefix/version
+            from_match = TAG_PATTERN.match(from_tag)
+            if from_match:
+                prefix, version, _ = from_match.groups()
+                # Find last tag of previous version
+                major, minor = version.split('.')
+                prev_version = None
+
+                if int(minor) > 0:
+                    prev_version = f"{major}.{int(minor) - 1}"
+                else:
+                    prev_major = int(major) - 1
+                    if prev_major >= 0:
+                        all_tags = extractor.list_matching_tags(prefix=prefix)
+                        prev_majors = [t for t, _ in all_tags if t.startswith(f"{prefix}_{prev_major}.")]
+                        if prev_majors:
+                            m = TAG_PATTERN.match(prev_majors[-1])
+                            if m:
+                                prev_version = m.group(2)
+
+                if prev_version:
+                    prev_tags = extractor.list_matching_tags(prefix=prefix, version=prev_version)
+                    if prev_tags:
+                        base_ref = prev_tags[-1][0]
+                        print(f"Auto-detected base: {base_ref}")
+
+        if base_ref:
+            print(f"Using base ref: {base_ref} (for commits INTO {from_tag})")
+        return from_tag, to_tag, base_ref
 
     if hasattr(args, 'commits') and args.commits:
-        return None, None  # Will use commits mode
+        return None, None, None  # Will use commits mode
 
     if hasattr(args, 'since') and args.since:
-        return None, None  # Will use since mode
+        return None, None, None  # Will use since mode
 
     # Default: latest tag vs predecessor
     to_tag = extractor.get_latest_tag()
@@ -901,7 +1150,7 @@ def resolve_tags(args, extractor: GitExtractor) -> Tuple[str, str]:
     if not from_tag:
         raise ValueError(f"Could not find predecessor for tag: {to_tag}")
 
-    return from_tag, to_tag
+    return from_tag, to_tag, base_ref
 
 
 def main():
@@ -955,10 +1204,10 @@ def main():
         # =====================================================================
         elif args.command == 'extract-jiras':
             extractor = processor.extractors[0]
-            from_tag, to_tag = resolve_tags(args, extractor)
+            from_tag, to_tag, base_ref = resolve_tags(args, extractor)
 
             if hasattr(args, 'walk_range') and args.walk_range:
-                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag)
+                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag, base_ref)
             else:
                 jiras = list(processor.extract_jiras_single(from_tag, to_tag).keys())
                 jiras_by_tag = {to_tag: jiras}
@@ -981,10 +1230,10 @@ def main():
         # =====================================================================
         elif args.command == 'report':
             extractor = processor.extractors[0]
-            from_tag, to_tag = resolve_tags(args, extractor)
+            from_tag, to_tag, base_ref = resolve_tags(args, extractor)
 
             if hasattr(args, 'walk_range') and args.walk_range:
-                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag)
+                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag, base_ref)
             else:
                 jiras = list(processor.extract_jiras_single(from_tag, to_tag).keys())
                 jiras_by_tag = {to_tag: jiras}
@@ -1004,6 +1253,7 @@ def main():
                 print("Error: No Jira IDs provided")
                 sys.exit(1)
 
+            validate_jira_ids(args.jiras)
             jiras_by_tag = {args.build_id: args.jiras}
             processor.update_jiras(
                 jiras_by_tag,
@@ -1018,19 +1268,21 @@ def main():
         # =====================================================================
         elif args.command == 'process':
             extractor = processor.extractors[0]
-            from_tag, to_tag = resolve_tags(args, extractor)
+            from_tag, to_tag, base_ref = resolve_tags(args, extractor)
 
             print(f"{'='*60}")
             print("NBSM Release Tool - Process")
             print(f"{'='*60}")
             print(f"Repository: {repos[0]}")
             print(f"Tag range: {from_tag} -> {to_tag}")
+            if base_ref:
+                print(f"Base ref: {base_ref}")
             print(f"Walk range: {args.walk_range}")
             print()
 
             # Extract
             if hasattr(args, 'walk_range') and args.walk_range:
-                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag)
+                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag, base_ref)
             else:
                 jiras = list(processor.extract_jiras_single(from_tag, to_tag).keys())
                 jiras_by_tag = {to_tag: jiras}
@@ -1060,10 +1312,10 @@ def main():
         # =====================================================================
         elif args.command == 'validate':
             extractor = processor.extractors[0]
-            from_tag, to_tag = resolve_tags(args, extractor)
+            from_tag, to_tag, base_ref = resolve_tags(args, extractor)
 
             if hasattr(args, 'walk_range') and args.walk_range:
-                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag)
+                jiras_by_tag = processor.walk_tag_range(from_tag, to_tag, base_ref)
             else:
                 jiras = list(processor.extract_jiras_single(from_tag, to_tag).keys())
                 jiras_by_tag = {to_tag: jiras}
@@ -1098,7 +1350,7 @@ def main():
         # =====================================================================
         elif args.command == 'check-commits':
             extractor = processor.extractors[0]
-            from_tag, to_tag = resolve_tags(args, extractor)
+            from_tag, to_tag, _ = resolve_tags(args, extractor)
 
             bad_commits = extractor.get_commits_without_jira(from_tag, to_tag)
 
