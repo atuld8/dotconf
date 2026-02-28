@@ -573,6 +573,47 @@ Examples:
     python3 -m account_manager.cli fetch-jira-id john_doe --dry-run
 """)
 
+    elif command == 'auto-update':
+        print("""
+Auto-Update Account
+====================
+Automatically fetch and update all available account information.
+
+Usage:
+    python3 -m account_manager.cli auto-update <etrack_user_id> [options]
+
+Arguments:
+    etrack_user_id    The etrack user ID to update
+
+Options:
+    --dry-run    Show what would be updated without making changes
+    --verbose    Show detailed progress information
+    --mock       Use mock JIRA client (for testing)
+
+Description:
+    Performs the following steps in sequence:
+    1. Fetch Veritas email, first_name, last_name via euserls
+       (Also derives community_account from email)
+    2. Fetch JIRA account ID using first/last name
+       (Also fetches cohesity_email from JIRA profile)
+
+    Stops if any step fails. Safe to re-run - skips fields already populated.
+
+Examples:
+    # Full auto-update
+    python3 -m account_manager.cli auto-update john_doe
+
+    # Preview changes without applying
+    python3 -m account_manager.cli auto-update john_doe --dry-run
+
+    # With detailed output
+    python3 -m account_manager.cli auto-update john_doe --verbose
+
+Equivalent to running:
+    python3 -m account_manager.cli fetch-email john_doe
+    python3 -m account_manager.cli fetch-jira-id john_doe
+""")
+
     elif command == 'assign-etrack-fi':
         print("""
 Assign Etrack and FI
@@ -869,6 +910,12 @@ JIRA ID UPDATE
     Also fetches: cohesity_email (from JIRA)
     Options: --dry-run, --verbose, --mock
 
+AUTO-UPDATE (Combined)
+    auto-update <etrack_user_id>     Fetch email + JIRA ID in one step
+
+    Combines: fetch-email + fetch-jira-id for a single user
+    Options: --dry-run, --verbose, --mock
+
 EMAIL LOOKUP (Batch)
     lookup-etrack-emails [options]   Lookup emails for Etrack IDs, FI IDs, or usernames
 
@@ -938,6 +985,7 @@ Examples:
     python3 -m account_manager.cli help validate-fi
     python3 -m account_manager.cli help import
     python3 -m account_manager.cli help update
+    python3 -m account_manager.cli help auto-update
 """)
 
 
@@ -2325,6 +2373,130 @@ def main():
             except RuntimeError as e:
                 print(f"X Error: {e}")
 
+        elif command == 'auto-update':
+            # Handle help flag
+            if len(sys.argv) > 2 and sys.argv[2] in ['-h', '--help']:
+                print_usage('auto-update')
+                return
+            # Auto-update: fetch-email + fetch-jira-id in one step
+            if len(sys.argv) < 3:
+                print("Usage: cli.py auto-update <etrack_user_id> [--dry-run] [--verbose] [--mock]")
+                return
+
+            etrack_user_id = sys.argv[2]
+            dry_run = '--dry-run' in sys.argv
+            verbose = '--verbose' in sys.argv
+            use_mock = '--mock' in sys.argv
+
+            print(f"Auto-Update Account: {etrack_user_id}")
+            print("=" * 60)
+            if dry_run:
+                print("DRY RUN MODE - No changes will be made")
+            if verbose:
+                print("VERBOSE MODE - Detailed output enabled")
+            print("=" * 60)
+
+            # Check if account exists
+            account = db.get_account(etrack_user_id=etrack_user_id)
+            if not account:
+                print(f"X Account not found: {etrack_user_id}")
+                print(f"  Add it first: python3 -m account_manager.cli add {etrack_user_id}")
+                return
+
+            # Track what was updated
+            updated_fields = []
+            errors = []
+
+            # Step 1: Fetch email/names using euserls
+            print("\n[Step 1/2] Fetching Veritas email and names...")
+            needs_email = not account.get('veritas_email')
+            needs_names = not (account.get('first_name') and account.get('last_name'))
+
+            if needs_email or needs_names:
+                try:
+                    updater = EuserlsUpdater(db, verbose=verbose)
+                    success = updater.update_single_account(etrack_user_id, dry_run=dry_run)
+                    if success:
+                        if needs_email:
+                            updated_fields.append('veritas_email')
+                        if needs_names:
+                            updated_fields.extend(['first_name', 'last_name'])
+                        updated_fields.append('community_account')
+                        print("  + Email/names fetched successfully")
+                    else:
+                        errors.append('euserls lookup failed')
+                        print("  X Failed to fetch email/names")
+                except Exception as e:
+                    errors.append(f'euserls error: {e}')
+                    print(f"  X Error: {e}")
+            else:
+                print(f"  - Already has: veritas_email, first_name, last_name")
+                if verbose:
+                    print(f"    Email: {account.get('veritas_email')}")
+                    print(f"    Name: {account.get('first_name')} {account.get('last_name')}")
+
+            # Refresh account data for step 2
+            account = db.get_account(etrack_user_id=etrack_user_id)
+
+            # Step 2: Fetch JIRA ID using names
+            print("\n[Step 2/2] Fetching JIRA account ID...")
+            needs_jira = not account.get('jira_account')
+            has_names = account.get('first_name') and account.get('last_name')
+
+            if needs_jira and has_names:
+                try:
+                    jira_updater = JiraIdUpdater(db, verbose=verbose, use_mock=use_mock)
+                    success = jira_updater.update_single_account(etrack_user_id, dry_run=dry_run)
+                    if success:
+                        updated_fields.append('jira_account')
+                        # Cohesity email might also have been updated
+                        refreshed = db.get_account(etrack_user_id=etrack_user_id)
+                        if refreshed.get('cohesity_email') and not account.get('cohesity_email'):
+                            updated_fields.append('cohesity_email')
+                        print("  + JIRA ID fetched successfully")
+                    else:
+                        errors.append('JIRA lookup failed or conflicts found')
+                        print("  X Failed to fetch JIRA ID (see details above)")
+                except Exception as e:
+                    errors.append(f'JIRA error: {e}')
+                    print(f"  X Error: {e}")
+            elif not has_names:
+                errors.append('Missing first_name/last_name for JIRA lookup')
+                print("  X Cannot fetch JIRA ID - missing first_name or last_name")
+            else:
+                print(f"  - Already has: jira_account = {account.get('jira_account')}")
+
+            # Summary
+            print("\n" + "=" * 60)
+            print("SUMMARY")
+            print("=" * 60)
+
+            if updated_fields:
+                print(f"Fields updated: {', '.join(set(updated_fields))}")
+            else:
+                print("No fields updated (already populated or errors)")
+
+            if errors:
+                print(f"Errors: {len(errors)}")
+                for err in errors:
+                    print(f"  - {err}")
+
+            # Show final account state
+            final_account = db.get_account(etrack_user_id=etrack_user_id)
+            if verbose or updated_fields:
+                print("\nCurrent account state:")
+                print(f"  Etrack User ID:    {final_account['etrack_user_id']}")
+                print(f"  First Name:        {final_account.get('first_name') or '(missing)'}")
+                print(f"  Last Name:         {final_account.get('last_name') or '(missing)'}")
+                print(f"  Veritas Email:     {final_account.get('veritas_email') or '(missing)'}")
+                print(f"  Cohesity Email:    {final_account.get('cohesity_email') or '(missing)'}")
+                print(f"  Community Account: {final_account.get('community_account') or '(missing)'}")
+                print(f"  JIRA Account:      {final_account.get('jira_account') or '(missing)'}")
+                print(f"  Manual Verified:   {final_account.get('manual_verified', 'no')}")
+
+            if dry_run:
+                print("\nRun without --dry-run to apply changes")
+
         elif command == 'assign-etrack-fi':
             # Assign etrack to user and update linked FI in Jira
             if len(sys.argv) < 4:
@@ -2938,10 +3110,10 @@ def main():
             print("                    export, import, export-log, import-log,")
             print("                    validate-fi, check-assignee, assign-etrack-fi,")
             print("                    update-emails, fetch-email, update-jira-ids,")
-            print("                    fetch-jira-id, update-verified, update-notes,")
-            print("                    action-log, action-summary, action-history,")
-            print("                    action-clear, lookup-etrack-emails, config,")
-            print("                    demo, help")
+            print("                    fetch-jira-id, auto-update, update-verified,")
+            print("                    update-notes, action-log, action-summary,")
+            print("                    action-history, action-clear, lookup-etrack-emails,")
+            print("                    config, demo, help")
             print("\nFor detailed help: python3 -m account_manager.cli help [command]")
 
     except DatabaseLockedError as e:

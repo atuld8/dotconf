@@ -92,6 +92,20 @@ python3 -m account_manager.cli fetch-email john_doe
 python3 -m account_manager.cli fetch-email john_doe --dry-run
 ```
 
+### 3. Auto-Update Single User (Email + JIRA ID)
+
+Combine email fetch with JIRA ID lookup in one command:
+
+```bash
+# Fetch email, then JIRA ID (using names from euserls)
+python3 -m account_manager.cli auto-update john_doe
+
+# Preview only
+python3 -m account_manager.cli auto-update john_doe --dry-run
+```
+
+**Note:** This runs `fetch-email` first, then `fetch-jira-id` using the fetched names.
+
 **Example Output:**
 ```
 Fetching email for: john_doe

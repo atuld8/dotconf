@@ -9,7 +9,7 @@ python3 -m account_manager.cli help
 python3 -m account_manager.cli help <command>
 python3 -m account_manager.cli <command> -h     # Quick help for any command
 
-# Available: help add, help update, help import, help import-log, help export-log, help validate-fi, help report, help list
+# Available: help add, help update, help import, help import-log, help export-log, help validate-fi, help report, help list, help auto-update
 ```
 
 ---
@@ -231,6 +231,33 @@ python3 -m account_manager.cli fetch-email john_doe
 # Just show the email
 python3 -m account_manager.cli fetch-email john_doe --dry-run
 ```
+
+---
+
+## Auto-Update (Single User)
+
+Combine fetch-email + fetch-jira-id in one command for a single user.
+
+### Basic Usage
+```bash
+# Full auto-update (fetch email + JIRA ID)
+python3 -m account_manager.cli auto-update john_doe
+
+# Preview only (no changes)
+python3 -m account_manager.cli auto-update john_doe --dry-run
+
+# With verbose output
+python3 -m account_manager.cli auto-update john_doe --verbose
+
+# Test mode (mock external calls)
+python3 -m account_manager.cli auto-update john_doe --mock
+```
+
+### What It Does
+1. **Step 1**: Fetches Veritas email and names via euserls
+2. **Step 2**: Uses names to fetch JIRA ID (also gets Cohesity email)
+
+**Note:** Skips Step 2 if first/last names are not available
 
 ---
 
@@ -578,4 +605,5 @@ python3 -m account_manager.cli assign-etrack-fi 1234567 user_one --verbose
 - **--auto-add** = quick discovery, update later
 - **--interactive** = careful entry, complete now
 - **assign-etrack-fi** = assign etrack + FI (requires verified account)
+- **auto-update** = fetch email + JIRA ID in one step
 - **help <command>** = detailed documentation

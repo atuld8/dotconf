@@ -97,6 +97,10 @@ python3 -m account_manager.cli update-jira-ids --dry-run
 python3 -m account_manager.cli update-jira-ids
 python3 -m account_manager.cli fetch-jira-id john_doe
 
+# Auto-update single user (fetch-email + fetch-jira-id combined)
+python3 -m account_manager.cli auto-update john_doe
+python3 -m account_manager.cli auto-update john_doe --dry-run
+
 # Manual verification status
 python3 -m account_manager.cli update-verified john_doe yes
 python3 -m account_manager.cli update-notes john_doe "Needs review"
@@ -153,6 +157,7 @@ echo "123456" | python3 -m account_manager.cli lookup-etrack-emails             
 - **euserls Integration**: Auto-fetch Veritas emails, first/last names, and derive community account
 - **JIRA Integration**: Auto-fetch JIRA IDs using first/last name search, also fetches Cohesity email
 - **Smart Disambiguation**: Handles multiple JIRA user matches using email prefix matching
+- **Single-User Auto-Update**: `auto-update` combines email and JIRA ID fetch in one command
 
 ### Etrack Assignment
 - **assign-etrack-fi**: Assign etrack incident and linked FI to a user in one command
