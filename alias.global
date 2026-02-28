@@ -94,8 +94,6 @@ alias el='vim +":call OpenLastFile() | normal \`.w"'
 alias ew='af.ew() { which $1 && $CFG_EDITOR $(which $1) || echo "$1 is not a file"; }; af.ew'
 alias ewa='af.ewa() { if [[ "$CFG_EDITOR" =~ ^(vim|nvim)$ ]]; then extra_para="+/$1"; fi; $CFG_EDITOR $(grep -lw "$1" ~/.alias* ~/.vim/alias*) $extra_para;}; af.ewa'
 alias ewa1='af.ewa() { if [[ "$CFG_EDITOR" =~ ^(vim|nvim)$ ]]; then extra_para="+/\s$1="; fi; $CFG_EDITOR $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*) $extra_para;}; af.ewa'
-alias btw='af.ew() { which $1 && .bt $(which $1) || echo "$1 is not a file"; }; af.ew'
-alias btwa='af.ewa() { echo .bt $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*);}; af.ewa'
 alias ewb1='af.ewb() { if [[ "$CFG_EDITOR" =~ ^(vim|nvim)$ ]]; then extra_para="+/\s$1="; fi; $CFG_EDITOR $(grep -l "\s$1=" ~/.bash* ~/.vim/bash*) $extra_para;}; af.ewb'
 alias e.l.a='$CFG_EDITOR ~/.alias'
 alias e.l.al='$CFG_EDITOR ~/.alias.loc'
@@ -223,6 +221,8 @@ alias .bt='bat --style=header,numbers --color=always --paging=always --tabs=4 --
 alias .btp='bat --style=plain --color=always --paging=always --tabs=4 --wrap=auto'
 alias .btd='bat --style=header,numbers,changes --color=always --paging=always --tabs=4 --wrap=auto'
 alias .jbt='sed -E -e "s/^(JiraID:|Summary:|Assignee:|Reporter:|IssueType:|Labels:|Description:|> > > > -+)/\x1b[32m\1\x1b[0m/" | .bt'
+alias .btw='af.ew() { which $1 && .bt $(which $1) || echo "$1 is not a file"; }; af.ew'
+alias .btwa='af.ewa() { echo .bt $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*);}; af.ewa'
 
 .btstdin() {
 local cmd="$1"   # first arg is the command
