@@ -31,6 +31,13 @@ ENVIRONMENT VARIABLES:
     JIRA_ACC_TOKEN      Jira API Bearer token (required)
     NBSM_DEFAULT_REPO   Default repository path (optional)
 
+GIT BRANCH:
+    By default, the tool fetches origin/master before any git operations.
+    Use --branch to specify a different branch (e.g., --branch origin/develop).
+
+STATE TRANSITIONS:
+    --state Done    Transition issues to Done (handles multi-step transitions automatically)
+
 For detailed help with examples:
     python3 nbsm_release_tool.py --help
     python3 nbsm_release_tool.py <command> --help
@@ -195,6 +202,84 @@ class JiraClient:
             print(f"  Error assigning {issue_key}: {response.status_code} - {response.text}")
             return False
 
+    def get_transitions(self, issue_key: str) -> List[Dict]:
+        """Get available transitions for an issue."""
+        response = self._request('GET', f'issue/{issue_key}/transitions')
+        if response.status_code == 200:
+            return response.json().get('transitions', [])
+        else:
+            print(f"  Error getting transitions for {issue_key}: {response.status_code}")
+            return []
+
+    def do_transition(self, issue_key: str, transition_id: str, transition_name: str = None) -> bool:
+        """Perform a transition on an issue."""
+        data = {"transition": {"id": transition_id}}
+        response = self._request('POST', f'issue/{issue_key}/transitions', data)
+
+        if response.status_code == 204:
+            return True
+        else:
+            name = f" ({transition_name})" if transition_name else ""
+            print(f"  Error transitioning {issue_key}{name}: {response.status_code} - {response.text}")
+            return False
+
+    def find_transition_by_name(self, transitions: List[Dict], target_names: List[str]) -> Optional[Dict]:
+        """Find a transition matching any of the target names (case-insensitive)."""
+        target_lower = [n.lower() for n in target_names]
+        for t in transitions:
+            if t.get('name', '').lower() in target_lower:
+                return t
+            # Also check the target status name
+            to_status = t.get('to', {}).get('name', '').lower()
+            if to_status in target_lower:
+                return t
+        return None
+
+    def transition_to_done(self, issue_key: str, dry_run: bool = False) -> Tuple[bool, str]:
+        """Transition an issue to Done state.
+
+        Handles multi-step transitions if direct Done is not available.
+        Tries: Done -> In Progress then Done.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        transitions = self.get_transitions(issue_key)
+        if not transitions:
+            return False, "No transitions available"
+
+        # Try direct Done transition
+        done_transition = self.find_transition_by_name(transitions, ['Done', 'Close', 'Closed'])
+        if done_transition:
+            if dry_run:
+                return True, f"Would transition to {done_transition['name']}"
+            if self.do_transition(issue_key, done_transition['id'], done_transition['name']):
+                return True, f"Transitioned to {done_transition['name']}"
+            return False, "Failed to transition to Done"
+
+        # Try In Progress first, then Done
+        progress_transition = self.find_transition_by_name(
+            transitions, ['In Progress', 'Start Progress', 'In Development', 'Start Work']
+        )
+        if progress_transition:
+            if dry_run:
+                return True, f"Would transition to {progress_transition['name']} then Done"
+
+            if not self.do_transition(issue_key, progress_transition['id'], progress_transition['name']):
+                return False, f"Failed to transition to {progress_transition['name']}"
+
+            # Now get transitions again and try Done
+            transitions = self.get_transitions(issue_key)
+            done_transition = self.find_transition_by_name(transitions, ['Done', 'Close', 'Closed'])
+            if done_transition:
+                if self.do_transition(issue_key, done_transition['id'], done_transition['name']):
+                    return True, f"Transitioned via {progress_transition['name']} to {done_transition['name']}"
+                return False, "Failed to transition to Done after In Progress"
+            return False, "Done transition not available after In Progress"
+
+        available = [t.get('name', 'Unknown') for t in transitions]
+        return False, f"No path to Done found. Available: {', '.join(available)}"
+
     def update_issue(self, issue_key: str, build_id: str, labels: List[str] = None,
                      assignee: str = None, solution_field: str = "Solution") -> Dict:
         """Update an issue with build info, labels, and assignee.
@@ -235,8 +320,11 @@ class JiraClient:
 class GitExtractor:
     """Handles git operations for extracting tags and Jira IDs."""
 
-    def __init__(self, repo_path: str):
+    DEFAULT_BRANCH = 'origin/master'
+
+    def __init__(self, repo_path: str, branch: str = None):
         self.repo_path = os.path.expanduser(repo_path)
+        self.branch = branch or self.DEFAULT_BRANCH
         if not os.path.isdir(self.repo_path):
             raise ValueError(f"Repository not found: {self.repo_path}")
 
@@ -247,6 +335,27 @@ class GitExtractor:
         if result.returncode != 0:
             raise RuntimeError(f"Git command failed: {result.stderr}")
         return result.stdout.strip()
+
+    def fetch_branch(self) -> None:
+        """Fetch the configured branch from remote before any operations.
+
+        This ensures we have the latest commits and tags from the remote.
+        """
+        # Parse remote and branch from the full ref (e.g., 'origin/master' -> 'origin', 'master')
+        if '/' in self.branch:
+            remote, branch_name = self.branch.split('/', 1)
+        else:
+            remote = 'origin'
+            branch_name = self.branch
+
+        print(f"Fetching {remote}/{branch_name} from repository...")
+        try:
+            # Fetch the specific branch and tags
+            self._run_git('fetch', remote, branch_name, '--tags')
+            print(f"Fetch complete: {remote}/{branch_name}")
+        except RuntimeError as e:
+            print(f"Warning: Failed to fetch {remote}/{branch_name}: {e}")
+            print("Continuing with local data...")
 
     def list_tags(self, pattern: str = None) -> List[str]:
         """List all tags, optionally filtered by pattern."""
@@ -424,9 +533,14 @@ class GitExtractor:
 class ReleaseProcessor:
     """Main processor for release operations."""
 
-    def __init__(self, repos: List[str], jira_client: JiraClient = None):
-        self.extractors = [GitExtractor(repo) for repo in repos]
+    def __init__(self, repos: List[str], jira_client: JiraClient = None, branch: str = None):
+        self.extractors = [GitExtractor(repo, branch=branch) for repo in repos]
         self.jira = jira_client or JiraClient()
+
+    def fetch_all(self) -> None:
+        """Fetch the configured branch for all repositories."""
+        for extractor in self.extractors:
+            extractor.fetch_branch()
 
     def extract_jiras_single(self, from_tag: str, to_tag: str) -> Dict[str, List[str]]:
         """Extract Jiras for a single tag pair from all repos.
@@ -657,13 +771,15 @@ class ReleaseProcessor:
 
     def update_jiras(self, jiras_by_tag: Dict[str, List[str]],
                      labels: List[str] = None, assignee: str = None,
-                     dry_run: bool = False, confirm: bool = True) -> Dict:
-        """Update Jiras with build IDs, labels, and assignee.
+                     state: str = None, dry_run: bool = False,
+                     confirm: bool = True) -> Dict:
+        """Update Jiras with build IDs, labels, assignee, and state transitions.
 
         Args:
             jiras_by_tag: Dict mapping build_id (tag) to list of Jira IDs
             labels: Labels to add (e.g., ['Verify'])
             assignee: Assignee username
+            state: Target state (e.g., 'Done')
             dry_run: If True, only show what would be done
             confirm: If True, prompt for confirmation
 
@@ -676,6 +792,42 @@ class ReleaseProcessor:
             print("No Jiras to update.")
             return {'total': 0, 'success': 0, 'failed': 0}
 
+        # Collect all Jira IDs for fetching details
+        all_jira_ids = []
+        for jiras in jiras_by_tag.values():
+            all_jira_ids.extend(jiras)
+
+        # Fetch issue details for reporter check (needed for state=Done on Defects)
+        issue_details = {}
+        defects_to_reassign = []
+        if state == 'Done':
+            print("\nFetching issue details for state transition...")
+            issues = self.jira.get_issues(all_jira_ids)
+            for issue in issues:
+                key = issue.get('key', '')
+                fields = issue.get('fields', {})
+                issue_type = fields.get('issuetype', {}).get('name', '')
+                reporter = fields.get('reporter', {})
+                reporter_name = reporter.get('name', '') if reporter else ''
+                reporter_display = reporter.get('displayName', 'Unknown') if reporter else 'Unknown'
+                current_assignee = fields.get('assignee', {})
+                current_assignee_name = current_assignee.get('name', '') if current_assignee else ''
+
+                issue_details[key] = {
+                    'type': issue_type,
+                    'reporter_name': reporter_name,
+                    'reporter_display': reporter_display,
+                    'current_assignee': current_assignee_name
+                }
+
+                # Check if Defect needs reassignment to reporter
+                if issue_type.lower() == 'defect' and reporter_name and reporter_name != current_assignee_name:
+                    defects_to_reassign.append({
+                        'key': key,
+                        'reporter_name': reporter_name,
+                        'reporter_display': reporter_display
+                    })
+
         # Show what will be done
         print(f"\n{'='*60}")
         print("UPDATE PREVIEW")
@@ -683,14 +835,36 @@ class ReleaseProcessor:
         print(f"Total Jiras to update: {total}")
         print(f"Labels to add: {', '.join(labels) if labels else '(none)'}")
         print(f"Assignee: {assignee or '(unchanged)'}")
+        print(f"State transition: {state or '(none)'}")
         print()
 
         for tag, jiras in jiras_by_tag.items():
             if jiras:
                 print(f"  {tag}: {', '.join(jiras)}")
 
+        # Show Defects that need reassignment to reporter before Done
+        reassign_confirmed = {}
+        if defects_to_reassign and confirm:
+            print(f"\n{'='*60}")
+            print("DEFECTS - ASSIGN TO REPORTER BEFORE DONE")
+            print(f"{'='*60}")
+            print("The following Defects should be assigned to their reporter before moving to Done:")
+            print()
+            for defect in defects_to_reassign:
+                print(f"  {defect['key']}: Assign to {defect['reporter_display']} ({defect['reporter_name']})")
+
+            print()
+            response = input("Assign these Defects to their reporters? [Y/n]: ").strip().lower()
+            if response != 'n':
+                for defect in defects_to_reassign:
+                    reassign_confirmed[defect['key']] = defect['reporter_name']
+
         if dry_run:
             print("\n[DRY RUN] No changes made.")
+            if state:
+                print(f"Would transition {total} issues to {state}")
+            if reassign_confirmed:
+                print(f"Would reassign {len(reassign_confirmed)} Defects to their reporters")
             return {'total': total, 'success': 0, 'failed': 0, 'dry_run': True}
 
         # Confirm
@@ -719,15 +893,34 @@ class ReleaseProcessor:
                     assignee=assignee
                 )
 
+                status = []
                 if result['success']:
-                    success_count += 1
-                    status = []
                     if result['build']:
                         status.append('build')
                     if result['labels']:
                         status.append('labels')
                     if result['assignee']:
                         status.append('assignee')
+
+                # Reassign Defects to reporter before state transition
+                if jira_id in reassign_confirmed:
+                    reporter = reassign_confirmed[jira_id]
+                    if self.jira.set_assignee(jira_id, reporter):
+                        status.append(f'assignee->reporter')
+                    else:
+                        print(f"  [!] Failed to reassign to reporter")
+
+                # State transition
+                if state == 'Done':
+                    success, msg = self.jira.transition_to_done(jira_id, dry_run=False)
+                    if success:
+                        status.append(f'state:{msg}')
+                    else:
+                        print(f"  [!] State transition failed: {msg}")
+                        result['success'] = False
+
+                if result['success']:
+                    success_count += 1
                     print(f"  [OK] Updated: {', '.join(status)}")
                 else:
                     failed_count += 1
@@ -771,6 +964,9 @@ LIST-TAGS - Show available tags
   # Use custom repository
   %(prog)s list-tags --repo ~/my/custom/repo
 
+  # Use a different branch
+  %(prog)s list-tags --branch origin/develop
+
 EXTRACT-JIRAS - Extract Jira IDs from git
 -----------------------------------------
   # Single tag pair (auto-detect predecessor)
@@ -800,6 +996,9 @@ EXTRACT-JIRAS - Extract Jira IDs from git
   # Use latest tag (auto-detect)
   %(prog)s extract-jiras
 
+  # Use a different branch
+  %(prog)s extract-jiras --branch origin/develop --tag NBSM_2.9_0010
+
 REPORT - Generate Jira report
 -----------------------------
   # Table format (default) with Jira details
@@ -822,6 +1021,9 @@ REPORT - Generate Jira report
 
   # Skip fetching Jira details (just show IDs)
   %(prog)s report --from NBSM_2.9_0009 --to NBSM_2.9_0010 --no-fetch
+
+  # Use a different branch
+  %(prog)s report --branch origin/develop --from NBSM_2.9_0001 --to NBSM_2.9_0010
 
 UPDATE - Update Jira tickets directly
 -------------------------------------
@@ -866,6 +1068,9 @@ PROCESS - Full pipeline (recommended)
   # Use custom repository
   %(prog)s process --repo ~/my/repo --from NBSM_2.9_0009 --to NBSM_2.9_0010
 
+  # Use a different branch
+  %(prog)s process --branch origin/release-2.9 --from NBSM_2.9_0009 --to NBSM_2.9_0010
+
 VALIDATE - Pre-release validation
 ---------------------------------
   # Check if all Jiras are Resolved/Closed
@@ -874,6 +1079,9 @@ VALIDATE - Pre-release validation
   # Fail exit code if any Jira not resolved
   %(prog)s validate --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --require-resolved
 
+  # Use a different branch
+  %(prog)s validate --branch origin/release-2.9 --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+
 CHECK-COMMITS - Find commits without Jira IDs
 ----------------------------------------------
   # Find bad commits (missing NBU-xxxxx)
@@ -881,6 +1089,9 @@ CHECK-COMMITS - Find commits without Jira IDs
 
   # Check latest tag
   %(prog)s check-commits --tag NBSM_2.9_0010
+
+  # Use a different branch
+  %(prog)s check-commits --branch origin/develop --from NBSM_2.9_0001 --to NBSM_2.9_0010
 
 ================================================================================
 TAG RANGE WALK EXPLAINED
@@ -915,6 +1126,8 @@ ENVIRONMENT VARIABLES
     def add_common_args(p):
         p.add_argument('--repo', action='append', dest='repos',
                        help=f'Repository path (default: {DEFAULT_REPO})')
+        p.add_argument('--branch', default='origin/master',
+                       help='Git branch to fetch before operations (default: origin/master)')
 
     def add_range_args(p):
         p.add_argument('--tag', help='Single tag (compare with predecessor)')
@@ -971,6 +1184,8 @@ ENVIRONMENT VARIABLES
     p_update.add_argument('--labels', type=lambda s: s.split(','), default=[],
                           help='Comma-separated labels to add (e.g., Verify,Reviewed)')
     p_update.add_argument('--assignee', help='Assignee username')
+    p_update.add_argument('--state', choices=['Done'],
+                          help='Transition issues to state (e.g., Done). Handles multi-step transitions.')
     p_update.add_argument('--dry-run', action='store_true',
                           help='Preview changes without applying')
     p_update.add_argument('--no-confirm', action='store_true',
@@ -986,6 +1201,8 @@ and update Jira tickets with build ID and labels. This is the recommended comman
     p_process.add_argument('--labels', type=lambda s: s.split(','), default=['Verify'],
                            help='Labels to add (default: Verify)')
     p_process.add_argument('--assignee', help='Assignee username')
+    p_process.add_argument('--state', choices=['Done'],
+                           help='Transition issues to state (e.g., Done). Handles multi-step transitions.')
     p_process.add_argument('--dry-run', action='store_true',
                            help='Preview changes without applying')
     p_process.add_argument('--no-confirm', action='store_true',
@@ -1175,7 +1392,12 @@ def main():
     try:
         # Initialize
         jira = JiraClient() if args.command in ['update', 'process', 'report', 'validate'] else None
-        processor = ReleaseProcessor(repos, jira)
+        branch = args.branch if hasattr(args, 'branch') else 'origin/master'
+        processor = ReleaseProcessor(repos, jira, branch=branch)
+
+        # Always fetch the branch before any git operations
+        if args.command != 'update':  # update doesn't need git operations
+            processor.fetch_all()
 
         # =====================================================================
         # list-tags
@@ -1303,6 +1525,7 @@ def main():
                 jiras_by_tag,
                 labels=args.labels,
                 assignee=args.assignee,
+                state=args.state,
                 dry_run=args.dry_run,
                 confirm=not args.no_confirm
             )
