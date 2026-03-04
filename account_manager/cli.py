@@ -1007,7 +1007,7 @@ def run_demo(db: AccountManager, report_gen: ReportGenerator):
         )
         print("+ Added sample account: john_doe")
     except ValueError:
-        print("• Sample account john_doe already exists")
+        print("* Sample account john_doe already exists")
 
     try:
         db.add_account(
@@ -1018,7 +1018,7 @@ def run_demo(db: AccountManager, report_gen: ReportGenerator):
         )
         print("+ Added sample account: jane_smith")
     except ValueError:
-        print("• Sample account jane_smith already exists")
+        print("* Sample account jane_smith already exists")
 
     print("\n" + "=" * 60)
     print("TRANSLATION EXAMPLES:")
@@ -1026,13 +1026,13 @@ def run_demo(db: AccountManager, report_gen: ReportGenerator):
 
     # Demonstrate translation
     jira = db.translate("john_doe", "jira_account")
-    print(f"Etrack john_doe → Jira: {jira}")
+    print(f"Etrack john_doe -> Jira: {jira}")
 
     cohesity = db.translate("john.doe@vcompany.com", "cohesity_email")
-    print(f"Veritas Email → Cohesity Email: {cohesity}")
+    print(f"Veritas Email -> Cohesity Email: {cohesity}")
 
     etrack = db.translate("jane.smith", "etrack_user_id")
-    print(f"Jira jane.smith → Etrack: {etrack}")
+    print(f"Jira jane.smith -> Etrack: {etrack}")
 
     print("\n" + "=" * 60)
     print("SEARCHING:")
@@ -1961,7 +1961,7 @@ def main():
 
                             # Interactive prompt
                             if fix_interactive and not fix_dry_run:
-                                print(f"\n  {v.fi_id}: {v.jira_assignee or 'None'} → {expected_jira}")
+                                print(f"\n  {v.fi_id}: {v.jira_assignee or 'None'} -> {expected_jira}")
                                 response = input("  Fix this? (y/n/q to quit): ").strip().lower()
                                 if response == 'q':
                                     print("  Stopping fix operation.")
@@ -2028,10 +2028,10 @@ def main():
                     label = "Would fix" if fix_dry_run else "Successfully fixed"
                     print(f"\n+ {label}: {len(fixed_success)}")
                     for item in fixed_success:
-                        print(f"  {item['fi_id']}: {item['old_assignee'] or 'None'} → {item['new_assignee']}")
+                        print(f"  {item['fi_id']}: {item['old_assignee'] or 'None'} -> {item['new_assignee']}")
 
                 if fixed_skipped:
-                    print(f"\n○ Skipped: {len(fixed_skipped)}")
+                    print(f"\no Skipped: {len(fixed_skipped)}")
                     for item in fixed_skipped:
                         print(f"  {item['fi_id']}: {item['reason']}")
 
@@ -2601,7 +2601,7 @@ def main():
                 if current_assignee == etrack_user_id:
                     print(f"  + Etrack already assigned to {etrack_user_id}")
                 else:
-                    print(f"  → Reassigning etrack from '{current_assignee}' to '{etrack_user_id}'...")
+                    print(f"  -> Reassigning etrack from '{current_assignee}' to '{etrack_user_id}'...")
                     success = etrack_client.assign_etrack(etrack_number, etrack_user_id, dry_run=dry_run)
                     if dry_run:
                         db.log_action('assign_etrack', 'etrack', etrack_number,
@@ -2649,7 +2649,7 @@ def main():
                     print(f"    + Already assigned to {jira_account}")
                     fi_results['already_assigned'] += 1
                 else:
-                    print(f"    → Updating assignee to '{jira_account}'...")
+                    print(f"    -> Updating assignee to '{jira_account}'...")
                     if dry_run:
                         print(f"    [DRY-RUN] Would update {fi_id} assignee to {jira_account}")
                         fi_results['updated'] += 1
