@@ -6,10 +6,10 @@ Extract Jira IDs from git tags, generate reports, and update Jira tickets with b
 
 QUICK START:
     # Full release workflow (recommended)
-    python3 nbsm_release_tool.py process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+    python3 j.nbsm_release_tool.py process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
 
     # Dry run first
-    python3 nbsm_release_tool.py process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --dry-run
+    python3 j.nbsm_release_tool.py process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --dry-run
 
 COMMANDS:
     list-tags       List available tags in repository
@@ -39,8 +39,8 @@ STATE TRANSITIONS:
     --state Done    Transition issues to Done (handles multi-step transitions automatically)
 
 For detailed help with examples:
-    python3 nbsm_release_tool.py --help
-    python3 nbsm_release_tool.py <command> --help
+    python3 j.nbsm_release_tool.py --help
+    python3 j.nbsm_release_tool.py <command> --help
 """
 
 import os
