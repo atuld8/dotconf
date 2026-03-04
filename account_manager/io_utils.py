@@ -152,7 +152,7 @@ class IOUtils:
         if errors:
             print("\nErrors encountered:")
             for error in errors[:10]:  # Show first 10 errors
-                print(f"  • {error}")
+                print(f"  * {error}")
             if len(errors) > 10:
                 print(f"  ... and {len(errors) - 10} more errors")
 
@@ -234,7 +234,7 @@ class IOUtils:
         if errors:
             print("\nErrors encountered:")
             for error in errors[:10]:
-                print(f"  • {error}")
+                print(f"  * {error}")
             if len(errors) > 10:
                 print(f"  ... and {len(errors) - 10} more errors")
 

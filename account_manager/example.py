@@ -33,7 +33,7 @@ def main():
         )
         print("  + Added: ET12345 (John Doe)")
     except ValueError as e:
-        print(f"  • {e}")
+        print(f"  * {e}")
 
     try:
         db.add_account(
@@ -45,7 +45,7 @@ def main():
         )
         print("  + Added: ET67890 (Jane Smith)")
     except ValueError as e:
-        print(f"  • {e}")
+        print(f"  * {e}")
 
     try:
         db.add_account(
@@ -55,30 +55,30 @@ def main():
         )
         print("  + Added: ET11111 (Bob Jones - partial data)")
     except ValueError as e:
-        print(f"  • {e}")
+        print(f"  * {e}")
 
     # Translation examples
     print("\n" + "=" * 60)
     print("TRANSLATION EXAMPLES")
     print("=" * 60)
 
-    print("\n1. Etrack User ID → Jira Account:")
+    print("\n1. Etrack User ID -> Jira Account:")
     jira = db.translate("ET12345", "jira_account")
-    print(f"   ET12345 → {jira}")
+    print(f"   ET12345 -> {jira}")
 
-    print("\n2. Veritas Email → Cohesity Email:")
+    print("\n2. Veritas Email -> Cohesity Email:")
     cohesity = db.translate("jane.smith@vcompany.com", "cohesity_email")
-    print(f"   jane.smith@vcompany.com → {cohesity}")
+    print(f"   jane.smith@vcompany.com -> {cohesity}")
 
-    print("\n3. Jira Account → Etrack User ID:")
+    print("\n3. Jira Account -> Etrack User ID:")
     etrack = db.translate("bob.jones", "etrack_user_id")
-    print(f"   bob.jones → {etrack}")
+    print(f"   bob.jones -> {etrack}")
 
-    print("\n4. Community Account → All Fields:")
+    print("\n4. Community Account -> All Fields:")
     etrack = db.translate("johndoe_community", "etrack_user_id")
     veritas = db.translate("johndoe_community", "veritas_email")
     jira = db.translate("johndoe_community", "jira_account")
-    print(f"   johndoe_community →")
+    print(f"   johndoe_community ->")
     print(f"      Etrack: {etrack}")
     print(f"      Veritas: {veritas}")
     print(f"      Jira: {jira}")

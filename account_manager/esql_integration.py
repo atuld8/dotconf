@@ -11,6 +11,17 @@ from dataclasses import dataclass
 import re
 
 
+def _fi_sort_key(fi_id: str) -> int:
+    """Extract numeric part from FI-<digits> for proper numeric sorting."""
+    match = re.search(r'FI-(\d+)', fi_id)
+    return int(match.group(1)) if match else 0
+
+
+def _sort_fi_ids(fi_ids) -> List[str]:
+    """Sort FI IDs numerically by their numeric part."""
+    return sorted(fi_ids, key=_fi_sort_key)
+
+
 @dataclass
 class FIRecord:
     """Represents a single FI record from esql output"""
@@ -184,7 +195,7 @@ class EsqlExecutor:
                 incident_no=incident_no,
                 etrack_user_id=etrack_user_id,
                 who_added_fi=', '.join(data['who_added_fi']),  # Combine all who added
-                fi_ids=sorted(list(data['fi_ids']))  # Sorted list of unique FI IDs
+                fi_ids=_sort_fi_ids(data['fi_ids'])  # Numerically sorted list of unique FI IDs
             )
             records.append(record)
 
@@ -307,7 +318,7 @@ class EsqlExecutor:
             incident_no=incident_no,
             etrack_user_id=assignee,
             who_added_fi='(unknown)',
-            fi_ids=sorted(fi_ids),
+            fi_ids=_sort_fi_ids(fi_ids),
             incident_type=inc_type
         )]
 
@@ -417,7 +428,7 @@ class EsqlExecutor:
                         incident_no=inc_no,
                         etrack_user_id=assignee,
                         who_added_fi='(unknown)',
-                        fi_ids=sorted(incident_fis[inc_no]),
+                        fi_ids=_sort_fi_ids(incident_fis[inc_no]),
                         incident_type=inc_type
                     ))
 
@@ -553,7 +564,7 @@ class EsqlExecutor:
         fi_ids = set()
         for record in records:
             fi_ids.update(record.fi_ids)
-        return sorted(fi_ids)
+        return _sort_fi_ids(fi_ids)
 
     def fetch_incident_types(self, incident_nos: List[str], timeout: int = 60) -> Dict[str, str]:
         """

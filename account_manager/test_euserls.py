@@ -115,9 +115,9 @@ def test_email_only(etrack_user_id):
 def main():
     """Main test function"""
 
-    print("╔════════════════════════════════════════════════════════════════╗")
-    print("║           EUSERLS INTEGRATION TEST                             ║")
-    print("╚════════════════════════════════════════════════════════════════╝")
+    print("+" + "=" * 64 + "+")
+    print("|           EUSERLS INTEGRATION TEST                             |")
+    print("+" + "=" * 64 + "+")
     print()
 
     # Test 1: Parsing

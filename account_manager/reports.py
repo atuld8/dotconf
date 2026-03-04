@@ -2,10 +2,23 @@
 Report generation functionality for account data
 """
 
+import re
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, List, Dict, Any
 
 from .models import VALID_VERIFICATION_STATUSES
+
+
+def _fi_sort_key(fi_id: str) -> int:
+    """Extract numeric part from FI-<digits> for proper numeric sorting."""
+    match = re.search(r'FI-(\d+)', fi_id)
+    return int(match.group(1)) if match else 0
+
+
+def _sort_fi_ids(fi_ids) -> list:
+    """Sort FI IDs numerically by their numeric part."""
+    return sorted(fi_ids, key=_fi_sort_key)
+
 
 if TYPE_CHECKING:
     from .models import AccountManager
@@ -545,8 +558,8 @@ class ReportGenerator:
         status_symbols = {
             'success': '+',
             'failed': 'X',
-            'skipped': '○',
-            'dry_run': '◌'
+            'skipped': 'o',
+            'dry_run': '~'
         }
 
         if table_format:
@@ -587,7 +600,7 @@ class ReportGenerator:
                 if action['old_value'] or action['new_value']:
                     old = (action['old_value'] or '-')[:15]
                     new = (action['new_value'] or '-')[:15]
-                    change = f"{old} → {new}"[:col_chg]
+                    change = f"{old} -> {new}"[:col_chg]
                 else:
                     change = ''
 
@@ -610,7 +623,7 @@ class ReportGenerator:
                 if action['target_type'] and action['target_id']:
                     report.append(f"    Target: {action['target_type']}={action['target_id']}")
                 if action['old_value'] or action['new_value']:
-                    report.append(f"    Change: {action['old_value'] or '(none)'} → {action['new_value'] or '(none)'}")
+                    report.append(f"    Change: {action['old_value'] or '(none)'} -> {action['new_value'] or '(none)'}")
                 if action['details']:
                     details_lines = action['details'].split('\n')
                     report.append(f"    Details: {details_lines[0]}")
@@ -762,7 +775,7 @@ class ReportGenerator:
         for day in sorted(daily_data.keys(), reverse=True):
             data = daily_data[day]
             total = data['success'] + data['failed']
-            report.append(f"📅 {day}")
+            report.append(f"[{day}]")
             report.append(f"   Total: {total} actions (+ {data['success']} success, X {data['failed']} failed)")
 
             # Show top actions for this day
@@ -806,8 +819,8 @@ class ReportGenerator:
         status_symbols = {
             'success': '+',
             'failed': 'X',
-            'skipped': '○',
-            'dry_run': '◌'
+            'skipped': 'o',
+            'dry_run': '~'
         }
 
         for action in actions:
@@ -816,7 +829,7 @@ class ReportGenerator:
 
             report.append(f"{symbol} [{timestamp}] {action['action_type']} ({action['status']})")
             if action['old_value'] or action['new_value']:
-                report.append(f"    {action['old_value'] or '(none)'} → {action['new_value'] or '(none)'}")
+                report.append(f"    {action['old_value'] or '(none)'} -> {action['new_value'] or '(none)'}")
             if action['details']:
                 report.append(f"    {action['details']}")
             report.append("")
@@ -874,7 +887,7 @@ class ReportGenerator:
         report.append(f"{'-'*28}  {'-'*5}   {'-'*40}")
 
         for target, fi_ids in sorted_targets:
-            fi_list = ', '.join(fi_ids[:5])
+            fi_list = ', '.join(_sort_fi_ids(fi_ids[:5]))
             if len(fi_ids) > 5:
                 fi_list += f", ... (+{len(fi_ids) - 5} more)"
             report.append(f"{target:<28} {len(fi_ids):>5}   {fi_list}")
@@ -885,11 +898,11 @@ class ReportGenerator:
         report.append(f"{'FI ID':<12} {'Current Assignee':<20} {'Should Be':<28}")
         report.append(f"{'-'*12} {'-'*20} {'-'*28}")
 
-        for m in mismatches:
+        for m in sorted(mismatches, key=lambda x: _fi_sort_key(x.get('fi_id', ''))):
             fi_id = m.get('fi_id', 'N/A')
             current = m.get('current_assignee', 'N/A')
             expected = m.get('expected_assignee', 'N/A')
-            report.append(f"{fi_id:<12} {current:<18} →  {expected}")
+            report.append(f"{fi_id:<12} {current:<18} ->  {expected}")
 
         report.append("")
         report.append("=" * 80)

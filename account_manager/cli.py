@@ -15,6 +15,29 @@ from .account_populator import AutoPopulateStrategy
 from .euserls_integration import EuserlsUpdater
 from .jira_integration import JiraIdUpdater
 from .etrack_integration import EtrackExecutor, MockEtrackExecutor
+import re
+
+
+def _fi_sort_key(fi_id):
+    """Extract numeric part from FI-<digits> for proper numeric sorting.
+
+    Examples:
+        FI-45 -> 45
+        FI-123 -> 123
+        FI-2345 -> 2345
+    """
+    match = re.search(r'FI-(\d+)', fi_id)
+    return int(match.group(1)) if match else 0
+
+
+def _sort_fi_ids(fi_ids):
+    """Sort FI IDs numerically by their numeric part."""
+    return sorted(fi_ids, key=_fi_sort_key)
+
+
+def _sort_fi_items(items):
+    """Sort dict items where keys are FI IDs, numerically by FI number."""
+    return sorted(items, key=lambda x: _fi_sort_key(x[0]))
 
 
 def print_usage(command=None):
@@ -1710,7 +1733,7 @@ def main():
 
                     # Build table rows
                     table_rows = []
-                    for fi_id, incidents in sorted(conflicts.items()):
+                    for fi_id, incidents in _sort_fi_items(conflicts.items()):
                         # Get expected Jira IDs from DB for each assignee
                         assignee_jira_map = {}
                         for inc in incidents:
@@ -1753,7 +1776,7 @@ def main():
                     print(separator)
                 else:
                     # Detailed format (original)
-                    for fi_id, incidents in sorted(conflicts.items()):
+                    for fi_id, incidents in _sort_fi_items(conflicts.items()):
                         print(f"\n{fi_id}")
                         print("-" * 40)
 
@@ -1783,7 +1806,7 @@ def main():
                 print("  3. Manually assign FIs in Jira after review")
 
                 # Generate skip-fi option with all conflicting FIs
-                conflict_fi_list = ','.join(sorted(conflicts.keys()))
+                conflict_fi_list = ','.join(_sort_fi_ids(conflicts.keys()))
                 print(f"\nTo skip all conflicting FIs:")
                 print(f"  --skip-fi={conflict_fi_list}")
                 return
@@ -1856,7 +1879,7 @@ def main():
                     print("=" * 60)
                     for result in mismatches:
                         # Get FI IDs from validations
-                        fi_ids = [v.fi_id for v in result.fi_validations]
+                        fi_ids = _sort_fi_ids([v.fi_id for v in result.fi_validations])
                         fi_list = ', '.join(fi_ids) if fi_ids else 'N/A'
                         print(f"\nFIs: {fi_list}")
                         print(f"  Incident: {result.incident_no}")
@@ -1926,8 +1949,35 @@ def main():
                                     })
                         continue
 
-                    manual_verified = account.get('manual_verified', '')
-                    if manual_verified.lower() != 'yes':
+                    manual_verified = account.get('manual_verified', '').lower().strip()
+                    if manual_verified != 'yes':
+                        # Generate appropriate message based on verification status
+                        if manual_verified == 'invalid':
+                            reason_msg = 'Account marked INVALID - user data is incorrect or outdated'
+                            solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # Review data. If corrected, run: python3 -m account_manager.cli update-verified {etrack_user_id} yes'
+                        elif manual_verified == 'no':
+                            reason_msg = 'Account not yet verified - needs manual verification before auto-fix'
+                            solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # Verify data is correct, then: python3 -m account_manager.cli update-verified {etrack_user_id} yes'
+                        elif manual_verified == 'departed':
+                            reason_msg = 'User has DEPARTED the organization - account is inactive'
+                            solution_msg = f'This user is no longer with the company. Reassign FI to active user or remove FI assignment.'
+                        elif manual_verified == 'pending':
+                            reason_msg = 'Verification PENDING - awaiting confirmation from user/manager'
+                            solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # Follow up on verification. When confirmed: python3 -m account_manager.cli update-verified {etrack_user_id} yes'
+                        elif manual_verified == 'duplicate':
+                            reason_msg = 'DUPLICATE entry - another record exists for this person'
+                            solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # Find and use the primary account instead. Consider deleting this duplicate.'
+                        elif manual_verified == 'suspended':
+                            reason_msg = 'Account SUSPENDED - temporarily inactive/on hold'
+                            solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # Check suspension reason. If resolved: python3 -m account_manager.cli update-verified {etrack_user_id} yes'
+                        elif manual_verified == 'external':
+                            reason_msg = 'EXTERNAL contractor/vendor account - different verification rules apply'
+                            solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # External accounts require manager approval. If approved: python3 -m account_manager.cli update-verified {etrack_user_id} yes'
+                        else:
+                            # Empty or unknown value
+                            reason_msg = f'Account verification status unknown (manual_verified={manual_verified or "empty"})'
+                            solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # Check data, then: python3 -m account_manager.cli update-verified {etrack_user_id} <status>'
+
                         for v in result.fi_validations:
                             if not v.matches:
                                 # Apply --fix-from filter first
@@ -1937,8 +1987,8 @@ def main():
                                 else:
                                     fixed_failed.append({
                                         'fi_id': v.fi_id,
-                                        'reason': f'Account not verified (manual_verified={manual_verified or "empty"})',
-                                        'solution': f'python3 -m account_manager.cli get {etrack_user_id}  # verify, then: python3 -m account_manager.cli update-verified {etrack_user_id} yes'
+                                        'reason': reason_msg,
+                                        'solution': solution_msg
                                     })
                         continue
 
@@ -2027,17 +2077,17 @@ def main():
                 if fixed_success:
                     label = "Would fix" if fix_dry_run else "Successfully fixed"
                     print(f"\n+ {label}: {len(fixed_success)}")
-                    for item in fixed_success:
+                    for item in sorted(fixed_success, key=lambda x: _fi_sort_key(x['fi_id'])):
                         print(f"  {item['fi_id']}: {item['old_assignee'] or 'None'} -> {item['new_assignee']}")
 
                 if fixed_skipped:
                     print(f"\no Skipped: {len(fixed_skipped)}")
-                    for item in fixed_skipped:
+                    for item in sorted(fixed_skipped, key=lambda x: _fi_sort_key(x['fi_id'])):
                         print(f"  {item['fi_id']}: {item['reason']}")
 
                 if fixed_failed:
                     print(f"\nX Failed to fix: {len(fixed_failed)}")
-                    for item in fixed_failed:
+                    for item in sorted(fixed_failed, key=lambda x: _fi_sort_key(x['fi_id'])):
                         print(f"  {item['fi_id']}: {item['reason']}")
                         print(f"    Fix: {item['solution']}")
 
@@ -2054,7 +2104,7 @@ def main():
 
             # Conflict FIs (skip-fi list)
             if conflicts:
-                conflict_fi_list = ','.join(sorted(conflicts.keys()))
+                conflict_fi_list = ','.join(_sort_fi_ids(conflicts.keys()))
                 print(f"\nConflict FIs ({len(conflicts)} - multiple incidents with different assignees):")
                 print(f"  --skip-fi={conflict_fi_list}")
             else:
@@ -2073,7 +2123,7 @@ def main():
                 mismatch_only_fi_ids = all_mismatch_fi_ids - conflict_fi_ids
 
                 if mismatch_only_fi_ids:
-                    mismatch_fi_list = ','.join(sorted(mismatch_only_fi_ids))
+                    mismatch_fi_list = ','.join(_sort_fi_ids(mismatch_only_fi_ids))
                     print(f"\nMismatch FIs ({len(mismatch_only_fi_ids)} - Jira assignee doesn't match expected):")
                     print(f"  Mismatch-List={mismatch_fi_list}")
                 else:
@@ -2585,7 +2635,7 @@ def main():
                     print("  - Query/parsing issue - try with --verbose for details")
                     return
 
-                fi_ids = [ref.ext_ref_id for ref in external_refs]
+                fi_ids = _sort_fi_ids([ref.ext_ref_id for ref in external_refs])
                 print(f"  + Found {len(fi_ids)} linked FI(s): {', '.join(fi_ids)}")
 
             except Exception as e:

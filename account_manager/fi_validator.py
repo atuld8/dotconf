@@ -2,11 +2,23 @@
 FI Validator - Validate FI assignees against Jira and account database
 """
 
+import re
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from .esql_integration import FIRecord
 from .models import AccountManager, is_valid_etrack_user_id
 from .account_populator import AccountPopulator, AccountData, AutoPopulateStrategy, format_account_data
+
+
+def _fi_sort_key(fi_id: str) -> int:
+    """Extract numeric part from FI-<digits> for proper numeric sorting."""
+    match = re.search(r'FI-(\d+)', fi_id)
+    return int(match.group(1)) if match else 0
+
+
+def _sort_fi_ids(fi_ids) -> list:
+    """Sort FI IDs numerically by their numeric part."""
+    return sorted(fi_ids, key=_fi_sort_key)
 
 
 @dataclass
@@ -439,7 +451,7 @@ class FIValidator:
 
             # Unknown users in table
             for result in unknown_users:
-                fi_ids = ', '.join([v.fi_id for v in result.fi_validations]) or 'N/A'
+                fi_ids = ', '.join(_sort_fi_ids([v.fi_id for v in result.fi_validations])) or 'N/A'
                 if len(fi_ids) > 23:
                     fi_ids = fi_ids[:20] + '...'
                 row = f"{result.incident_no:<12} | {result.etrack_user_id:<20} | {fi_ids:<25} | {'N/A':<20} | {'N/A':<20} | {'UNKNOWN':<12}"
@@ -463,9 +475,9 @@ class FIValidator:
             report.append("UNKNOWN USERS (not in database) - DETAILS")
             report.append("-" * 120)
             for result in unknown_users:
-                fi_ids = ', '.join([v.fi_id for v in result.fi_validations]) or 'N/A'
+                fi_ids = ', '.join(_sort_fi_ids([v.fi_id for v in result.fi_validations])) or 'N/A'
                 report.append(f"  Incident: {result.incident_no} | Etrack Assignee: {result.etrack_user_id} | FIs: {fi_ids}")
-                report.append(f"    → Add user: python3 -m account_manager.cli add {result.etrack_user_id}")
+                report.append(f"    -> Add user: python3 -m account_manager.cli add {result.etrack_user_id}")
             report.append("")
 
         if mismatches:
@@ -476,7 +488,7 @@ class FIValidator:
             report.append("")
 
             for result in mismatches:
-                fi_ids = ', '.join([v.fi_id for v in result.fi_validations])
+                fi_ids = ', '.join(_sort_fi_ids([v.fi_id for v in result.fi_validations]))
                 report.append(f"Incident: {result.incident_no} | FIs: {fi_ids}")
                 report.append(f"  Etrack Assignee: {result.etrack_user_id}")
                 report.append(f"  Expected Jira Account (from DB): {result.db_jira_account or 'N/A'}")
