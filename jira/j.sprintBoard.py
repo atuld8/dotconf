@@ -35,6 +35,7 @@ import sys
 import argparse
 import requests
 import re
+from datetime import datetime
 from collections import defaultdict
 from dotenv import load_dotenv
 from prettytable import PrettyTable
@@ -90,6 +91,121 @@ TYPE_SYMBOLS = {
     'Subtask': '-- ',
 }
 
+_SPRINT_FIELD_ID = None
+
+
+def get_sprint_field_id():
+    """Get Jira custom field ID for Sprint (e.g., customfield_10020)."""
+    global _SPRINT_FIELD_ID
+    if _SPRINT_FIELD_ID:
+        return _SPRINT_FIELD_ID
+
+    try:
+        url = f'{JIRA_URL}/rest/api/2/field'
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        fields = response.json()
+        for field in fields:
+            if (field.get('name') or '').strip().lower() == 'sprint':
+                _SPRINT_FIELD_ID = field.get('id')
+                return _SPRINT_FIELD_ID
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] Unable to fetch Sprint field ID: {e}", file=sys.stderr)
+
+    return None
+
+
+def _extract_attr_from_legacy_sprint(sprint_str, attr):
+    """Extract attribute from legacy sprint string format."""
+    match = re.search(rf'{attr}=([^,\]]+)', sprint_str)
+    return match.group(1).strip() if match else None
+
+
+def _parse_jira_datetime(value):
+    """Parse Jira datetime string and return display-friendly value."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return parsed.strftime('%Y-%m-%d %H:%M %z')
+    except (ValueError, TypeError):
+        return value
+
+
+def get_sprint_info_from_issues(issues, sprint_field_id, allowed_states=None):
+    """Extract unique sprint metadata from issues.
+
+    Args:
+        issues (list): Jira issues
+        sprint_field_id (str): Sprint field id (e.g., customfield_10020)
+        allowed_states (set|None): Allowed sprint states (uppercase), e.g. {'ACTIVE'}
+    """
+    if not sprint_field_id:
+        return []
+
+    sprint_map = {}
+
+    for issue in issues:
+        sprint_data = issue.get('fields', {}).get(sprint_field_id)
+        if not sprint_data:
+            continue
+
+        sprint_entries = sprint_data if isinstance(sprint_data, list) else [sprint_data]
+
+        for sprint in sprint_entries:
+            sprint_id = None
+            sprint_name = None
+            sprint_state = None
+            sprint_start = None
+            sprint_end = None
+
+            if isinstance(sprint, dict):
+                sprint_id = sprint.get('id')
+                sprint_name = sprint.get('name')
+                sprint_state = sprint.get('state')
+                sprint_start = sprint.get('startDate')
+                sprint_end = sprint.get('endDate')
+            elif isinstance(sprint, str):
+                sprint_id = _extract_attr_from_legacy_sprint(sprint, 'id')
+                sprint_name = _extract_attr_from_legacy_sprint(sprint, 'name')
+                sprint_state = _extract_attr_from_legacy_sprint(sprint, 'state')
+                sprint_start = _extract_attr_from_legacy_sprint(sprint, 'startDate')
+                sprint_end = _extract_attr_from_legacy_sprint(sprint, 'endDate')
+            else:
+                continue
+
+            sprint_key = sprint_id or sprint_name
+            if not sprint_key:
+                continue
+
+            existing = sprint_map.get(sprint_key, {})
+            sprint_map[sprint_key] = {
+                'name': sprint_name or existing.get('name') or str(sprint_key),
+                'state': sprint_state or existing.get('state') or 'N/A',
+                'start': sprint_start or existing.get('start') or 'N/A',
+                'end': sprint_end or existing.get('end') or 'N/A',
+            }
+
+    allowed_states_normalized = {s.upper() for s in allowed_states} if allowed_states else None
+
+    sprint_list = []
+    for data in sprint_map.values():
+        state_value = (data['state'] or 'N/A')
+        state_upper = state_value.upper() if isinstance(state_value, str) else str(state_value).upper()
+        if allowed_states_normalized and state_upper not in allowed_states_normalized:
+            continue
+
+        sprint_list.append({
+            'name': data['name'],
+            'state': state_value,
+            'start': _parse_jira_datetime(data['start']) or 'N/A',
+            'end': _parse_jira_datetime(data['end']) or 'N/A',
+        })
+
+    sprint_list.sort(key=lambda x: (x['start'] == 'N/A', x['start'], x['name']))
+    return sprint_list
+
 
 def modify_query_for_subtasks(jql_query):
     """
@@ -129,10 +245,15 @@ def get_issues_by_jql(jql_query, max_results=200):
     """
     try:
         url = f'{JIRA_URL}/rest/api/2/search'
+        sprint_field_id = get_sprint_field_id()
+        fields = ['key', 'summary', 'status', 'assignee', 'issuetype', 'priority', 'parent', 'reporter', 'customfield_20303']
+        if sprint_field_id:
+            fields.append(sprint_field_id)
+
         params = {
             'jql': jql_query,
             'maxResults': max_results,
-            'fields': ['key', 'summary', 'status', 'assignee', 'issuetype', 'priority', 'parent', 'reporter', 'customfield_20303']
+            'fields': fields
         }
 
         response = requests.get(url, headers=headers, params=params, timeout=30)
@@ -488,6 +609,13 @@ Issue Type Indicators:
     # Organize issues (now returns list for issue_details instead of dict)
     board_data, issue_details_list = organize_issues_by_assignee_and_status(issues)
 
+    # Extract sprint metadata (start/end/state) from returned issues
+    sprint_field_id = get_sprint_field_id()
+    # Default: show ACTIVE sprint metadata only.
+    # With -d/--show-details: show both ACTIVE and CLOSED sprint metadata.
+    sprint_states_to_show = {'ACTIVE', 'CLOSED'} if args.show_details else {'ACTIVE'}
+    sprint_info = get_sprint_info_from_issues(issues, sprint_field_id, allowed_states=sprint_states_to_show)
+
     # Calculate status counts
     status_columns = ['To-Do', 'In Progress', 'Blocked', 'Done', 'Closed']
     status_counts = {status: 0 for status in status_columns}
@@ -501,6 +629,10 @@ Issue Type Indicators:
     print("="*80)
     print(f"Query: {jql_query}")
     print(f"Total Issues Found: {len(issues)}")
+    if sprint_info:
+        print("Sprint(s):")
+        for sprint in sprint_info:
+            print(f"  - {sprint['name']} | Start: {sprint['start']} | End: {sprint['end']} | State: {sprint['state']}")
     if args.show_sub_tasks:
         print("Sub-tasks: INCLUDED")
     #print()

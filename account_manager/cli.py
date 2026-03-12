@@ -1225,8 +1225,16 @@ def main():
             # List accounts with missing fields
             accounts = db.get_all_accounts()
             incomplete = []
+            skip_statuses = {'invalid', 'departed', 'suspended'}
+            skip_statuses_text = ', '.join(sorted(skip_statuses))
+            skipped_count = 0
 
             for acc in accounts:
+                status = (acc.get('manual_verified') or 'no').strip().lower()
+                if status in skip_statuses:
+                    skipped_count += 1
+                    continue
+
                 missing = []
                 if not acc.get('first_name'):
                     missing.append('first_name')
@@ -1246,6 +1254,7 @@ def main():
 
             if not incomplete:
                 print("+ All accounts are complete!")
+                print(f"\nNote: Skipped {skipped_count} account(s) with manual_verified in {skip_statuses_text}.")
             else:
                 print(f"Found {len(incomplete)} incomplete accounts:\n")
                 print("=" * 80)
@@ -1265,6 +1274,7 @@ def main():
                     print(f"  To update: python3 -m account_manager.cli update {acc['etrack_user_id']}")
                 print("\n" + "=" * 80)
                 print(f"\nTotal incomplete: {len(incomplete)} / {len(accounts)}")
+                print(f"Note: Skipped {skipped_count} account(s) with manual_verified in {skip_statuses_text}.")
                 print(f"\nTo see details: python3 -m account_manager.cli report missing-fields")
 
         elif command == 'list-pending-verify':

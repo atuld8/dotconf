@@ -172,7 +172,7 @@ class ReportGenerator:
             report.append(f"With Jira Account:          {with_jira} ({with_jira/total*100:.1f}%)")
             report.append(f"Manually Verified (yes):    {manually_verified} ({manually_verified/total*100:.1f}%)")
             report.append(f"With Notes:                 {with_notes} ({with_notes/total*100:.1f}%)")
-            
+
             # Show verification status breakdown
             report.append("")
             report.append("Verification Status Breakdown:")
@@ -198,10 +198,10 @@ class ReportGenerator:
     def _generate_verification_report(self) -> str:
         """Generate a report showing accounts grouped by verification status"""
         accounts = self.am.get_all_accounts()
-        
+
         if not accounts:
             return "No accounts found"
-        
+
         # Group accounts by verification status
         by_status = {}
         for acc in accounts:
@@ -209,7 +209,7 @@ class ReportGenerator:
             if status not in by_status:
                 by_status[status] = []
             by_status[status].append(acc)
-        
+
         report = []
         report.append("=" * 80)
         report.append("VERIFICATION STATUS REPORT")
@@ -217,7 +217,7 @@ class ReportGenerator:
         report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         report.append(f"Total Accounts: {len(accounts)}")
         report.append("")
-        
+
         # Summary table
         report.append("Status Summary:")
         report.append("-" * 40)
@@ -228,7 +228,7 @@ class ReportGenerator:
             report.append(f"  {status:<12} {count:>4} ({pct:>5.1f}%)  {bar}")
         report.append("-" * 40)
         report.append("")
-        
+
         # Status descriptions
         status_desc = {
             'no': 'Not yet verified (default)',
@@ -240,24 +240,26 @@ class ReportGenerator:
             'suspended': 'Temporarily inactive',
             'external': 'External contractor/vendor'
         }
-        
+
         # Detail by status (only show statuses that have accounts)
         for status in ['no', 'pending', 'yes', 'invalid', 'departed', 'duplicate', 'suspended', 'external']:
             if status not in by_status or not by_status[status]:
                 continue
-            
+
             accs = by_status[status]
             report.append("=" * 80)
             report.append(f"{status.upper()} - {status_desc.get(status, '')} ({len(accs)} accounts)")
             report.append("=" * 80)
-            
+            report.append(f"  {'Etrack User ID':<20} {'First Name':<15} {'Last Name':<15} Jira Account")
+            report.append(f"  {'-' * 20} {'-' * 15} {'-' * 15} {'-' * 20}")
+
             for acc in accs:
                 report.append(f"  {acc['etrack_user_id']:<20} {acc.get('first_name', '') or '':<15} {acc.get('last_name', '') or '':<15} {acc.get('jira_account', '') or 'N/A'}")
                 if acc.get('notes'):
                     notes_preview = acc['notes'].replace('\n', ' ')[:60]
                     report.append(f"    Notes: {notes_preview}..." if len(acc.get('notes', '')) > 60 else f"    Notes: {notes_preview}")
             report.append("")
-        
+
         return "\n".join(report)
 
     def _generate_missing_fields_report(self, show_notes: bool = False) -> str:
