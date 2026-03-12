@@ -408,12 +408,13 @@ class FIValidator:
         """
         return [r for r in results if not r.all_match]
 
-    def generate_report(self, results: List[ValidationResult]) -> str:
+    def generate_report(self, results: List[ValidationResult], include_details: bool = True) -> str:
         """
         Generate a validation report with both table and detailed formats
 
         Args:
             results: List of ValidationResult objects
+            include_details: If False, omit per-incident detailed sections
 
         Returns:
             Formatted report string
@@ -470,7 +471,7 @@ class FIValidator:
             report.append("")
 
         # === DETAILED FORMAT ===
-        if unknown_users:
+        if include_details and unknown_users:
             report.append("=" * 120)
             report.append("UNKNOWN USERS (not in database) - DETAILS")
             report.append("-" * 120)
@@ -480,7 +481,7 @@ class FIValidator:
                 report.append(f"    -> Add user: python3 -m account_manager.cli add {result.etrack_user_id}")
             report.append("")
 
-        if mismatches:
+        if include_details and mismatches:
             report.append("=" * 120)
             report.append("MISMATCHES - DETAILS")
             report.append("-" * 120)
@@ -505,6 +506,36 @@ class FIValidator:
                     else:
                         report.append(f"    {validation.fi_id}: + OK (assigned to {validation.jira_assignee})")
                 report.append("")
+
+        if not include_details and (mismatches or unknown_users):
+            mismatch_fi_ids = set()
+            mismatch_by_expected = {}
+            mismatch_by_current = {}
+
+            for result in mismatches:
+                for v in result.fi_validations:
+                    if not v.matches:
+                        mismatch_fi_ids.add(v.fi_id)
+                        expected = v.expected_jira_id or 'N/A'
+                        current = v.jira_assignee or 'N/A'
+                        mismatch_by_expected[expected] = mismatch_by_expected.get(expected, 0) + 1
+                        mismatch_by_current[current] = mismatch_by_current.get(current, 0) + 1
+
+            report.append("COMPACT INSIGHTS (--skip-details)")
+            report.append("-" * 120)
+            report.append(f"Unique mismatched FIs: {len(mismatch_fi_ids)}")
+
+            if mismatch_by_expected:
+                report.append("Top expected assignees (target):")
+                for assignee, count in sorted(mismatch_by_expected.items(), key=lambda x: (-x[1], x[0]))[:5]:
+                    report.append(f"  {assignee}: {count}")
+
+            if mismatch_by_current:
+                report.append("Top current assignees (source):")
+                for assignee, count in sorted(mismatch_by_current.items(), key=lambda x: (-x[1], x[0]))[:5]:
+                    report.append(f"  {assignee}: {count}")
+
+            report.append("Run without --skip-details for per-incident/per-FI details.")
 
         report.append("=" * 120)
         return "\n".join(report)

@@ -838,13 +838,15 @@ class ReportGenerator:
 
     @staticmethod
     def generate_fi_reassignment_report(mismatches: List[Dict[str, Any]],
-                                         group_by_current: bool = True) -> str:
+                                         group_by_current: bool = True,
+                                         include_details: bool = True) -> str:
         """
         Generate a report of FI reassignments needed.
 
         Args:
             mismatches: List of dicts with 'fi_id', 'current_assignee', 'expected_assignee'
             group_by_current: If True, group by current assignee; else by expected
+            include_details: If False, suppress full FI list and fix command block
 
         Returns:
             Formatted reassignment report
@@ -892,36 +894,41 @@ class ReportGenerator:
                 fi_list += f", ... (+{len(fi_ids) - 5} more)"
             report.append(f"{target:<28} {len(fi_ids):>5}   {fi_list}")
 
-        report.append("")
-        report.append("FULL LIST")
-        report.append("-" * 9)
-        report.append(f"{'FI ID':<12} {'Current Assignee':<20} {'Should Be':<28}")
-        report.append(f"{'-'*12} {'-'*20} {'-'*28}")
-
-        for m in sorted(mismatches, key=lambda x: _fi_sort_key(x.get('fi_id', ''))):
-            fi_id = m.get('fi_id', 'N/A')
-            current = m.get('current_assignee', 'N/A')
-            expected = m.get('expected_assignee', 'N/A')
-            report.append(f"{fi_id:<12} {current:<18} ->  {expected}")
-
-        report.append("")
-        report.append("=" * 80)
-
-        if common_current:
-            report.append("TO FIX: Run validate-fi with --fix-from option:")
+        if include_details:
             report.append("")
-            report.append(f"  python3 -m account_manager.cli validate-fi <query> \\")
-            report.append(f"      --fix-from={common_current} --dry-run")
+            report.append("FULL LIST")
+            report.append("-" * 9)
+            report.append(f"{'FI ID':<12} {'Current Assignee':<20} {'Should Be':<28}")
+            report.append(f"{'-'*12} {'-'*20} {'-'*28}")
+
+            for m in sorted(mismatches, key=lambda x: _fi_sort_key(x.get('fi_id', ''))):
+                fi_id = m.get('fi_id', 'N/A')
+                current = m.get('current_assignee', 'N/A')
+                expected = m.get('expected_assignee', 'N/A')
+                report.append(f"{fi_id:<12} {current:<18} ->  {expected}")
+
             report.append("")
-            report.append("  # Remove --dry-run to apply changes")
+            report.append("=" * 80)
+
+            if common_current:
+                report.append("TO FIX: Run validate-fi with --fix-from option:")
+                report.append("")
+                report.append(f"  python3 -m account_manager.cli validate-fi <query> \\")
+                report.append(f"      --fix-from={common_current} --dry-run")
+                report.append("")
+                report.append("  # Remove --dry-run to apply changes")
+            else:
+                report.append("TO FIX: Run validate-fi with --fix option:")
+                report.append("")
+                report.append(f"  python3 -m account_manager.cli validate-fi <query> --fix --dry-run")
+                report.append("")
+                report.append("  # Remove --dry-run to apply changes")
+
+            report.append("=" * 80)
         else:
-            report.append("TO FIX: Run validate-fi with --fix option:")
             report.append("")
-            report.append(f"  python3 -m account_manager.cli validate-fi <query> --fix --dry-run")
-            report.append("")
-            report.append("  # Remove --dry-run to apply changes")
-
-        report.append("=" * 80)
+            report.append("Detailed FI rows suppressed by --skip-details")
+            report.append("=" * 80)
 
         return "\n".join(report)
 

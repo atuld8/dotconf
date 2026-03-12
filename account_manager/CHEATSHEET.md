@@ -150,6 +150,11 @@ python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --re
 
 # Generate report for FIs currently assigned to specific user
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-from=deepak.tanksale
+
+# Compact summary output for large datasets
+# Note: still prints --skip-fi and Mismatch-List FI ID lists
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report --skip-details
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-from=deepak.tanksale --skip-details
 ```
 
 ### Show FIs with Conflicting Assignees
@@ -473,6 +478,7 @@ python3 -m account_manager.cli assign-etrack-fi 1234567 user_one
 | --perform-sr-type-check | With query: filter to SERVICE_REQUEST only (default: trust query) |
 | --report | Generate formatted reassignment report (no fixes) |
 | --report-from=USER | Generate report for FIs currently assigned to USER |
+| --skip-details | Reduce verbose output to compact insights; still shows `--skip-fi` and `Mismatch-List` FI IDs |
 
 ### assign-etrack-fi Options
 | Option | Description |

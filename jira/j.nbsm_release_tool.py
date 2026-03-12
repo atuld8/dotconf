@@ -643,6 +643,7 @@ class ReleaseProcessor:
                             'build': tag,
                             'key': issue.get('key', ''),
                             'summary': fields.get('summary', ''),
+                            'type': fields.get('issuetype', {}).get('name', ''),
                             'status': fields.get('status', {}).get('name', ''),
                             'assignee': (fields.get('assignee', {}).get('displayName', 'Unassigned')
                                         if fields.get('assignee') else 'Unassigned'),
@@ -666,6 +667,7 @@ class ReleaseProcessor:
                         rows.append([
                             row['build'],
                             row['key'],
+                            row['type'],
                             row['status'],
                             row['assignee'],
                             row['priority'],
@@ -673,13 +675,13 @@ class ReleaseProcessor:
                         ])
                     return tabulate(
                         rows,
-                        headers=['Build', 'Key', 'Status', 'Assignee', 'Priority', 'Summary'],
+                        headers=['Build', 'Key', 'Type', 'Status', 'Assignee', 'Priority', 'Summary'],
                         tablefmt='simple'
                     )
                 else:
                     lines = []
                     for row in all_data:
-                        lines.append(f"{row['build']}  {row['key']}  {row['status']}  {row['assignee']}  {row['priority']}  {row['summary'][:80]}")
+                        lines.append(f"{row['build']}  {row['key']}  {row['type']}  {row['status']}  {row['assignee']}  {row['priority']}  {row['summary'][:80]}")
                     return '\n'.join(lines)
 
         if format == 'json':
@@ -731,6 +733,7 @@ class ReleaseProcessor:
                             (fields.get('summary', '')[:80] + '...')
                                 if len(fields.get('summary', '')) > 80
                                 else fields.get('summary', ''),
+                            fields.get('issuetype', {}).get('name', ''),
                             fields.get('status', {}).get('name', ''),
                             fields.get('assignee', {}).get('displayName', 'Unassigned')
                                 if fields.get('assignee') else 'Unassigned',
@@ -740,7 +743,7 @@ class ReleaseProcessor:
 
                     lines.append(tabulate(
                         rows,
-                        headers=['Key', 'Summary', 'Status', 'Assignee', 'Priority'],
+                        headers=['Key', 'Summary', 'Type', 'Status', 'Assignee', 'Priority'],
                         tablefmt='simple'
                     ))
                 elif format == 'markdown':

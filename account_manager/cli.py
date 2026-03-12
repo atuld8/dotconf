@@ -194,6 +194,7 @@ Options:
     --skip-fi=<ids>     With --fix: skip specific FIs (comma-separated)
     --report            Generate formatted reassignment report (no fixes)
     --report-from=<user> Generate report for FIs currently assigned to <user>
+    --skip-details      Reduce verbose output (summary-focused display)
     --show-conflicts    Show FIs linked to multiple incidents with different assignees
     --table             With --show-conflicts: display in table format
     --incident=<no>     Validate incident(s) by number (comma-separated, or - for stdin)
@@ -261,6 +262,9 @@ Examples:
 
     # Filter query results to SERVICE_REQUEST only
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --perform-sr-type-check
+
+    # Compact output for large datasets
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report --skip-details
 
 Type Filtering:
     - For --fi/--incident: Defaults to SERVICE_REQUEST only. Use --all-types for all.
@@ -916,7 +920,7 @@ FI VALIDATION (esql + Jira)
     validate-fi options: --auto-add, --interactive, --mock, --fail-on-unknown,
                          --fix, --dry-run, --fix-interactive, --fix-from=USER,
                          --skip-fi=IDS, --incident=NUMBER, --fi=ID,
-                         --all-types, --perform-sr-type-check
+                         --all-types, --perform-sr-type-check, --skip-details
     assign-etrack-fi options: --dry-run, --mock, --verbose
 
 VERITAS EMAIL UPDATE (euserls)
@@ -1455,8 +1459,9 @@ def main():
                 print("  --fix-interactive   With --fix: prompt before each fix")
                 print("  --fix-from=<user>   Only fix FIs currently assigned to <user> (implies --fix)")
                 print("  --skip-fi=<ids>     With --fix: skip specific FIs (comma-separated)")
-                print("  --report            Generate formatted reassignment report")
-                print("  --report-from=<user> Generate report for FIs from specific assignee")
+                print("  --report            Generate formatted reassignment report (no fixes)")
+                print("  --report-from=<user> Generate report for FIs currently assigned to <user>")
+                print("  --skip-details      Reduce verbose output (summary-focused display)")
                 print("  --show-conflicts    Show FIs linked to multiple incidents with different assignees")
                 print("  --table             With --show-conflicts: display in table format")
                 print("  --incident=<no>     Validate incident(s) by number (comma-separated or - for stdin)")
@@ -1472,7 +1477,7 @@ def main():
                 '--mock', '--fix', '--dry-run', '--fix-interactive',
                 '--report', '--show-conflicts', '--table',
                 '--auto-add', '--interactive', '--fail-on-unknown',
-                '--all-types', '--perform-sr-type-check'
+                '--all-types', '--perform-sr-type-check', '--skip-details'
             }
             valid_option_prefixes = {
                 '--fix-from=', '--report-from=', '--skip-fi=', '--incident=', '--fi='
@@ -1505,6 +1510,7 @@ def main():
             conflict_table = '--table' in sys.argv
             include_all_types = '--all-types' in sys.argv  # For --fi/--incident
             perform_sr_type_check = '--perform-sr-type-check' in sys.argv  # For query-based
+            skip_details = '--skip-details' in sys.argv
 
             # Parse --fix-from=<user>
             fix_from_user = None
@@ -1604,15 +1610,17 @@ def main():
                     print(f"Fetching by FI: {fi_display_list[0]}")
                 else:
                     print(f"Fetching by FI: {len(fi_display_list)} FIs")
-                    for fi_d in fi_display_list:
-                        print(f"  - {fi_d}")
+                    if not skip_details:
+                        for fi_d in fi_display_list:
+                            print(f"  - {fi_d}")
             elif incident_nos:
                 if len(incident_nos) == 1:
                     print(f"Fetching incident: {incident_nos[0]}")
                 else:
                     print(f"Fetching incidents: {len(incident_nos)} incidents")
-                    for inc in incident_nos:
-                        print(f"  - {inc}")
+                    if not skip_details:
+                        for inc in incident_nos:
+                            print(f"  - {inc}")
             else:
                 print(f"Running esql query: {query_name}")
             print(f"Auto-populate strategy: {auto_strategy}")
@@ -1655,7 +1663,7 @@ def main():
                     records = executor.fetch_incidents_batch(
                         incident_nos,
                         include_all_types=include_all_types,
-                        verbose=True
+                        verbose=not skip_details
                     )
                 else:
                     # Single incident - use original method
@@ -1714,6 +1722,14 @@ def main():
                     print(f"\n  Total FIs analyzed: {len(fi_to_incidents)}")
                     multi_incident_fis = [fi for fi, incs in fi_to_incidents.items() if len(incs) > 1]
                     print(f"  FIs linked to multiple incidents (same assignee): {len(multi_incident_fis)}")
+                    return
+
+                if skip_details:
+                    print("=" * 80)
+                    print(f"FI CONFLICTS FOUND: {len(conflicts)}")
+                    print("=" * 80)
+                    print("Detailed conflict rows suppressed by --skip-details")
+                    print("Remove --skip-details to view full conflict details.")
                     return
 
                 print("=" * 80)
@@ -1849,7 +1865,7 @@ def main():
             print("\n" + "=" * 60)
             print("VALIDATION RESULTS")
             print("=" * 60)
-            print(validator.generate_report(results))
+            print(validator.generate_report(results, include_details=not skip_details))
 
             # Show mismatches
             mismatches = validator.get_mismatches(results)
@@ -1871,24 +1887,60 @@ def main():
 
                 # Generate formatted report if --report or --report-from
                 if generate_report:
-                    print("\n" + ReportGenerator.generate_fi_reassignment_report(mismatch_data))
+                    print("\n" + ReportGenerator.generate_fi_reassignment_report(
+                        mismatch_data,
+                        include_details=not skip_details
+                    ))
                 else:
                     # Default output
                     print("\n" + "=" * 60)
                     print(f"MISMATCHES FOUND: {len(mismatches)}")
                     print("=" * 60)
-                    for result in mismatches:
-                        # Get FI IDs from validations
-                        fi_ids = _sort_fi_ids([v.fi_id for v in result.fi_validations])
-                        fi_list = ', '.join(fi_ids) if fi_ids else 'N/A'
-                        print(f"\nFIs: {fi_list}")
-                        print(f"  Incident: {result.incident_no}")
-                        print(f"  Etrack Assignee: {result.etrack_user_id}")
-                        print(f"  Expected Jira Account (from DB): {result.db_jira_account or 'N/A'}")
-                        print(f"  Status: {result.status}")
-                        for v in result.fi_validations:
-                            if not v.matches:
-                                print(f"    {v.fi_id}: Jira has '{v.jira_assignee or 'N/A'}' (should be '{v.expected_jira_id or 'N/A'}')")
+                    if skip_details:
+                        total_mismatched_fis = sum(
+                            1 for result in mismatches for v in result.fi_validations if not v.matches
+                        )
+                        print(f"Total mismatched FIs: {total_mismatched_fis}")
+                        mismatch_by_expected = {}
+                        mismatch_by_current = {}
+                        for item in mismatch_data:
+                            exp = item.get('expected_assignee') or 'N/A'
+                            cur = item.get('current_assignee') or 'N/A'
+                            mismatch_by_expected[exp] = mismatch_by_expected.get(exp, 0) + 1
+                            mismatch_by_current[cur] = mismatch_by_current.get(cur, 0) + 1
+
+                        top_expected = sorted(
+                            mismatch_by_expected.items(),
+                            key=lambda x: (-x[1], x[0])
+                        )[:5]
+                        top_current = sorted(
+                            mismatch_by_current.items(),
+                            key=lambda x: (-x[1], x[0])
+                        )[:5]
+
+                        if top_expected:
+                            print("Top expected assignees (target):")
+                            for assignee, count in top_expected:
+                                print(f"  {assignee}: {count}")
+                        if top_current:
+                            print("Top current assignees (source):")
+                            for assignee, count in top_current:
+                                print(f"  {assignee}: {count}")
+
+                        print("Use without --skip-details for full per-FI mismatch rows.")
+                    else:
+                        for result in mismatches:
+                            # Get FI IDs from validations
+                            fi_ids = _sort_fi_ids([v.fi_id for v in result.fi_validations])
+                            fi_list = ', '.join(fi_ids) if fi_ids else 'N/A'
+                            print(f"\nFIs: {fi_list}")
+                            print(f"  Incident: {result.incident_no}")
+                            print(f"  Etrack Assignee: {result.etrack_user_id}")
+                            print(f"  Expected Jira Account (from DB): {result.db_jira_account or 'N/A'}")
+                            print(f"  Status: {result.status}")
+                            for v in result.fi_validations:
+                                if not v.matches:
+                                    print(f"    {v.fi_id}: Jira has '{v.jira_assignee or 'N/A'}' (should be '{v.expected_jira_id or 'N/A'}')")
 
             # Fix mismatches if --fix is enabled
             if fix_mismatches and mismatches:

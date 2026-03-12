@@ -539,9 +539,15 @@ class EtrackClient:
 
     # Fields available in etrack incident table
     INCIDENT_FIELDS = [
-        'incident', 'priority', 'severity', 'assigned_to', 'component',
-        'customer', 'state', 'abstract', 'submitter', 'product', 'created_date',
-        'group_owner', 'sr', 'type'
+        'incident', 'product', 'version', 'abstract', 'assigned_to', 'reporter',
+        'state', 'priority', 'severity', 'type', 'date_opened', 'date_closed',
+        'ext_inc', 'ext_src', 'target_version', 'build', 'comments', 'last_changed',
+        'changed_by', 'language', 'resolution', 'user_defined', 'subscribe',
+        'fixed_by', 'target_build', 'user_defined_list', 'platform', 'os_version',
+        'progress_status', 'imported', 'category', 'keyword', 'security',
+        'date_verified', 'date_fixed', 'verified_by', 'milestone', 'i18n',
+        'customer', 'description', 'com_counter', 'configuration', 'component',
+        'user_defined2', 'user_defined_list2', 'user_defined_text', 'is_lock'
     ]
 
     def __init__(self, batch_size: int = ETRACK_BATCH_SIZE):
@@ -586,7 +592,7 @@ class EtrackClient:
         """
         Parse esql output into dictionary of incident data.
 
-        esql output is tab-separated with optional headers.
+        Handles both tab-separated and pipe-delimited (PrettyTable) formats.
 
         Args:
             output: Raw esql output
@@ -603,14 +609,21 @@ class EtrackClient:
             if not line:
                 continue
             # Skip header/separator lines
-            if line.startswith('---') or line.startswith('==='):
+            if line.startswith('---') or line.startswith('===') or line.startswith('+--'):
                 continue
-            if 'incident' in line.lower() and 'assigned_to' in line.lower():
+            if 'incident' in line.lower() and ('assigned_to' in line.lower() or 'priority' in line.lower()):
                 continue
 
-            # Parse tab-separated values
-            parts = line.split('\t')
-            parts = [p.strip() for p in parts]
+            # Handle pipe-delimited format (PrettyTable style)
+            if '|' in line:
+                # Split by pipe and strip each part
+                parts = [p.strip() for p in line.split('|')]
+                # Remove empty parts from start/end (from leading/trailing |)
+                parts = [p for p in parts if p]
+            else:
+                # Parse tab-separated values
+                parts = line.split('\t')
+                parts = [p.strip() for p in parts]
 
             if len(parts) >= 1 and parts[0].isdigit():
                 incident_id = parts[0]
@@ -653,6 +666,9 @@ class EtrackClient:
             if 'incident' not in fields:
                 fields.insert(0, 'incident')
 
+        # Date fields that need time formatting
+        DATE_FIELDS = {'date_opened', 'date_closed', 'date_fixed', 'date_verified', 'last_changed'}
+
         all_data = {}
 
         # Batch IDs to avoid overly long IN clauses (max ~500 per query)
@@ -663,9 +679,16 @@ class EtrackClient:
             if verbose or sys.stderr.isatty():
                 print(f"\rFetching etrack batch {batch_num}/{len(batches)} ({len(batch)} IDs)...", end='', file=sys.stderr)
 
-            # Build SQL query
+            # Build SQL query with date formatting
             id_list = ', '.join(batch)
-            field_list = ', '.join(fields)
+            # Format date fields with TO_CHAR for time display
+            field_exprs = []
+            for f in fields:
+                if f.lower() in DATE_FIELDS:
+                    field_exprs.append(f"TO_CHAR({f}, 'YYYY-MM-DD HH24:MI:SS') AS {f}")
+                else:
+                    field_exprs.append(f)
+            field_list = ', '.join(field_exprs)
             query = f"SELECT {field_list} FROM incident WHERE incident IN ({id_list})"
 
             start = time.time()
@@ -1485,6 +1508,18 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
         key=lambda x: x[1].get('priority', 99)
     )
 
+    # Detect additional ET columns from first issue's row data
+    extra_et_cols = []
+    for cat_id, cat_data in sorted_cats:
+        if cat_data['issues']:
+            sample_row = cat_data['issues'][0].get('row', {})
+            for col_name in sample_row.keys():
+                col_lower = col_name.lower()
+                # Include ET columns that are not already in the base set
+                if col_lower.startswith('et ') and col_lower not in ['et state', 'et incident', 'et assigned to']:
+                    extra_et_cols.append(col_name)
+            break
+
     for cat_id, cat_data in sorted_cats:
         issues = cat_data['issues']
         if not issues:
@@ -1505,14 +1540,15 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
         # Build table for this category
         if PrettyTable:
             table = PrettyTable()
-            table.field_names = ['#', 'Key', 'Assignee', 'Priority', 'Jr Status', 'Case Status', 'ET State', 'ET Incident']
+            base_fields = ['#', 'Key', 'Assignee', 'Priority', 'Jr Status', 'Case Status', 'ET State', 'ET Incident']
+            table.field_names = base_fields + extra_et_cols
             table.align = 'l'
 
             # Sort issues by FI key
             sorted_issues = sorted(issues, key=fi_sort_key)
             display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
-                table.add_row([
+                base_row = [
                     idx,
                     issue['key'],
                     issue['jr_assignee'][:20] if issue['jr_assignee'] else '',
@@ -1521,7 +1557,13 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                     issue['jr_case_status'][:25] if issue['jr_case_status'] else '',
                     issue['et_state'].upper() if issue['et_state'] else '',
                     issue['et_incident']
-                ])
+                ]
+                # Add extra ET columns from original row
+                row_data = issue.get('row', {})
+                for et_col in extra_et_cols:
+                    val = row_data.get(et_col, '')
+                    base_row.append(str(val)[:30] if val else '')
+                table.add_row(base_row)
 
             Colors.print_table(table)
 
@@ -2743,16 +2785,32 @@ def main():
             print(f"\n--- Incidents Without FIs ({len(incidents_without_fis)}) ---", file=sys.stderr)
 
             # Fetch etrack details for incidents without FIs
-            no_fi_fields = ['incident', 'priority', 'severity', 'state', 'assigned_to', 'customer', 'component', 'reporter', 'abstract']
+            no_fi_fields = ['incident', 'priority', 'severity', 'state', 'assigned_to', 'customer', 'component', 'reporter', 'date_opened', 'abstract']
             print(f"Fetching etrack details for {len(incidents_without_fis)} incidents...", file=sys.stderr)
             no_fi_etrack_data = etrack_client_for_fis.fetch_etrack_data(incidents_without_fis, etrack_fields=no_fi_fields, verbose=args.verbose)
             print(f"Received etrack data for {len(no_fi_etrack_data)} incidents", file=sys.stderr)
 
+            # Debug: Check key matching
+            if args.verbose and no_fi_etrack_data:
+                sample_key = list(no_fi_etrack_data.keys())[0]
+                sample_input = incidents_without_fis[0] if incidents_without_fis else None
+                print(f"  DEBUG: Sample etrack key: '{sample_key}' (type: {type(sample_key).__name__})", file=sys.stderr)
+                print(f"  DEBUG: Sample input key: '{sample_input}' (type: {type(sample_input).__name__})", file=sys.stderr)
+                if sample_key != sample_input:
+                    print(f"  DEBUG: Key mismatch! etrack keys: {list(no_fi_etrack_data.keys())[:5]}", file=sys.stderr)
+
             if no_fi_etrack_data:
-                # Build table data with etrack details
+                # Debug: show sample data
+                print(f"no_fi_etrack_data keys: {list(no_fi_etrack_data.keys())[:3]}", file=sys.stderr)
+                if no_fi_etrack_data:
+                    sample_key = list(no_fi_etrack_data.keys())[0]
+                    print(f"Sample data for {sample_key}: {no_fi_etrack_data[sample_key]}", file=sys.stderr)
+
+                # Build table data with etrack details - use fetched data directly
                 table_data = []
-                for inc_id in incidents_without_fis:
-                    row = no_fi_etrack_data.get(inc_id, {})
+                # Use keys from no_fi_etrack_data since those are valid
+                for inc_id in no_fi_etrack_data.keys():
+                    row = no_fi_etrack_data[inc_id]
                     # Truncate abstract to 80 chars
                     abstract = row.get('abstract', '')
                     if len(abstract) > 80:
@@ -2766,6 +2824,7 @@ def main():
                         'customer': row.get('customer', ''),
                         'component': row.get('component', ''),
                         'reporter': row.get('reporter', ''),
+                        'date_opened': row.get('date_opened', ''),
                         'abstract': abstract
                     })
             else:
@@ -2773,7 +2832,10 @@ def main():
                 print("(etrack data fetch failed, showing IDs only)", file=sys.stderr)
                 table_data = [{'incident': inc_id, 'priority': '', 'severity': '', 'state': '',
                                'assigned_to': '', 'customer': '', 'component': '', 'reporter': '',
-                               'abstract': ''} for inc_id in incidents_without_fis]
+                               'date_opened': '', 'abstract': ''} for inc_id in incidents_without_fis]
+
+            # Debug: show how many table rows were built
+            print(f"Built {len(table_data)} table rows", file=sys.stderr)
 
             # Print table to stderr (skip if saving to files)
             if table_data and not args.save_no_fi:

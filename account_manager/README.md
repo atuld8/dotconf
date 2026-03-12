@@ -110,6 +110,8 @@ python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --au
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix  # Fix mismatches
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report  # Generate report
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-from=manager.name
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report --skip-details  # Compact report for large output
+python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-from=manager.name --skip-details
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --show-conflicts  # FIs with conflicting assignees
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --show-conflicts --table  # Table format
 python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --perform-sr-type-check  # Filter to SERVICE_REQUEST
@@ -178,6 +180,7 @@ echo "123456" | python3 -m account_manager.cli lookup-etrack-emails             
 - **Compact/Markdown**: Alternative formats
 - **--show-notes**: Include notes column in reports
 - **FI Reassignment Report**: Formatted report of FI mismatches (`--report`, `--report-from`)
+- **Compact FI Validation Output**: `--skip-details` keeps output concise with summary insights while still printing FI ID lists (`--skip-fi` and `Mismatch-List`)
 
 ### Action Logs
 - **action-log**: View recent actions with filtering (--limit, --status, --type, --since)
