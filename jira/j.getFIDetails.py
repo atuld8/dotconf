@@ -309,12 +309,32 @@ def _is_meaningful_text(value: str) -> bool:
         "not started",
         "not-started",
     }
-    return normalized not in placeholders
+    if normalized in placeholders:
+        return False
+    # Reject values that are only a label followed by punctuation with no real content.
+    # e.g. "Current status-", "Next Steps -", "Status:"
+    stripped_punct = re.sub(r"[\s\-\u2013\u2014:*_]+$", "", normalized)
+    if not stripped_punct:
+        return False
+    return True
+
+
+def _strip_field_label_prefix(text: str, label: str) -> str:
+    """Remove the field label itself from the start of a value, e.g. 'Current Status: foo' -> 'foo'."""
+    pattern = re.compile(
+        r"^" + re.escape(label) + r"[\s\-\u2013\u2014:*_]+",
+        re.IGNORECASE,
+    )
+    return pattern.sub("", text).strip()
 
 
 def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: List[Dict[str, Any]]) -> Dict[str, str]:
-    current_status = _clean_text_for_long_output(fields.get("customfield_11202"))
-    next_steps = _clean_text_for_long_output(fields.get("customfield_11203"))
+    current_status = _strip_field_label_prefix(
+        _clean_text_for_long_output(fields.get("customfield_11202")), "current status"
+    )
+    next_steps = _strip_field_label_prefix(
+        _clean_text_for_long_output(fields.get("customfield_11203")), "next steps"
+    )
 
     table_text = str(fields.get("customfield_27600") or "")
     if table_text:
@@ -325,7 +345,9 @@ def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: Lis
                 re.IGNORECASE | re.DOTALL,
             )
             if status_match:
-                current_status = _clean_text_for_long_output(status_match.group(1))
+                current_status = _strip_field_label_prefix(
+                    _clean_text_for_long_output(status_match.group(1)), "current status"
+                )
 
         if not _is_meaningful_text(next_steps):
             next_steps_match = re.search(
@@ -334,7 +356,9 @@ def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: Lis
                 re.IGNORECASE | re.DOTALL,
             )
             if next_steps_match:
-                next_steps = _clean_text_for_long_output(next_steps_match.group(1))
+                next_steps = _strip_field_label_prefix(
+                    _clean_text_for_long_output(next_steps_match.group(1)), "next steps"
+                )
 
     if not (_is_meaningful_text(current_status) and _is_meaningful_text(next_steps)):
         for comment in reversed(comments):
@@ -820,6 +844,12 @@ def main() -> int:
         help="Wrap width for long text output (default: 110).",
     )
     parser.add_argument(
+        "--desc",
+        choices=["none", "short", "mid", "full"],
+        default="short",
+        help="Description display: none (hide), short (default, 300 chars), mid (700 chars), full (no truncation).",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -903,6 +933,20 @@ def main() -> int:
         return 0
 
     _print_summary(summary_rows, args.format)
+
+    description = fields.get("description")
+    _desc_max_len = {"short": 300, "mid": 700, "full": 0}
+    if args.desc != "none" and description and _is_meaningful_text(_clean_text(description)):
+        print("\nDescription:")
+        print(
+            _format_multiline_text(
+                description,
+                max_len=_desc_max_len.get(args.desc, 300),
+                width=args.wrap_width,
+                indent="  ",
+                style=args.long_text_style,
+            )
+        )
 
     if status_context:
         print("\nCurrent Status / Next Steps:")

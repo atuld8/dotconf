@@ -350,12 +350,32 @@ def _is_meaningful_text(value: str) -> bool:
         "not started",
         "not-started",
     }
-    return normalized not in placeholders
+    if normalized in placeholders:
+        return False
+    # Reject values that are only a label/word followed by punctuation with no real content.
+    # e.g. "Current status-", "Next Steps -", "Status:"
+    stripped_punct = re.sub(r"[\s\-–—:*_]+$", "", normalized)
+    if not stripped_punct:
+        return False
+    return True
+
+
+def _strip_field_label_prefix(text: str, label: str) -> str:
+    """Remove the field label itself from the start of a value, e.g. 'Current Status: foo' -> 'foo'."""
+    pattern = re.compile(
+        r"^" + re.escape(label) + r"[\s\-–—:*_]+",
+        re.IGNORECASE,
+    )
+    return pattern.sub("", text).strip()
 
 
 def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: List[Dict[str, Any]]) -> Dict[str, str]:
-    current_status = _clean_text_for_long_output(fields.get("customfield_11202"))
-    next_steps = _clean_text_for_long_output(fields.get("customfield_11203"))
+    current_status = _strip_field_label_prefix(
+        _clean_text_for_long_output(fields.get("customfield_11202")), "current status"
+    )
+    next_steps = _strip_field_label_prefix(
+        _clean_text_for_long_output(fields.get("customfield_11203")), "next steps"
+    )
 
     table_text = str(fields.get("customfield_27600") or "")
     if table_text:
@@ -366,16 +386,18 @@ def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: Lis
                 re.IGNORECASE | re.DOTALL,
             )
             if status_match:
-                current_status = _clean_text_for_long_output(status_match.group(1))
-
-        if not _is_meaningful_text(next_steps):
+                current_status = _strip_field_label_prefix(
+                    _clean_text_for_long_output(status_match.group(1)), "current status"
+                )
             next_steps_match = re.search(
                 r"Next\s*Steps</b>\s*</td>\s*</tr>\s*<tr>\s*<td>(.*?)</td>",
                 table_text,
                 re.IGNORECASE | re.DOTALL,
             )
             if next_steps_match:
-                next_steps = _clean_text_for_long_output(next_steps_match.group(1))
+                next_steps = _strip_field_label_prefix(
+                    _clean_text_for_long_output(next_steps_match.group(1)), "next steps"
+                )
 
     if not (_is_meaningful_text(current_status) and _is_meaningful_text(next_steps)):
         for comment in reversed(comments):
@@ -1002,6 +1024,38 @@ def _build_json_output(
     return payload
 
 
+def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
+    available_sections = {
+        "summary",
+        "description",
+        "status",
+        "linked-fis",
+        "etrack",
+        "comments",
+        "fields",
+        "verbose",
+    }
+
+    mode_defaults: Dict[str, Set[str]] = {
+        "standard": {"summary", "description", "status", "linked-fis", "etrack", "comments", "fields", "verbose"},
+        "summary": {"summary", "description"},
+        "investigate": {"summary", "description", "status", "linked-fis", "etrack", "comments", "fields", "verbose"},
+        "ops": {"summary", "status", "linked-fis", "etrack", "comments"},
+    }
+
+    if raw_sections.strip():
+        selected = {part.strip().lower() for part in raw_sections.split(",") if part.strip()}
+        invalid = sorted(selected - available_sections)
+        if invalid:
+            raise ValueError(
+                f"Invalid --sections value(s): {', '.join(invalid)}. "
+                f"Allowed: {', '.join(sorted(available_sections))}."
+            )
+        return selected
+
+    return set(mode_defaults.get(mode, mode_defaults["standard"]))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Get Jira issue details (generic + FI profiles).")
     parser.add_argument("issue_key", help="Issue key (for example, PROJ-12345)")
@@ -1025,6 +1079,25 @@ def main() -> int:
         help="Number of latest comments to show (default: 2). Use 0 to disable comments.",
     )
     parser.add_argument(
+        "--mode",
+        choices=["standard", "summary", "investigate", "ops"],
+        default="standard",
+        help="Display preset mode: standard (default), summary, investigate, or ops.",
+    )
+    parser.add_argument(
+        "--sections",
+        default="",
+        help=(
+            "Comma-separated sections to display (overrides --mode). "
+            "Allowed: summary,description,status,linked-fis,etrack,comments,fields,verbose"
+        ),
+    )
+    parser.add_argument(
+        "--show-empty",
+        action="store_true",
+        help="Show section headers even when no data is available.",
+    )
+    parser.add_argument(
         "--long-text-style",
         choices=["paragraph", "wrapped", "raw"],
         default="paragraph",
@@ -1035,6 +1108,12 @@ def main() -> int:
         type=int,
         default=110,
         help="Wrap width for long text output (default: 110).",
+    )
+    parser.add_argument(
+        "--desc",
+        choices=["none", "short", "mid", "full"],
+        default="short",
+        help="Description display: none (hide), short (default, 300 chars), mid (700 chars), full (no truncation).",
     )
     parser.add_argument(
         "--verbose",
@@ -1067,6 +1146,11 @@ def main() -> int:
         return 2
 
     profile_type = _resolve_profile_type(args.issue_type, issue_key)
+    try:
+        enabled_sections = _resolve_enabled_sections(args.mode, args.sections)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 2
 
     try:
         jira = JiraClient()
@@ -1084,6 +1168,12 @@ def main() -> int:
     linked_status: Optional[Dict[str, Dict[str, str]]] = None
     etrack_ids = _extract_etrack_ids(fields)
     etrack_info: Optional[Dict[str, Dict[str, str]]] = None
+    sections_override_active = bool(args.sections.strip())
+    show_etrack_requested = (
+        args.show_etrack_details
+        or args.mode in {"investigate", "ops"}
+        or (sections_override_active and "etrack" in enabled_sections)
+    )
 
     if linked_fis:
         try:
@@ -1095,7 +1185,7 @@ def main() -> int:
                 print("\nLinked FIs:")
                 print(f"  Unable to fetch linked FI statuses: {exc}")
 
-    if args.show_etrack_details and etrack_ids:
+    if show_etrack_requested and etrack_ids:
         etrack_info = _fetch_etrack_details(etrack_ids)
 
     requested_fields = _split_field_selectors(args.show_field)
@@ -1120,7 +1210,7 @@ def main() -> int:
             status_context,
             linked_fis,
             linked_status,
-            args.show_etrack_details,
+            show_etrack_requested,
             etrack_ids,
             etrack_info,
             args.show_comments,
@@ -1131,92 +1221,127 @@ def main() -> int:
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
 
-    _print_summary(summary_rows, args.format, profile_type)
+    if "summary" in enabled_sections:
+        _print_summary(summary_rows, args.format, profile_type)
 
-    if status_context:
-        print("\nCurrent Status / Next Steps:")
-        if "current_status" in status_context:
-            print("  Current Status:")
+    description = fields.get("description")
+    _desc_max_len = {"short": 300, "mid": 700, "full": 0}
+    if "description" in enabled_sections:
+        if args.desc != "none" and description and _is_meaningful_text(_clean_text(description)):
+            print("\nDescription:")
             print(
                 _format_multiline_text(
-                    status_context["current_status"],
-                    max_len=450,
+                    description,
+                    max_len=_desc_max_len.get(args.desc, 300),
                     width=args.wrap_width,
+                    indent="  ",
                     style=args.long_text_style,
                 )
             )
-        if "next_steps" in status_context:
+        elif args.show_empty:
+            print("\nDescription: None")
+
+    if "status" in enabled_sections:
+        if status_context:
+            print("\nCurrent Status / Next Steps:")
             if "current_status" in status_context:
-                print()
-            print("  Next Steps:")
-            print(
-                _format_multiline_text(
-                    status_context["next_steps"],
-                    max_len=450,
-                    width=args.wrap_width,
-                    style=args.long_text_style,
+                print("  Current Status:")
+                print(
+                    _format_multiline_text(
+                        status_context["current_status"],
+                        max_len=450,
+                        width=args.wrap_width,
+                        style=args.long_text_style,
+                    )
                 )
-            )
+            if "next_steps" in status_context:
+                if "current_status" in status_context:
+                    print()
+                print("  Next Steps:")
+                print(
+                    _format_multiline_text(
+                        status_context["next_steps"],
+                        max_len=450,
+                        width=args.wrap_width,
+                        style=args.long_text_style,
+                    )
+                )
+        elif args.show_empty:
+            print("\nCurrent Status / Next Steps: None")
 
-    if linked_fis:
-        print("\nLinked FIs:")
-        rows = []
-        for linked_key in linked_fis:
-            data = (linked_status or {}).get(linked_key, {})
-            rows.append([
-                linked_key,
-                data.get("status", "-"),
-                data.get("resolution", "-"),
-                data.get("assignee", "-"),
-                data.get("updated", "-"),
-            ])
-        _print_table(rows, ["FI", "Status", "Resolution", "Assignee", "Updated"])
-
-    if args.show_etrack_details:
-        print("\nEtrack details:")
-        if not etrack_ids:
-            print("  No etrack incident linked in Jira fields.")
-        else:
+    if "linked-fis" in enabled_sections:
+        if linked_fis:
+            print("\nLinked FIs:")
             rows = []
-            for et in etrack_ids:
-                info = (etrack_info or {}).get(et, {})
+            for linked_key in linked_fis:
+                data = (linked_status or {}).get(linked_key, {})
                 rows.append([
-                    et,
-                    info.get("state", "-"),
-                    info.get("assignee", "-"),
-                    info.get("abstract", "-"),
+                    linked_key,
+                    data.get("status", "-"),
+                    data.get("resolution", "-"),
+                    data.get("assignee", "-"),
+                    data.get("updated", "-"),
                 ])
-            _print_table(rows, ["Incident", "State", "Assignee", "Abstract"])
+            _print_table(rows, ["FI", "Status", "Resolution", "Assignee", "Updated"])
+        elif args.show_empty:
+            print("\nLinked FIs: None")
 
-    if args.show_comments > 0 and comments:
-        print(f"\nLatest {min(args.show_comments, len(comments))} comment(s):")
-        latest = comments[-args.show_comments:]
-        for index, comment in enumerate(latest, 1):
-            author = (comment.get("author") or {}).get("displayName", "-")
-            created = _normalize_timestamp(comment.get("created"))
-            print(f"  {index}. {author} @ {created}")
-            print(
-                _format_multiline_text(
-                    comment.get("body"),
-                    max_len=450,
-                    width=args.wrap_width,
-                    indent="     ",
-                    style=args.long_text_style,
+    if "etrack" in enabled_sections:
+        if show_etrack_requested:
+            print("\nEtrack details:")
+            if not etrack_ids:
+                print("  No etrack incident linked in Jira fields.")
+            else:
+                rows = []
+                for et in etrack_ids:
+                    info = (etrack_info or {}).get(et, {})
+                    rows.append([
+                        et,
+                        info.get("state", "-"),
+                        info.get("assignee", "-"),
+                        info.get("abstract", "-"),
+                    ])
+                _print_table(rows, ["Incident", "State", "Assignee", "Abstract"])
+        elif args.show_empty:
+            print("\nEtrack details: disabled (use --show-etrack-details or mode investigate/ops)")
+
+    if "comments" in enabled_sections:
+        if args.show_comments > 0 and comments:
+            print(f"\nLatest {min(args.show_comments, len(comments))} comment(s):")
+            latest = comments[-args.show_comments:]
+            for index, comment in enumerate(latest, 1):
+                author = (comment.get("author") or {}).get("displayName", "-")
+                created = _normalize_timestamp(comment.get("created"))
+                print(f"  {index}. {author} @ {created}")
+                print(
+                    _format_multiline_text(
+                        comment.get("body"),
+                        max_len=450,
+                        width=args.wrap_width,
+                        indent="     ",
+                        style=args.long_text_style,
+                    )
                 )
-            )
-            if index < len(latest):
-                print()
+                if index < len(latest):
+                    print()
+        elif args.show_empty:
+            print("\nComments: None")
 
-    if requested_fields:
-        print("\nSelected Fields:")
-        _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"])
+    if "fields" in enabled_sections:
+        if requested_fields:
+            print("\nSelected Fields:")
+            _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"])
+        elif args.show_empty:
+            print("\nSelected Fields: None (use --show-field)")
 
-    if args.verbose:
+    if "verbose" in enabled_sections and args.verbose:
         print("\nVerbose Output:")
         verbose_issue = _filtered_issue_for_verbose(issue, args.include_empty_customfields)
         verbose_issue = _replace_customfield_keys_with_names(verbose_issue)
         verbose_issue = _prune_verbose_noise(verbose_issue)
         print(json.dumps(verbose_issue, indent=2, ensure_ascii=False))
+    elif "verbose" in enabled_sections and args.show_empty:
+        print("\nVerbose Output: disabled (use --verbose)")
 
     return 0
 
