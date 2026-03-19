@@ -443,11 +443,13 @@ def _print_summary(summary_rows: List[List[str]], output_format: str):
 
     print()
     print(
-        f"{_summary_value(summary_rows, 'FI')} | {_summary_value(summary_rows, 'Type')} | "
-        f"{_summary_value(summary_rows, 'Priority')} | {_summary_value(summary_rows, 'Status')} | "
-        f"{_summary_value(summary_rows, 'Resolution')}"
+        f"FI: {_summary_value(summary_rows, 'FI')} | "
+        f"Type: {_summary_value(summary_rows, 'Type')} | "
+        f"Priority: {_summary_value(summary_rows, 'Priority')} | "
+        f"Status: {_summary_value(summary_rows, 'Status')} | "
+        f"Resolution: {_summary_value(summary_rows, 'Resolution')}"
     )
-    print(_compact_text(_summary_value(summary_rows, "Summary"), max_len=180))
+    print(f"Summary: {_compact_text(_summary_value(summary_rows, 'Summary'), max_len=180)}")
     print(
         f"Assignee: {_summary_value(summary_rows, 'Assignee')} | "
         f"Case Status: {_summary_value(summary_rows, 'Case Status')} | "
@@ -766,7 +768,7 @@ def main() -> int:
             if args.format == "json":
                 linked_status = {fi_key: {"error": str(exc)} for fi_key in linked_fis}
             else:
-                print(f"\nLinked FIs:")
+                print("\nLinked FIs:")
                 print(f"  Unable to fetch linked FI statuses: {exc}")
 
     if args.show_etrack_details and etrack_ids:
