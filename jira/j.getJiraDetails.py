@@ -16,13 +16,14 @@ Environment variables expected:
 """
 
 import argparse
+import html
 import json
 import os
 import re
 import sys
 import textwrap
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 from dotenv import load_dotenv
@@ -80,11 +81,107 @@ def _compact_text(value: Any, max_len: int = 220) -> str:
     return text[: max_len - 3].rstrip() + "..."
 
 
-def _format_multiline_text(value: Any, max_len: int = 450, width: int = 110, indent: str = "    ") -> str:
-    compact = _compact_text(value, max_len=max_len)
-    if compact == "-":
+def _clean_text_for_long_output(value: Any) -> str:
+    if value is None:
+        return ""
+
+    text = html.unescape(str(value))
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    replacements = [
+        (r"<br\s*/?>", "\n"),
+        (r"</p>", "\n\n"),
+        (r"<p[^>]*>", ""),
+        (r"</div>", "\n"),
+        (r"<div[^>]*>", ""),
+        (r"<li[^>]*>", "\n- "),
+        (r"</li>", ""),
+        (r"</tr>", "\n"),
+        (r"<tr[^>]*>", ""),
+        (r"</td>", " | "),
+        (r"<td[^>]*>", ""),
+        (r"</th>", " | "),
+        (r"<th[^>]*>", ""),
+        (r"</h[1-6]>", "\n"),
+        (r"<h[1-6][^>]*>", "\n"),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    text = re.sub(r"<[^>]+>", " ", text)
+
+    normalized_lines: List[str] = []
+    for raw_line in text.split("\n"):
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            if normalized_lines and normalized_lines[-1] != "":
+                normalized_lines.append("")
+            continue
+        normalized_lines.append(line)
+
+    return "\n".join(normalized_lines).strip()
+
+
+def _truncate_text(text: str, max_len: int) -> str:
+    if max_len <= 0 or len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def _format_multiline_text(
+    value: Any,
+    max_len: int = 450,
+    width: int = 110,
+    indent: str = "    ",
+    style: str = "paragraph",
+) -> str:
+    if style == "wrapped":
+        compact = _compact_text(value, max_len=max_len)
+        if compact == "-":
+            return "-"
+        return textwrap.fill(compact, width=width, initial_indent=indent, subsequent_indent=indent)
+
+    text = _clean_text_for_long_output(value)
+    if not text:
         return "-"
-    return textwrap.fill(compact, width=width, initial_indent=indent, subsequent_indent=indent)
+
+    text = _truncate_text(text, max_len=max_len)
+    if style == "raw":
+        return "\n".join(f"{indent}{line}" if line else "" for line in text.split("\n"))
+
+    bullet_pattern = re.compile(r"^((?:[-*•]|\d+[.)]))\s+(.*)$")
+    safe_width = max(width, len(indent) + 20)
+    rendered_lines: List[str] = []
+    for line in text.split("\n"):
+        if not line:
+            if rendered_lines and rendered_lines[-1] != "":
+                rendered_lines.append("")
+            continue
+
+        match = bullet_pattern.match(line)
+        if match:
+            bullet = match.group(1)
+            content = match.group(2)
+            rendered_lines.append(
+                textwrap.fill(
+                    content,
+                    width=safe_width,
+                    initial_indent=f"{indent}{bullet} ",
+                    subsequent_indent=f"{indent}{' ' * (len(bullet) + 1)}",
+                )
+            )
+            continue
+
+        rendered_lines.append(
+            textwrap.fill(
+                line,
+                width=safe_width,
+                initial_indent=indent,
+                subsequent_indent=indent,
+            )
+        )
+
+    return "\n".join(rendered_lines) if rendered_lines else "-"
 
 
 def _is_empty_value(value: Any) -> bool:
@@ -204,6 +301,169 @@ def _format_sprint_value(value: Any) -> str:
     return str(value)
 
 
+def _extract_linked_fis(issue_data: Dict[str, Any]) -> List[str]:
+    fields = issue_data.get("fields", {})
+    fi_set: Set[str] = set()
+
+    for link in fields.get("issuelinks", []):
+        for side in ("inwardIssue", "outwardIssue"):
+            linked_issue = link.get(side)
+            if not linked_issue:
+                continue
+            key = linked_issue.get("key", "")
+            if re.match(r"^FI-\d+$", key):
+                fi_set.add(key)
+
+    case_fis = fields.get("customfield_20707")
+    if case_fis:
+        for found in re.findall(r"FI-\d+", str(case_fis)):
+            fi_set.add(found)
+
+    return sorted(fi_set, key=lambda value: int(value.split("-")[1]))
+
+
+def _extract_etrack_ids(fields: Dict[str, Any]) -> List[str]:
+    candidates: List[str] = []
+
+    main_et = fields.get("customfield_33802")
+    if main_et:
+        candidates.extend(re.findall(r"\d+", str(main_et)))
+
+    alt_et = fields.get("customfield_36508")
+    if alt_et:
+        candidates.extend(re.findall(r"\d+", str(alt_et)))
+
+    return sorted(set(candidates), key=int)
+
+
+def _is_meaningful_text(value: str) -> bool:
+    if not value:
+        return False
+    normalized = value.strip().casefold()
+    placeholders = {
+        "-",
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "tbd",
+        "not started",
+        "not-started",
+    }
+    return normalized not in placeholders
+
+
+def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: List[Dict[str, Any]]) -> Dict[str, str]:
+    current_status = _clean_text_for_long_output(fields.get("customfield_11202"))
+    next_steps = _clean_text_for_long_output(fields.get("customfield_11203"))
+
+    table_text = str(fields.get("customfield_27600") or "")
+    if table_text:
+        if not _is_meaningful_text(current_status):
+            status_match = re.search(
+                r"Current\s*Status</b>\s*</td>\s*</tr>\s*<tr>\s*<td>(.*?)</td>",
+                table_text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if status_match:
+                current_status = _clean_text_for_long_output(status_match.group(1))
+
+        if not _is_meaningful_text(next_steps):
+            next_steps_match = re.search(
+                r"Next\s*Steps</b>\s*</td>\s*</tr>\s*<tr>\s*<td>(.*?)</td>",
+                table_text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if next_steps_match:
+                next_steps = _clean_text_for_long_output(next_steps_match.group(1))
+
+    if not (_is_meaningful_text(current_status) and _is_meaningful_text(next_steps)):
+        for comment in reversed(comments):
+            body = _clean_text_for_long_output(comment.get("body") or "")
+            if not body:
+                continue
+
+            if not _is_meaningful_text(current_status):
+                status_match = re.search(r"Current\s*Status\s*[:=]\s*(.+?)(?:\*|$)", body, re.IGNORECASE)
+                if status_match:
+                    candidate = _clean_text_for_long_output(status_match.group(1))
+                    if _is_meaningful_text(candidate):
+                        current_status = candidate
+
+            if not _is_meaningful_text(next_steps):
+                next_steps_match = re.search(r"Next\s*Steps\s*[:=]\s*(.+?)(?:\*|$)", body, re.IGNORECASE)
+                if next_steps_match:
+                    candidate = _clean_text_for_long_output(next_steps_match.group(1))
+                    if _is_meaningful_text(candidate):
+                        next_steps = candidate
+
+            if _is_meaningful_text(current_status) and _is_meaningful_text(next_steps):
+                break
+
+    result: Dict[str, str] = {}
+    if _is_meaningful_text(current_status):
+        result["current_status"] = current_status
+    if _is_meaningful_text(next_steps):
+        result["next_steps"] = next_steps
+    return result
+
+
+def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
+    details: Dict[str, Dict[str, str]] = {}
+    if not etrack_ids:
+        return details
+
+    try:
+        from account_manager.etrack_integration import EtrackExecutor
+    except ImportError:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        workspace_root = os.path.dirname(script_dir)
+        if workspace_root not in sys.path:
+            sys.path.insert(0, workspace_root)
+
+        try:
+            from account_manager.etrack_integration import EtrackExecutor
+        except ImportError as exc:
+            for et in etrack_ids:
+                details[et] = {
+                    "state": "-",
+                    "assignee": "-",
+                    "abstract": f"Etrack module unavailable: {exc}",
+                }
+            return details
+
+    try:
+        executor = EtrackExecutor()
+    except RuntimeError as exc:
+        for et in etrack_ids:
+            details[et] = {
+                "state": "-",
+                "assignee": "-",
+                "abstract": f"Unable to initialize Etrack executor: {exc}",
+            }
+        return details
+
+    for et in etrack_ids:
+        info = executor.get_etrack_info(et)
+        if info:
+            abstract = (info.abstract or "-").strip()
+            if len(abstract) > 140:
+                abstract = abstract[:140] + "..."
+            details[et] = {
+                "state": info.state or "-",
+                "assignee": info.assignee or "-",
+                "abstract": abstract,
+            }
+        else:
+            details[et] = {
+                "state": "-",
+                "assignee": "-",
+                "abstract": "No etrack details found",
+            }
+
+    return details
+
+
 class JiraClient:
     def __init__(self):
         load_dotenv()
@@ -227,6 +487,50 @@ class JiraClient:
         if response.status_code != 200:
             raise RuntimeError(f"Failed to fetch {issue_key}: {response.status_code} {response.text[:400]}")
         return response.json()
+
+    def get_issue_status_batch(self, issue_keys: List[str]) -> Dict[str, Dict[str, str]]:
+        if not issue_keys:
+            return {}
+
+        unique_keys = sorted(set(issue_keys))
+        jql = f"key in ({', '.join(unique_keys)})"
+
+        url = f"{self.base_url}/rest/api/2/search"
+        params = {
+            "jql": jql,
+            "maxResults": len(unique_keys),
+            "fields": "status,resolution,assignee,priority,updated",
+        }
+
+        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Failed to fetch linked issue statuses: {response.status_code} {response.text[:400]}"
+            )
+
+        payload = response.json()
+        result: Dict[str, Dict[str, str]] = {}
+        for issue in payload.get("issues", []):
+            fields = issue.get("fields", {})
+            result[issue.get("key", "")] = {
+                "status": _opt_value(fields.get("status")),
+                "resolution": _opt_value(fields.get("resolution")),
+                "assignee": _opt_value(fields.get("assignee") or {}),
+                "priority": _opt_value(fields.get("priority")),
+                "updated": _normalize_timestamp(fields.get("updated")),
+            }
+
+        for key in unique_keys:
+            if key not in result:
+                result[key] = {
+                    "status": "NOT_FOUND",
+                    "resolution": "-",
+                    "assignee": "-",
+                    "priority": "-",
+                    "updated": "-",
+                }
+
+        return result
 
 
 def _print_table(rows: List[List[str]], headers: List[str]):
@@ -273,30 +577,69 @@ def _field_value_by_name(issue: Dict[str, Any], display_name: str) -> Any:
     return None
 
 
-def _get_default_optional_fields(issue: Dict[str, Any]) -> List[List[str]]:
+def _resolve_profile_type(requested_type: str, issue_key: str) -> str:
+    normalized = requested_type.strip().lower()
+    if normalized == "auto":
+        return "fi" if re.match(r"^FI-\d+$", issue_key) else "generic"
+    if normalized == "default":
+        return "generic"
+    return normalized
+
+
+def _append_if_present(rows: List[List[str]], label: str, value: Any, formatter: Optional[Any] = None):
+    if not _has_display_value(value):
+        return
+    formatted = formatter(value) if formatter else _format_selected_field_value(value)
+    if formatted and formatted != "-":
+        rows.append([label, formatted])
+
+
+def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrack_ids: List[str]) -> List[List[str]]:
     fields = issue.get("fields")
     if not isinstance(fields, dict):
         return []
 
-    candidates = [
-        ("Solution", _field_value_by_name(issue, "Solution")),
-        ("Progress Status", _field_value_by_name(issue, "Progress Status")),
-        ("Severity", fields.get("severity", _field_value_by_name(issue, "Severity"))),
-        ("Epic Link", _field_value_by_name(issue, "Epic Link")),
-        ("Sprint", _field_value_by_name(issue, "Sprint")),
-        ("Watchers", fields.get("watches") or _field_value_by_name(issue, "Watchers")),
-        ("Watcher Groups", _field_value_by_name(issue, "Watcher Groups")),
-    ]
-
     rows: List[List[str]] = []
-    for label, value in candidates:
-        if _has_display_value(value):
-            if label == "Watchers":
-                rows.append([label, _format_watchers_value(value)])
-            elif label == "Sprint":
-                rows.append([label, _format_sprint_value(value)])
-            else:
-                rows.append([label, _format_selected_field_value(value)])
+
+    _append_if_present(rows, "Solution", _field_value_by_name(issue, "Solution"))
+    _append_if_present(rows, "Progress Status", _field_value_by_name(issue, "Progress Status"))
+    _append_if_present(rows, "Severity", fields.get("severity", _field_value_by_name(issue, "Severity")))
+    _append_if_present(rows, "Epic Link", _field_value_by_name(issue, "Epic Link"))
+    _append_if_present(rows, "Sprint", _field_value_by_name(issue, "Sprint"), formatter=_format_sprint_value)
+    _append_if_present(
+        rows,
+        "Watchers",
+        fields.get("watches") or _field_value_by_name(issue, "Watchers"),
+        formatter=_format_watchers_value,
+    )
+    _append_if_present(rows, "Watcher Groups", _field_value_by_name(issue, "Watcher Groups"))
+
+    _append_if_present(rows, "Case Status", fields.get("customfield_16200"))
+    if etrack_ids:
+        rows.append(["Etrack Incident", ", ".join(etrack_ids)])
+    _append_if_present(rows, "Etrack Ref", fields.get("customfield_36508"))
+    _append_if_present(rows, "Case#", fields.get("customfield_11814"))
+    _append_if_present(rows, "Customer", fields.get("customfield_18901"))
+    _append_if_present(rows, "Slack", fields.get("customfield_24004"))
+
+    if profile_type == "fi":
+        label_order = {
+            "Solution": 1,
+            "Progress Status": 2,
+            "Severity": 3,
+            "Case Status": 4,
+            "Etrack Incident": 5,
+            "Etrack Ref": 6,
+            "Case#": 7,
+            "Customer": 8,
+            "Epic Link": 9,
+            "Sprint": 10,
+            "Watchers": 11,
+            "Watcher Groups": 12,
+            "Slack": 13,
+        }
+        rows.sort(key=lambda row: label_order.get(row[0], 100))
+
     return rows
 
 
@@ -334,16 +677,39 @@ def _build_summary_rows(
     ]
 
 
-def _print_summary(summary_rows: List[List[str]], output_format: str):
+def _print_summary(summary_rows: List[List[str]], output_format: str, profile_type: str):
+    optional_labels = [
+        "Solution",
+        "Progress Status",
+        "Severity",
+        "Case Status",
+        "Etrack Incident",
+        "Etrack Ref",
+        "Case#",
+        "Customer",
+        "Epic Link",
+        "Sprint",
+        "Watchers",
+        "Watcher Groups",
+        "Slack",
+    ]
+
     if output_format == "json":
         print(json.dumps(_summary_rows_to_dict(summary_rows), indent=2, ensure_ascii=False))
         return
 
     if output_format == "minimal":
-        print(
-            f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
-            f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Priority')}"
-        )
+        if profile_type == "fi":
+            print(
+                f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
+                f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Customer')} | "
+                f"{_summary_value(summary_rows, 'Etrack Ref')}"
+            )
+        else:
+            print(
+                f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
+                f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Priority')}"
+            )
         return
 
     if output_format == "table":
@@ -371,7 +737,6 @@ def _print_summary(summary_rows: List[List[str]], output_format: str):
         print(f"  Labels: {_summary_value(summary_rows, 'Labels')}")
         print(f"  Fix Versions: {_summary_value(summary_rows, 'Fix Versions')}")
         print(f"  Affects Versions: {_summary_value(summary_rows, 'Affects Versions')}")
-        optional_labels = ["Solution", "Progress Status", "Severity", "Epic Link", "Sprint", "Watchers", "Watcher Groups"]
         optional_present = [label for label in optional_labels if _summary_value(summary_rows, label) != "-"]
         if optional_present:
             print("\nAdditional:")
@@ -402,7 +767,6 @@ def _print_summary(summary_rows: List[List[str]], output_format: str):
         f"Components: {_summary_value(summary_rows, 'Components')} | "
         f"Labels: {_summary_value(summary_rows, 'Labels')}"
     )
-    optional_labels = ["Solution", "Progress Status", "Severity", "Epic Link", "Sprint", "Watchers", "Watcher Groups"]
     optional_parts = [
         f"{label}: {_compact_text(_summary_value(summary_rows, label), max_len=80)}"
         for label in optional_labels
@@ -577,15 +941,42 @@ def _get_selected_field_rows(issue: Dict[str, Any], selectors: List[str]) -> Lis
 
 
 def _build_json_output(
+    profile_type: str,
     summary_rows: List[List[str]],
+    status_context: Dict[str, str],
+    linked_fis: List[str],
+    linked_status: Optional[Dict[str, Dict[str, str]]],
+    show_etrack_details: bool,
+    etrack_ids: List[str],
+    etrack_info: Optional[Dict[str, Dict[str, str]]],
     show_comments: int,
     comments: List[Dict[str, Any]],
     requested_fields: List[str],
     selected_field_rows: List[List[str]],
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
+        "profile": profile_type,
         "summary": _summary_rows_to_dict(summary_rows),
     }
+
+    if status_context:
+        payload["current_context"] = status_context
+
+    if linked_fis:
+        payload["linked_fis"] = []
+        for fi_key in linked_fis:
+            item: Dict[str, Any] = {"FI": fi_key}
+            if linked_status:
+                item.update(linked_status.get(fi_key, {}))
+            payload["linked_fis"].append(item)
+
+    if show_etrack_details:
+        payload["etrack_details"] = []
+        for etrack_id in etrack_ids:
+            detail = {"Incident": etrack_id}
+            if etrack_info:
+                detail.update(etrack_info.get(etrack_id, {}))
+            payload["etrack_details"].append(detail)
 
     if show_comments > 0:
         latest = comments[-show_comments:] if comments else []
@@ -612,13 +1003,38 @@ def _build_json_output(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Get generic Jira issue details.")
+    parser = argparse.ArgumentParser(description="Get Jira issue details (generic + FI profiles).")
     parser.add_argument("issue_key", help="Issue key (for example, PROJ-12345)")
+    parser.add_argument(
+        "--type",
+        "-type",
+        dest="issue_type",
+        default="auto",
+        choices=["auto", "fi", "generic", "default"],
+        help="Profile type: auto (default), fi, generic, or default.",
+    )
+    parser.add_argument(
+        "--show-etrack-details",
+        action="store_true",
+        help="If etrack incident IDs are present, fetch and show etrack summary details.",
+    )
     parser.add_argument(
         "--show-comments",
         type=int,
         default=2,
         help="Number of latest comments to show (default: 2). Use 0 to disable comments.",
+    )
+    parser.add_argument(
+        "--long-text-style",
+        choices=["paragraph", "wrapped", "raw"],
+        default="paragraph",
+        help="Format for long text fields and comments: paragraph (default), wrapped, or raw.",
+    )
+    parser.add_argument(
+        "--wrap-width",
+        type=int,
+        default=110,
+        help="Wrap width for long text output (default: 110).",
     )
     parser.add_argument(
         "--verbose",
@@ -650,6 +1066,8 @@ def main() -> int:
         print(f"Invalid Jira issue key format: {issue_key}. Expected PROJECT-<digits>")
         return 2
 
+    profile_type = _resolve_profile_type(args.issue_type, issue_key)
+
     try:
         jira = JiraClient()
         issue = jira.get_issue(issue_key)
@@ -661,8 +1079,27 @@ def main() -> int:
     comments = (fields.get("comment") or {}).get("comments", [])
     attachments = fields.get("attachment", [])
     watchers = (fields.get("watches") or {}).get("watchCount", "-")
+    status_context = _extract_current_status_and_next_steps(fields, comments)
+    linked_fis = _extract_linked_fis(issue)
+    linked_status: Optional[Dict[str, Dict[str, str]]] = None
+    etrack_ids = _extract_etrack_ids(fields)
+    etrack_info: Optional[Dict[str, Dict[str, str]]] = None
+
+    if linked_fis:
+        try:
+            linked_status = jira.get_issue_status_batch(linked_fis)
+        except RuntimeError as exc:
+            if args.format == "json":
+                linked_status = {fi_key: {"error": str(exc)} for fi_key in linked_fis}
+            else:
+                print("\nLinked FIs:")
+                print(f"  Unable to fetch linked FI statuses: {exc}")
+
+    if args.show_etrack_details and etrack_ids:
+        etrack_info = _fetch_etrack_details(etrack_ids)
+
     requested_fields = _split_field_selectors(args.show_field)
-    default_optional_rows = _get_default_optional_fields(issue)
+    default_optional_rows = _get_default_optional_fields(issue, profile_type, etrack_ids)
     summary_rows = _build_summary_rows(
         issue.get("key", issue_key),
         fields,
@@ -678,7 +1115,14 @@ def main() -> int:
 
     if args.format == "json":
         json_payload = _build_json_output(
+            profile_type,
             summary_rows,
+            status_context,
+            linked_fis,
+            linked_status,
+            args.show_etrack_details,
+            etrack_ids,
+            etrack_info,
             args.show_comments,
             comments,
             requested_fields,
@@ -687,7 +1131,62 @@ def main() -> int:
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
 
-    _print_summary(summary_rows, args.format)
+    _print_summary(summary_rows, args.format, profile_type)
+
+    if status_context:
+        print("\nCurrent Status / Next Steps:")
+        if "current_status" in status_context:
+            print("  Current Status:")
+            print(
+                _format_multiline_text(
+                    status_context["current_status"],
+                    max_len=450,
+                    width=args.wrap_width,
+                    style=args.long_text_style,
+                )
+            )
+        if "next_steps" in status_context:
+            if "current_status" in status_context:
+                print()
+            print("  Next Steps:")
+            print(
+                _format_multiline_text(
+                    status_context["next_steps"],
+                    max_len=450,
+                    width=args.wrap_width,
+                    style=args.long_text_style,
+                )
+            )
+
+    if linked_fis:
+        print("\nLinked FIs:")
+        rows = []
+        for linked_key in linked_fis:
+            data = (linked_status or {}).get(linked_key, {})
+            rows.append([
+                linked_key,
+                data.get("status", "-"),
+                data.get("resolution", "-"),
+                data.get("assignee", "-"),
+                data.get("updated", "-"),
+            ])
+        _print_table(rows, ["FI", "Status", "Resolution", "Assignee", "Updated"])
+
+    if args.show_etrack_details:
+        print("\nEtrack details:")
+        if not etrack_ids:
+            print("  No etrack incident linked in Jira fields.")
+        else:
+            rows = []
+            for et in etrack_ids:
+                info = (etrack_info or {}).get(et, {})
+                rows.append([
+                    et,
+                    info.get("state", "-"),
+                    info.get("assignee", "-"),
+                    info.get("abstract", "-"),
+                ])
+            _print_table(rows, ["Incident", "State", "Assignee", "Abstract"])
 
     if args.show_comments > 0 and comments:
         print(f"\nLatest {min(args.show_comments, len(comments))} comment(s):")
@@ -696,7 +1195,15 @@ def main() -> int:
             author = (comment.get("author") or {}).get("displayName", "-")
             created = _normalize_timestamp(comment.get("created"))
             print(f"  {index}. {author} @ {created}")
-            print(_format_multiline_text(comment.get("body"), max_len=450, width=110, indent="     "))
+            print(
+                _format_multiline_text(
+                    comment.get("body"),
+                    max_len=450,
+                    width=args.wrap_width,
+                    indent="     ",
+                    style=args.long_text_style,
+                )
+            )
             if index < len(latest):
                 print()
 

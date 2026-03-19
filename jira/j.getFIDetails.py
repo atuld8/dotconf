@@ -192,11 +192,107 @@ def _compact_text(value: Any, max_len: int = 220) -> str:
     return text[: max_len - 3].rstrip() + "..."
 
 
-def _format_multiline_text(value: Any, max_len: int = 450, width: int = 110, indent: str = "    ") -> str:
-    compact = _compact_text(value, max_len=max_len)
-    if compact == "-":
+def _clean_text_for_long_output(value: Any) -> str:
+    if value is None:
+        return ""
+
+    text = html.unescape(str(value))
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    replacements = [
+        (r"<br\s*/?>", "\n"),
+        (r"</p>", "\n\n"),
+        (r"<p[^>]*>", ""),
+        (r"</div>", "\n"),
+        (r"<div[^>]*>", ""),
+        (r"<li[^>]*>", "\n- "),
+        (r"</li>", ""),
+        (r"</tr>", "\n"),
+        (r"<tr[^>]*>", ""),
+        (r"</td>", " | "),
+        (r"<td[^>]*>", ""),
+        (r"</th>", " | "),
+        (r"<th[^>]*>", ""),
+        (r"</h[1-6]>", "\n"),
+        (r"<h[1-6][^>]*>", "\n"),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    text = re.sub(r"<[^>]+>", " ", text)
+
+    normalized_lines: List[str] = []
+    for raw_line in text.split("\n"):
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            if normalized_lines and normalized_lines[-1] != "":
+                normalized_lines.append("")
+            continue
+        normalized_lines.append(line)
+
+    return "\n".join(normalized_lines).strip()
+
+
+def _truncate_text(text: str, max_len: int) -> str:
+    if max_len <= 0 or len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def _format_multiline_text(
+    value: Any,
+    max_len: int = 450,
+    width: int = 110,
+    indent: str = "    ",
+    style: str = "paragraph",
+) -> str:
+    if style == "wrapped":
+        compact = _compact_text(value, max_len=max_len)
+        if compact == "-":
+            return "-"
+        return textwrap.fill(compact, width=width, initial_indent=indent, subsequent_indent=indent)
+
+    text = _clean_text_for_long_output(value)
+    if not text:
         return "-"
-    return textwrap.fill(compact, width=width, initial_indent=indent, subsequent_indent=indent)
+
+    text = _truncate_text(text, max_len=max_len)
+    if style == "raw":
+        return "\n".join(f"{indent}{line}" if line else "" for line in text.split("\n"))
+
+    bullet_pattern = re.compile(r"^((?:[-*•]|\d+[.)]))\s+(.*)$")
+    safe_width = max(width, len(indent) + 20)
+    rendered_lines: List[str] = []
+    for line in text.split("\n"):
+        if not line:
+            if rendered_lines and rendered_lines[-1] != "":
+                rendered_lines.append("")
+            continue
+
+        match = bullet_pattern.match(line)
+        if match:
+            bullet = match.group(1)
+            content = match.group(2)
+            rendered_lines.append(
+                textwrap.fill(
+                    content,
+                    width=safe_width,
+                    initial_indent=f"{indent}{bullet} ",
+                    subsequent_indent=f"{indent}{' ' * (len(bullet) + 1)}",
+                )
+            )
+            continue
+
+        rendered_lines.append(
+            textwrap.fill(
+                line,
+                width=safe_width,
+                initial_indent=indent,
+                subsequent_indent=indent,
+            )
+        )
+
+    return "\n".join(rendered_lines) if rendered_lines else "-"
 
 
 def _is_meaningful_text(value: str) -> bool:
@@ -217,8 +313,8 @@ def _is_meaningful_text(value: str) -> bool:
 
 
 def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: List[Dict[str, Any]]) -> Dict[str, str]:
-    current_status = _clean_text(fields.get("customfield_11202"))
-    next_steps = _clean_text(fields.get("customfield_11203"))
+    current_status = _clean_text_for_long_output(fields.get("customfield_11202"))
+    next_steps = _clean_text_for_long_output(fields.get("customfield_11203"))
 
     table_text = str(fields.get("customfield_27600") or "")
     if table_text:
@@ -229,7 +325,7 @@ def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: Lis
                 re.IGNORECASE | re.DOTALL,
             )
             if status_match:
-                current_status = _clean_text(status_match.group(1))
+                current_status = _clean_text_for_long_output(status_match.group(1))
 
         if not _is_meaningful_text(next_steps):
             next_steps_match = re.search(
@@ -238,7 +334,7 @@ def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: Lis
                 re.IGNORECASE | re.DOTALL,
             )
             if next_steps_match:
-                next_steps = _clean_text(next_steps_match.group(1))
+                next_steps = _clean_text_for_long_output(next_steps_match.group(1))
 
     if not (_is_meaningful_text(current_status) and _is_meaningful_text(next_steps)):
         for comment in reversed(comments):
@@ -712,6 +808,18 @@ def main() -> int:
         help="Number of latest comments to show (default: 2). Use 0 to disable comments.",
     )
     parser.add_argument(
+        "--long-text-style",
+        choices=["paragraph", "wrapped", "raw"],
+        default="paragraph",
+        help="Format for long text fields and comments: paragraph (default), wrapped, or raw.",
+    )
+    parser.add_argument(
+        "--wrap-width",
+        type=int,
+        default=110,
+        help="Wrap width for long text output (default: 110).",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -800,12 +908,26 @@ def main() -> int:
         print("\nCurrent Status / Next Steps:")
         if "current_status" in status_context:
             print("  Current Status:")
-            print(_format_multiline_text(status_context["current_status"], max_len=450))
+            print(
+                _format_multiline_text(
+                    status_context["current_status"],
+                    max_len=450,
+                    width=args.wrap_width,
+                    style=args.long_text_style,
+                )
+            )
         if "next_steps" in status_context:
             if "current_status" in status_context:
                 print()
             print("  Next Steps:")
-            print(_format_multiline_text(status_context["next_steps"], max_len=450))
+            print(
+                _format_multiline_text(
+                    status_context["next_steps"],
+                    max_len=450,
+                    width=args.wrap_width,
+                    style=args.long_text_style,
+                )
+            )
 
     if linked_fis:
         print("\nLinked FIs:")
@@ -851,7 +973,15 @@ def main() -> int:
             author = (comment.get("author") or {}).get("displayName", "-")
             created = _normalize_timestamp(comment.get("created"))
             print(f"  {idx}. {author} @ {created}")
-            print(_format_multiline_text(comment.get("body"), max_len=450, width=110, indent="     "))
+            print(
+                _format_multiline_text(
+                    comment.get("body"),
+                    max_len=450,
+                    width=args.wrap_width,
+                    indent="     ",
+                    style=args.long_text_style,
+                )
+            )
             if idx < len(latest):
                 print()
 
