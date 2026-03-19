@@ -1221,6 +1221,13 @@ def main() -> int:
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
 
+    print(
+        f"profile={profile_type} type_arg={args.issue_type} mode={args.mode} "
+        f"format={args.format} desc={args.desc} comments={args.show_comments} "
+        f"etrack={'on' if show_etrack_requested else 'off'} "
+        f"long={args.long_text_style}/{args.wrap_width}"
+    )
+
     if "summary" in enabled_sections:
         _print_summary(summary_rows, args.format, profile_type)
 
