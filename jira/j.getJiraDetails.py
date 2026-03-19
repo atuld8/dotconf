@@ -129,6 +129,81 @@ def _format_watchers_value(value: Any) -> str:
     return count_text
 
 
+def _parse_legacy_sprint_string(raw: str) -> Optional[str]:
+    if "greenhopper.service.sprint.Sprint@" not in raw or "[" not in raw or "]" not in raw:
+        return None
+
+    match = re.search(r"\[(.*)\]", raw)
+    if not match:
+        return None
+
+    content = match.group(1)
+    parts = re.findall(r"(\w+)=([^,\]]*)", content)
+    if not parts:
+        return None
+
+    data: Dict[str, str] = {}
+    for key, value in parts:
+        data[key] = value.strip()
+
+    name = data.get("name") or data.get("id") or "Sprint"
+    detail_parts: List[str] = []
+    if data.get("id"):
+        detail_parts.append(f"id: {data['id']}")
+    if data.get("state"):
+        detail_parts.append(f"state: {str(data['state']).lower()}")
+    if data.get("rapidViewId"):
+        detail_parts.append(f"board: {data['rapidViewId']}")
+
+    if detail_parts:
+        return f"{name} ({', '.join(detail_parts)})"
+    return name
+
+
+def _format_sprint_value(value: Any) -> str:
+    if value is None:
+        return "-"
+
+    if isinstance(value, str):
+        parsed = _parse_legacy_sprint_string(value)
+        return parsed if parsed else value
+
+    if isinstance(value, list):
+        sprint_items: List[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parsed = _parse_legacy_sprint_string(item)
+                sprint_items.append(parsed if parsed else item)
+            elif isinstance(item, dict):
+                name = item.get("name") or item.get("id") or _opt_value(item)
+                state = item.get("state")
+                sprint_id = item.get("id")
+                details: List[str] = []
+                if sprint_id:
+                    details.append(f"id: {sprint_id}")
+                if state:
+                    details.append(f"state: {str(state).lower()}")
+                sprint_items.append(f"{name} ({', '.join(details)})" if details else str(name))
+            else:
+                sprint_items.append(str(item))
+
+        sprint_items = [item for item in sprint_items if item and item != "-"]
+        return ", ".join(sprint_items) if sprint_items else "-"
+
+    if isinstance(value, dict):
+        name = value.get("name") or value.get("id") or _opt_value(value)
+        state = value.get("state")
+        sprint_id = value.get("id")
+        details: List[str] = []
+        if sprint_id:
+            details.append(f"id: {sprint_id}")
+        if state:
+            details.append(f"state: {str(state).lower()}")
+        return f"{name} ({', '.join(details)})" if details else str(name)
+
+    return str(value)
+
+
 class JiraClient:
     def __init__(self):
         load_dotenv()
@@ -208,6 +283,7 @@ def _get_default_optional_fields(issue: Dict[str, Any]) -> List[List[str]]:
         ("Progress Status", _field_value_by_name(issue, "Progress Status")),
         ("Severity", fields.get("severity", _field_value_by_name(issue, "Severity"))),
         ("Epic Link", _field_value_by_name(issue, "Epic Link")),
+        ("Sprint", _field_value_by_name(issue, "Sprint")),
         ("Watchers", fields.get("watches") or _field_value_by_name(issue, "Watchers")),
         ("Watcher Groups", _field_value_by_name(issue, "Watcher Groups")),
     ]
@@ -217,6 +293,8 @@ def _get_default_optional_fields(issue: Dict[str, Any]) -> List[List[str]]:
         if _has_display_value(value):
             if label == "Watchers":
                 rows.append([label, _format_watchers_value(value)])
+            elif label == "Sprint":
+                rows.append([label, _format_sprint_value(value)])
             else:
                 rows.append([label, _format_selected_field_value(value)])
     return rows
@@ -293,7 +371,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str):
         print(f"  Labels: {_summary_value(summary_rows, 'Labels')}")
         print(f"  Fix Versions: {_summary_value(summary_rows, 'Fix Versions')}")
         print(f"  Affects Versions: {_summary_value(summary_rows, 'Affects Versions')}")
-        optional_labels = ["Solution", "Progress Status", "Severity", "Epic Link", "Watchers", "Watcher Groups"]
+        optional_labels = ["Solution", "Progress Status", "Severity", "Epic Link", "Sprint", "Watchers", "Watcher Groups"]
         optional_present = [label for label in optional_labels if _summary_value(summary_rows, label) != "-"]
         if optional_present:
             print("\nAdditional:")
@@ -324,7 +402,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str):
         f"Components: {_summary_value(summary_rows, 'Components')} | "
         f"Labels: {_summary_value(summary_rows, 'Labels')}"
     )
-    optional_labels = ["Solution", "Progress Status", "Severity", "Epic Link", "Watchers", "Watcher Groups"]
+    optional_labels = ["Solution", "Progress Status", "Severity", "Epic Link", "Sprint", "Watchers", "Watcher Groups"]
     optional_parts = [
         f"{label}: {_compact_text(_summary_value(summary_rows, label), max_len=80)}"
         for label in optional_labels
