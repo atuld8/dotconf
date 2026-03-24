@@ -74,6 +74,9 @@ alias .paths='echo -e ${PATH//:/\\n}'
 alias vbase='/usr/bin/vim -u NONE --noplugin'
 alias rga='rg -n --color=always --hidden --follow --ignore-case'
 
+# Exit if not an interactive shell
+[[ $- == *i* ]] || return
+
 # User specific aliases and functions
 #required by screen and tmux
 export DOName=''
