@@ -351,6 +351,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None):
     for _, row in df.iterrows():
         table.add_row(row.tolist())
     print(table)
+    print(f"\nTotal rows: {len(df)}")
     # print(table.get_html_string())
 
 

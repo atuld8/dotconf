@@ -1,3 +1,5 @@
+#!/usr/bin/awk -f
+
 BEGIN {
     # Default column widths
     ColumnWidth["ABSTRACT"]=60
