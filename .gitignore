@@ -24,3 +24,5 @@ jira/j.createMigratorStoryFromNBSMStoryFile.sh
 jira/NBSMStoryFile
 jira/NBSVRUPStoryFile
 jira/trkX
+jira/chrome-headless-shell
+account_manager/__pycache__

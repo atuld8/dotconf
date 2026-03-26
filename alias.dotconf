@@ -25,6 +25,7 @@ alias e.screenrc='$CFG_EDITOR ~/.vim/screenrc'
 alias e.gc='$CFG_EDITOR ~/.vim/gitconfig'
 alias e.gcg='$CFG_EDITOR ~/.vim/gitconfig_global'
 alias e.iprc='$CFG_EDITOR ~/.vim/inputrc'
+alias e.gi='$CFG_EDITOR $(git rev-parse --show-toplevel)/.gitignore'
 
 alias e.aag='$MULTI_CFG_EDITOR ~/.vim/alias.global ~/.vim/wincmds/alias_global.cmd'
 alias e.aan='$MULTI_CFG_EDITOR ~/.vim/alias.nbu ~/.vim/wincmds/alias_nbu.cmd'

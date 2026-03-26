@@ -280,14 +280,175 @@ class JiraClient:
         available = [t.get('name', 'Unknown') for t in transitions]
         return False, f"No path to Done found. Available: {', '.join(available)}"
 
-    def update_issue(self, issue_key: str, build_id: str, labels: List[str] = None,
-                     assignee: str = None, solution_field: str = "Solution") -> Dict:
-        """Update an issue with build info, labels, and assignee.
+    def get_project_components(self, project_key: str) -> List[Dict]:
+        """Get all components for a project."""
+        response = self._request('GET', f'project/{project_key}/components')
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"  Error fetching components for project {project_key}: {response.status_code}")
+            return []
+
+    def find_component_id(self, project_key: str, component_name: str) -> Optional[str]:
+        """Find component ID by name."""
+        components = self.get_project_components(project_key)
+        for comp in components:
+            if comp.get('name', '').lower() == component_name.lower():
+                return comp.get('id')
+        return None
+
+    def set_component(self, issue_key: str, component_id: str) -> bool:
+        """Set issue component by component ID."""
+        data = {"update": {"components": [{"set": [{"id": component_id}]}]}}
+        response = self._request('PUT', f'issue/{issue_key}', data)
+
+        if response.status_code == 204:
+            return True
+        else:
+            print(f"  Error setting component on {issue_key}: {response.status_code}")
+            return False
+
+    def set_multi_value_field(self, issue_key: str, field_id: str, values: List[str]) -> bool:
+        """Set a multi-value field (like watcher group) on an issue.
+
+        Args:
+            issue_key: Jira issue key
+            field_id: Field ID (or will attempt name lookup)
+            values: List of values (e.g., group names) to set
+        """
+        # Try to resolve field_id if it's a name
+        actual_field_id = field_id
+        if not field_id.startswith('customfield_'):
+            actual_field_id = self.get_field_id(field_id)
+            if not actual_field_id:
+                print(f"  Error: Field '{field_id}' not found")
+                return False
+
+        # Build the data structure for multi-value field
+        field_data = [{"name": v} for v in values]
+        data = {"fields": {actual_field_id: field_data}}
+
+        response = self._request('PUT', f'issue/{issue_key}', data)
+
+        if response.status_code == 204:
+            return True
+        else:
+            print(f"  Error setting {field_id} on {issue_key}: {response.status_code}")
+            return False
+
+    def set_epic_link(self, issue_key: str, epic_key: str, field_name: str = "Epic Link") -> bool:
+        """Set Epic Link on an issue."""
+        field_id = self.get_field_id(field_name)
+        if not field_id:
+            # Fallback to hardcoded custom field ID
+            field_id = "customfield_10008"
+
+        data = {"fields": {field_id: epic_key}}
+        response = self._request('PUT', f'issue/{issue_key}', data)
+
+        if response.status_code == 204:
+            return True
+        else:
+            print(f"  Error setting epic link on {issue_key}: {response.status_code}")
+            return False
+
+    def validate_issue_properties(self, issue_key: str, properties: List[str] = None) -> Dict:
+        """Validate and fetch specific properties on an issue.
+
+        Args:
+            issue_key: Jira issue key
+            properties: List of properties to check:
+                       'labels', 'component', 'assignee', 'epic_link', 'watcher_group', 'solution'
 
         Returns:
-            Dict with 'success', 'build', 'labels', 'assignee' status
+            Dict with property names as keys and their values/status
         """
-        result = {'success': True, 'build': False, 'labels': False, 'assignee': False}
+        if not properties:
+            properties = ['labels', 'component', 'assignee', 'epic_link', 'solution']
+
+        result = {}
+
+        try:
+            issue = self.get_issue(issue_key)
+            fields = issue.get('fields', {})
+
+            for prop in properties:
+                if prop.lower() == 'labels':
+                    labels = fields.get('labels', [])
+                    result['labels'] = {
+                        'value': labels,
+                        'count': len(labels),
+                        'is_set': len(labels) > 0
+                    }
+
+                elif prop.lower() == 'component':
+                    components = fields.get('components', [])
+                    comp_names = [c.get('name') for c in components]
+                    result['component'] = {
+                        'value': comp_names,
+                        'count': len(comp_names),
+                        'is_set': len(comp_names) > 0
+                    }
+
+                elif prop.lower() == 'assignee':
+                    assignee = fields.get('assignee')
+                    assignee_name = assignee.get('displayName') if assignee else None
+                    result['assignee'] = {
+                        'value': assignee_name,
+                        'is_set': assignee_name is not None
+                    }
+
+                elif prop.lower() == 'epic_link':
+                    # Try Epic Link field (customfield_10008 by default)
+                    epic_field_id = self.get_field_id('Epic Link')
+                    if not epic_field_id:
+                        epic_field_id = 'customfield_10008'
+                    epic_link = fields.get(epic_field_id)
+                    result['epic_link'] = {
+                        'value': epic_link,
+                        'is_set': epic_link is not None
+                    }
+
+                elif prop.lower() == 'watcher_group':
+                    # Try Watcher Group field (customfield_33462 by default)
+                    wg_field_id = self.get_field_id('Watcher Group')
+                    if not wg_field_id:
+                        wg_field_id = 'customfield_33462'
+                    watcher_groups = fields.get(wg_field_id, [])
+                    wg_names = [w.get('name') if isinstance(w, dict) else w for w in watcher_groups]
+                    result['watcher_group'] = {
+                        'value': wg_names,
+                        'count': len(wg_names),
+                        'is_set': len(wg_names) > 0
+                    }
+
+                elif prop.lower() == 'solution':
+                    # Try Solution field
+                    solution_field_id = self.get_field_id('Solution')
+                    if not solution_field_id:
+                        solution_field_id = 'customfield_20303'
+                    solution = fields.get(solution_field_id)
+                    result['solution'] = {
+                        'value': solution,
+                        'is_set': solution is not None
+                    }
+
+            return {'issue_key': issue_key, 'properties': result, 'success': True}
+
+        except Exception as e:
+            return {'issue_key': issue_key, 'error': str(e), 'success': False}
+
+    def update_issue(self, issue_key: str, build_id: str, labels: List[str] = None,
+                     assignee: str = None, component_id: str = None, watcher_groups: List[str] = None,
+                     epic_key: str = None, watcher_group_field: str = "Watcher Group",
+                     solution_field: str = "Solution") -> Dict:
+        """Update an issue with build info, labels, assignee, component, watcher groups, and epic link.
+
+        Returns:
+            Dict with 'success', 'build', 'labels', 'assignee', 'component', 'watcher_group', 'epic_link' status
+        """
+        result = {'success': True, 'build': False, 'labels': False, 'assignee': False,
+                  'component': False, 'watcher_group': False, 'epic_link': False}
 
         # Update Solution field with build ID
         solution_value = f"*Target_Build:* {{{{{build_id}}}}}"
@@ -307,6 +468,27 @@ class JiraClient:
         if assignee:
             if self.set_assignee(issue_key, assignee):
                 result['assignee'] = True
+            else:
+                result['success'] = False
+
+        # Set component
+        if component_id:
+            if self.set_component(issue_key, component_id):
+                result['component'] = True
+            else:
+                result['success'] = False
+
+        # Set watcher groups
+        if watcher_groups:
+            if self.set_multi_value_field(issue_key, watcher_group_field, watcher_groups):
+                result['watcher_group'] = True
+            else:
+                result['success'] = False
+
+        # Set epic link
+        if epic_key:
+            if self.set_epic_link(issue_key, epic_key):
+                result['epic_link'] = True
             else:
                 result['success'] = False
 
@@ -623,16 +805,16 @@ class ReleaseProcessor:
         return self.jira.get_issues(jira_ids)
 
     def generate_report(self, jiras_by_tag: Dict[str, List[str]],
-                        format: str = 'table', fetch_details: bool = True) -> str:
+                        output_format: str = 'list', fetch_details: bool = True) -> str:
         """Generate a report of Jiras by tag.
 
         Args:
             jiras_by_tag: Dict mapping tag to list of Jira IDs
-            format: 'table', 'json', 'csv', 'markdown', 'club'
+            output_format: 'list', 'table', 'json', 'csv', 'markdown', 'club'
             fetch_details: Whether to fetch Jira details from API
         """
-        # For JSON, CSV and club with details, we need to collect all data first
-        if format in ('json', 'csv', 'club') and fetch_details:
+        # For JSON, CSV, table, and club with details, we need to collect all data first
+        if output_format in ('json', 'csv', 'table', 'club') and fetch_details:
             all_data = []
             for tag, jiras in jiras_by_tag.items():
                 if jiras:
@@ -650,16 +832,16 @@ class ReleaseProcessor:
                             'priority': fields.get('priority', {}).get('name', ''),
                         })
 
-            if format == 'json':
+            if output_format == 'json':
                 return json.dumps(all_data, indent=2)
-            elif format == 'csv':
+            elif output_format == 'csv':
                 lines = ['Build,Key,Summary,Status,Assignee,Priority']
                 for row in all_data:
                     # Escape quotes in summary
                     summary = row['summary'].replace('"', '""')
                     lines.append(f'"{row["build"]}","{row["key"]}","{summary}","{row["status"]}","{row["assignee"]}","{row["priority"]}"')
                 return '\n'.join(lines)
-            elif format == 'club':
+            elif output_format in ('table', 'club'):
                 if HAS_TABULATE:
                     rows = []
                     for row in all_data:
@@ -676,7 +858,7 @@ class ReleaseProcessor:
                     return tabulate(
                         rows,
                         headers=['Build', 'Key', 'Type', 'Status', 'Assignee', 'Priority', 'Summary'],
-                        tablefmt='simple'
+                        tablefmt='grid' if output_format == 'table' else 'simple'
                     )
                 else:
                     lines = []
@@ -684,25 +866,29 @@ class ReleaseProcessor:
                         lines.append(f"{row['build']}  {row['key']}  {row['type']}  {row['status']}  {row['assignee']}  {row['priority']}  {row['summary'][:80]}")
                     return '\n'.join(lines)
 
-        if format == 'json':
+        if output_format == 'json':
             return json.dumps(jiras_by_tag, indent=2)
 
         # CSV without details - simple format
-        if format == 'csv':
+        if output_format == 'csv':
             lines = ['Build,Key']
             for tag, jiras in jiras_by_tag.items():
                 for jira in jiras:
                     lines.append(f'"{tag}","{jira}"')
             return '\n'.join(lines)
 
-        # Club without details - simple table
-        if format == 'club':
+        # Table/club without details
+        if output_format in ('table', 'club'):
             rows = []
             for tag, jiras in jiras_by_tag.items():
                 for jira in jiras:
                     rows.append([tag, jira])
             if HAS_TABULATE:
-                return tabulate(rows, headers=['Build', 'Key'], tablefmt='simple')
+                return tabulate(
+                    rows,
+                    headers=['Build', 'Key'],
+                    tablefmt='grid' if output_format == 'table' else 'simple'
+                )
             else:
                 lines = []
                 for row in rows:
@@ -710,7 +896,6 @@ class ReleaseProcessor:
                 return '\n'.join(lines)
 
         lines = []
-        all_jiras = []
 
         for tag, jiras in jiras_by_tag.items():
             lines.append(f"\n{'='*60}")
@@ -724,29 +909,7 @@ class ReleaseProcessor:
             if fetch_details:
                 details = self.get_issue_details(jiras)
 
-                if format == 'table' and HAS_TABULATE:
-                    rows = []
-                    for issue in details:
-                        fields = issue.get('fields', {})
-                        rows.append([
-                            issue.get('key', ''),
-                            (fields.get('summary', '')[:80] + '...')
-                                if len(fields.get('summary', '')) > 80
-                                else fields.get('summary', ''),
-                            fields.get('issuetype', {}).get('name', ''),
-                            fields.get('status', {}).get('name', ''),
-                            fields.get('assignee', {}).get('displayName', 'Unassigned')
-                                if fields.get('assignee') else 'Unassigned',
-                            fields.get('priority', {}).get('name', ''),
-                        ])
-                        all_jiras.append({'key': issue.get('key'), 'tag': tag, **fields})
-
-                    lines.append(tabulate(
-                        rows,
-                        headers=['Key', 'Summary', 'Type', 'Status', 'Assignee', 'Priority'],
-                        tablefmt='simple'
-                    ))
-                elif format == 'markdown':
+                if output_format == 'markdown':
                     for issue in details:
                         fields = issue.get('fields', {})
                         key = issue.get('key', '')
@@ -775,8 +938,11 @@ class ReleaseProcessor:
     def update_jiras(self, jiras_by_tag: Dict[str, List[str]],
                      labels: List[str] = None, assignee: str = None,
                      state: str = None, dry_run: bool = False,
-                     confirm: bool = True) -> Dict:
-        """Update Jiras with build IDs, labels, assignee, and state transitions.
+                     confirm: bool = True, project_key: str = None,
+                     component_name: str = None, watcher_groups: List[str] = None,
+                     epic_key: str = None, watcher_group_field: str = "Watcher Group",
+                     labels_from_env: bool = False, legacy_default_labels: bool = False) -> Dict:
+        """Update Jiras with build IDs, labels, assignee, component, watcher groups, epic link, and state transitions.
 
         Args:
             jiras_by_tag: Dict mapping build_id (tag) to list of Jira IDs
@@ -785,10 +951,29 @@ class ReleaseProcessor:
             state: Target state (e.g., 'Done')
             dry_run: If True, only show what would be done
             confirm: If True, prompt for confirmation
+            project_key: Project key for component lookup (e.g., 'NBU')
+            component_name: Component name to set
+            watcher_groups: List of watcher group names to set
+            epic_key: Epic key to link
+            watcher_group_field: Watcher group field ID or name (default: 'Watcher Group')
+            labels_from_env: Use JIRA_LABELS env var if --labels not provided
+            legacy_default_labels: Use default label 'NBServerMigrator' if no labels specified
 
         Returns:
             Dict with success/failure counts
         """
+        # Resolve labels with fallback logic
+        resolved_labels = labels if labels else None
+
+        if not resolved_labels:
+            if labels_from_env:
+                env_labels = os.getenv('JIRA_LABELS', '').strip()
+                if env_labels:
+                    resolved_labels = env_labels.split()
+            elif legacy_default_labels:
+                resolved_labels = ['NBServerMigrator']
+            # If nothing specified, no labels (let commands set their own defaults)
+
         total = sum(len(jiras) for jiras in jiras_by_tag.values())
 
         if total == 0:
@@ -836,14 +1021,28 @@ class ReleaseProcessor:
         print("UPDATE PREVIEW")
         print(f"{'='*60}")
         print(f"Total Jiras to update: {total}")
-        print(f"Labels to add: {', '.join(labels) if labels else '(none)'}")
+        print(f"Labels to add: {', '.join(resolved_labels) if resolved_labels else '(none)'}")
         print(f"Assignee: {assignee or '(unchanged)'}")
+        print(f"Component: {component_name or '(unchanged)'}")
+        print(f"Watcher Groups: {', '.join(watcher_groups) if watcher_groups else '(none)'}")
+        print(f"Epic Link: {epic_key or '(none)'}")
         print(f"State transition: {state or '(none)'}")
         print()
 
         for tag, jiras in jiras_by_tag.items():
             if jiras:
                 print(f"  {tag}: {', '.join(jiras)}")
+
+        # Resolve component ID if component name provided
+        component_id = None
+        if component_name and project_key:
+            print(f"\nResolving component '{component_name}' for project '{project_key}'...")
+            component_id = self.jira.find_component_id(project_key, component_name)
+            if not component_id:
+                print(f"Warning: Component '{component_name}' not found in project '{project_key}'")
+        elif component_name and not project_key:
+            print("Error: --project-key required when using --component")
+            return {'total': total, 'success': 0, 'failed': 0, 'error': 'project_key_required'}
 
         # Show Defects that need reassignment to reporter before Done
         reassign_confirmed = {}
@@ -892,8 +1091,12 @@ class ReleaseProcessor:
                 result = self.jira.update_issue(
                     jira_id,
                     build_id=tag,
-                    labels=labels,
-                    assignee=assignee
+                    labels=resolved_labels,
+                    assignee=assignee,
+                    component_id=component_id,
+                    watcher_groups=watcher_groups,
+                    epic_key=epic_key,
+                    watcher_group_field=watcher_group_field
                 )
 
                 status = []
@@ -904,6 +1107,12 @@ class ReleaseProcessor:
                         status.append('labels')
                     if result['assignee']:
                         status.append('assignee')
+                    if result['component']:
+                        status.append('component')
+                    if result['watcher_group']:
+                        status.append('watcher_group')
+                    if result['epic_link']:
+                        status.append('epic_link')
 
                 # Reassign Defects to reporter before state transition
                 if jira_id in reassign_confirmed:
@@ -1004,8 +1213,11 @@ EXTRACT-JIRAS - Extract Jira IDs from git
 
 REPORT - Generate Jira report
 -----------------------------
-  # Table format (default) with Jira details
+    # List format (default) grouped by build with Jira details
   %(prog)s report --from NBSM_2.9_0009 --to NBSM_2.9_0010
+
+    # Bordered table format
+    %(prog)s report --from NBSM_2.9_0009 --to NBSM_2.9_0010 --format table
 
   # Walk range and show all builds
   %(prog)s report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
@@ -1039,6 +1251,27 @@ UPDATE - Update Jira tickets directly
   # Update with assignee
   %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --labels Verify --assignee john.doe
 
+  # Set component (requires --project-key)
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --project-key NBU --component Commandos
+
+  # Set watcher group (single or multiple)
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --watcher-group DL
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --watcher-group DL1,DL2
+
+  # Set epic link
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --epic-link NBU-99999
+
+  # Full metadata update (legacy script behavior)
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --project-key NBU --component Commandos --watcher-group DL --epic-link NBU-99999 --labels Verify,Reviewed
+
+  # Use env-based labels (JIRA_LABELS env var)
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --labels-from-env
+  export JIRA_LABELS="NBServerMigrator NBServerMigrator_2.7"
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --labels-from-env
+
+  # Legacy default labels (NBServerMigrator only)
+  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --legacy-default-labels
+
   # Dry run (preview only)
   %(prog)s update NBU-12345 NBU-12346 --build-id NBSM_2.9_0010 --dry-run
 
@@ -1058,6 +1291,18 @@ PROCESS - Full pipeline (recommended)
 
   # With assignee
   %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --labels Verify --assignee john.doe
+
+  # With component, watcher group, epic link
+  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --project-key NBU --component Commandos --watcher-group DL --epic-link NBU-99999 --labels Verify
+
+  # Full metadata update with all options
+  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --project-key NBU --component Commandos --watcher-group DL1,DL2 --epic-link NBU-99999 --labels Verify,Reviewed --assignee john.doe
+
+  # Use env labels for release (migration labels from environment)
+  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --labels-from-env --project-key NBU --component Commandos
+
+  # Legacy mode (default labels + component + watcher group)
+  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --legacy-default-labels --project-key NBU --component Commandos
 
   # Dry run (preview without making changes)
   %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --dry-run
@@ -1084,6 +1329,26 @@ VALIDATE - Pre-release validation
 
   # Use a different branch
   %(prog)s validate --branch origin/release-2.9 --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+
+VALIDATE-PROPERTIES - Check properties set on issues
+----------------------------------------------------
+  # Check all default properties on single issue (labels, component, assignee, solution, epic-link, watcher-group)
+  %(prog)s validate-properties NBU-12345
+
+  # Check multiple issues
+  %(prog)s validate-properties NBU-12345 NBU-12346 NBU-12347
+
+  # Check specific properties only
+  %(prog)s validate-properties NBU-12345 --properties labels,component,solution
+
+  # Check all properties with JSON output
+  %(prog)s validate-properties NBU-12345 NBU-12346 --format json
+
+  # Summary output (only shows if set or not)
+  %(prog)s validate-properties NBU-12345 --format summary
+
+  # Check epic-link and watcher-group only
+  %(prog)s validate-properties NBU-12345 --properties epic_link,watcher_group
 
 CHECK-COMMITS - Find commits without Jira IDs
 ----------------------------------------------
@@ -1172,21 +1437,32 @@ ENVIRONMENT VARIABLES
         description='Generate a report showing Jira details for tickets found in git history.')
     add_common_args(p_report)
     add_range_args(p_report)
-    p_report.add_argument('--format', choices=['table', 'json', 'csv', 'markdown', 'club'],
-                          default='table', help='Output format (default: table)')
+    p_report.add_argument('--format', choices=['list', 'table', 'json', 'csv', 'markdown', 'club'],
+                          default='list', help='Output format (default: list)')
     p_report.add_argument('--no-fetch', action='store_true',
                           help='Skip fetching Jira details (just show IDs)')
 
     # update
     p_update = subparsers.add_parser('update',
         help='Update Jira tickets',
-        description='Directly update specified Jira tickets with build ID, labels, and assignee.')
+        description='Directly update specified Jira tickets with build ID, labels, assignee, component, watcher groups, and epic link.')
     p_update.add_argument('jiras', nargs='*', help='Jira IDs to update (e.g., NBU-12345 NBU-12346)')
     p_update.add_argument('--build-id', required=True,
                           help='Build ID for Solution field (e.g., NBSM_2.9_0010)')
     p_update.add_argument('--labels', type=lambda s: s.split(','), default=[],
                           help='Comma-separated labels to add (e.g., Verify,Reviewed)')
     p_update.add_argument('--assignee', help='Assignee username')
+    p_update.add_argument('--project-key', help='Project key for component lookup (e.g., NBU)')
+    p_update.add_argument('--component', help='Component name to set (requires --project-key)')
+    p_update.add_argument('--watcher-group', type=lambda s: s.split(','),
+                          help='Comma-separated watcher group names to set')
+    p_update.add_argument('--watcher-group-field', default='Watcher Group',
+                          help='Watcher group field ID or name (default: Watcher Group)')
+    p_update.add_argument('--epic-link', help='Epic key to link (e.g., NBU-99999)')
+    p_update.add_argument('--labels-from-env', action='store_true',
+                          help='Use JIRA_LABELS env var if --labels not provided')
+    p_update.add_argument('--legacy-default-labels', action='store_true',
+                          help='Use default label "NBServerMigrator" if no labels specified')
     p_update.add_argument('--state', choices=['Done'],
                           help='Transition issues to state (e.g., Done). Handles multi-step transitions.')
     p_update.add_argument('--dry-run', action='store_true',
@@ -1198,12 +1474,23 @@ ENVIRONMENT VARIABLES
     p_process = subparsers.add_parser('process',
         help='Full pipeline: extract, report, update',
         description='''Full release pipeline: extract Jiras from git tags, generate report,
-and update Jira tickets with build ID and labels. This is the recommended command for release workflows.''')
+and update Jira tickets with build ID, labels, component, watcher groups, epic link, and state. This is the recommended command for release workflows.''')
     add_common_args(p_process)
     add_range_args(p_process)
-    p_process.add_argument('--labels', type=lambda s: s.split(','), default=['Verify'],
-                           help='Labels to add (default: Verify)')
+    p_process.add_argument('--labels', type=lambda s: s.split(','),
+                           help='Labels to add (comma-separated, e.g., Verify,Reviewed). If not provided with --labels-from-env or --legacy-default-labels, uses Verify as default.')
     p_process.add_argument('--assignee', help='Assignee username')
+    p_process.add_argument('--project-key', help='Project key for component lookup (e.g., NBU)')
+    p_process.add_argument('--component', help='Component name to set (requires --project-key)')
+    p_process.add_argument('--watcher-group', type=lambda s: s.split(','),
+                          help='Comma-separated watcher group names to set')
+    p_process.add_argument('--watcher-group-field', default='Watcher Group',
+                          help='Watcher group field ID or name (default: Watcher Group)')
+    p_process.add_argument('--epic-link', help='Epic key to link (e.g., NBU-99999)')
+    p_process.add_argument('--labels-from-env', action='store_true',
+                          help='Use JIRA_LABELS env var instead of --labels')
+    p_process.add_argument('--legacy-default-labels', action='store_true',
+                          help='Use default label "NBServerMigrator" instead of --labels')
     p_process.add_argument('--state', choices=['Done'],
                            help='Transition issues to state (e.g., Done). Handles multi-step transitions.')
     p_process.add_argument('--dry-run', action='store_true',
@@ -1221,6 +1508,18 @@ and update Jira tickets with build ID and labels. This is the recommended comman
     add_range_args(p_validate)
     p_validate.add_argument('--require-resolved', action='store_true',
                             help='Exit with error code if any Jira is not Resolved/Closed')
+
+    # validate-properties
+    p_validate_props = subparsers.add_parser('validate-properties',
+        help='Validate properties set on Jira issues',
+        description='Check and display specific properties on given Jira keys (labels, component, assignee, epic-link, watcher-group, solution).')
+    p_validate_props.add_argument('keys', nargs='+', help='Jira IDs to validate (e.g., NBU-12345 NBU-12346)')
+    p_validate_props.add_argument('--properties', type=lambda s: [p.strip().lower() for p in s.split(',')],
+                                  default=['labels', 'component', 'assignee', 'solution', 'epic_link', 'watcher_group'],
+                                  help='Comma-separated properties to check (default: labels,component,assignee,solution,epic_link,watcher_group)')
+    p_validate_props.add_argument('--format', choices=['list', 'table', 'json', 'summary'],
+                                  default='table',
+                                  help='Output format (default: table)')
 
     # check-commits
     p_check = subparsers.add_parser('check-commits',
@@ -1387,19 +1686,19 @@ def main():
     repos = args.repos if hasattr(args, 'repos') and args.repos else [DEFAULT_REPO]
 
     # Validate environment
-    if args.command in ['update', 'process', 'report', 'validate']:
+    if args.command in ['update', 'process', 'report', 'validate', 'validate-properties']:
         if not JIRA_API_TOKEN:
             print("Error: JIRA_ACC_TOKEN environment variable not set")
             sys.exit(1)
 
     try:
         # Initialize
-        jira = JiraClient() if args.command in ['update', 'process', 'report', 'validate'] else None
+        jira = JiraClient() if args.command in ['update', 'process', 'report', 'validate', 'validate-properties'] else None
         branch = args.branch if hasattr(args, 'branch') else 'origin/master'
         processor = ReleaseProcessor(repos, jira, branch=branch)
 
         # Always fetch the branch before any git operations
-        if args.command != 'update':  # update doesn't need git operations
+        if args.command not in ['update', 'validate-properties']:  # These don't need git operations
             processor.fetch_all()
 
         # =====================================================================
@@ -1465,7 +1764,7 @@ def main():
 
             report = processor.generate_report(
                 jiras_by_tag,
-                format=args.format,
+                output_format=args.format,
                 fetch_details=not args.no_fetch
             )
             print(report)
@@ -1482,10 +1781,18 @@ def main():
             jiras_by_tag = {args.build_id: args.jiras}
             processor.update_jiras(
                 jiras_by_tag,
-                labels=args.labels,
+                labels=args.labels if args.labels else None,
                 assignee=args.assignee,
+                state=args.state if hasattr(args, 'state') else None,
                 dry_run=args.dry_run,
-                confirm=not args.no_confirm
+                confirm=not args.no_confirm,
+                project_key=args.project_key if hasattr(args, 'project_key') else None,
+                component_name=args.component if hasattr(args, 'component') else None,
+                watcher_groups=args.watcher_group if hasattr(args, 'watcher_group') and args.watcher_group else None,
+                epic_key=args.epic_link if hasattr(args, 'epic_link') else None,
+                watcher_group_field=args.watcher_group_field if hasattr(args, 'watcher_group_field') else 'Watcher Group',
+                labels_from_env=args.labels_from_env if hasattr(args, 'labels_from_env') else False,
+                legacy_default_labels=args.legacy_default_labels if hasattr(args, 'legacy_default_labels') else False
             )
 
         # =====================================================================
@@ -1521,16 +1828,37 @@ def main():
 
             # Report
             if not args.skip_report:
-                print("\n" + processor.generate_report(jiras_by_tag, format='table'))
+                print("\n" + processor.generate_report(jiras_by_tag, output_format='list'))
+
+            # Determine labels to use with proper fallback
+            final_labels = args.labels  # This comes from argparse
+            labels_from_env = getattr(args, 'labels_from_env', False)
+            legacy_default = getattr(args, 'legacy_default_labels', False)
+
+            # If labels not explicitly provided, check other options
+            if not final_labels:
+                if labels_from_env or legacy_default:
+                    # Will be handled in update_jiras via flags
+                    final_labels = None
+                else:
+                    # Use default ['Verify'] for backward compatibility
+                    final_labels = ['Verify']
 
             # Update
             processor.update_jiras(
                 jiras_by_tag,
-                labels=args.labels,
-                assignee=args.assignee,
-                state=args.state,
+                labels=final_labels,
+                assignee=getattr(args, 'assignee', None),
+                state=getattr(args, 'state', None),
                 dry_run=args.dry_run,
-                confirm=not args.no_confirm
+                confirm=not args.no_confirm,
+                project_key=getattr(args, 'project_key', None),
+                component_name=getattr(args, 'component', None),
+                watcher_groups=getattr(args, 'watcher_group', None),
+                epic_key=getattr(args, 'epic_link', None),
+                watcher_group_field=getattr(args, 'watcher_group_field', 'Watcher Group'),
+                labels_from_env=labels_from_env,
+                legacy_default_labels=legacy_default
             )
 
         # =====================================================================
@@ -1570,6 +1898,148 @@ def main():
                     sys.exit(1)
             else:
                 print("[OK] All Jiras are in Resolved/Closed status")
+
+        # =====================================================================
+        # validate-properties
+        # =====================================================================
+        elif args.command == 'validate-properties':
+            print(f"{'='*60}")
+            print("VALIDATE PROPERTIES")
+            print(f"{'='*60}")
+
+            # Validate Jira ID format
+            validate_jira_ids(args.keys)
+
+            # Detect and remove duplicates
+            unique_keys = []
+            seen = set()
+            for key in args.keys:
+                if key in seen:
+                    print(f"[!] Duplicate key detected: {key} (skipping)")
+                else:
+                    unique_keys.append(key)
+                    seen.add(key)
+
+            if not unique_keys:
+                print("No unique keys to validate.")
+                return
+
+            print(f"[*] Validating {len(unique_keys)} unique issue(s)...")
+            print()
+
+            # Fetch and validate properties for each key
+            all_results = []
+            for jira_key in unique_keys:
+                result = processor.jira.validate_issue_properties(jira_key, args.properties)
+                all_results.append(result)
+
+            # Output based on format
+            if args.format == 'json':
+                print(json.dumps(all_results, indent=2))
+
+            elif args.format == 'summary':
+                print()
+                for result in all_results:
+                    if result['success']:
+                        key = result['issue_key']
+                        props = result['properties']
+                        print(f"{key}:")
+                        for prop_name, prop_info in props.items():
+                            status = "[+]" if prop_info.get('is_set') else "[-]"
+                            print(f"  {status} {prop_name}: {'SET' if prop_info.get('is_set') else 'NOT SET'}")
+                    else:
+                        print(f"{result['issue_key']}: ERROR - {result.get('error', 'Unknown error')}")
+                    print()
+
+            elif args.format == 'list':
+                print()
+                for result in all_results:
+                    if result['success']:
+                        key = result['issue_key']
+                        props = result['properties']
+                        print(f"{'='*60}")
+                        print(f"Issue: {key}")
+                        print(f"{'='*60}")
+
+                        for prop_name, prop_info in props.items():
+                            status = "[+] SET" if prop_info.get('is_set') else "[-] NOT SET"
+
+                            if prop_name in ['labels', 'component', 'watcher_group']:
+                                count = prop_info.get('count', 0)
+                                value = prop_info.get('value', [])
+                                print(f"\n{prop_name.upper()} ({count}) {status}")
+                                if value:
+                                    for item in value:
+                                        print(f"  - {item}")
+                            elif prop_name == 'assignee':
+                                value = prop_info.get('value')
+                                print(f"\n{prop_name.upper()} {status}")
+                                if value:
+                                    print(f"  {value}")
+                            elif prop_name == 'epic_link':
+                                value = prop_info.get('value')
+                                print(f"\n{prop_name.upper()} {status}")
+                                if value:
+                                    print(f"  {value}")
+                            elif prop_name == 'solution':
+                                value = prop_info.get('value')
+                                print(f"\n{prop_name.upper()} {status}")
+                                if value:
+                                    print(f"  {value}")
+                        print()
+                    else:
+                        print(f"\n{result['issue_key']}: ERROR - {result.get('error', 'Unknown error')}")
+
+            else:  # table format
+                print()
+                rows = []
+                property_order = ['labels', 'component', 'assignee', 'solution', 'epic_link', 'watcher_group']
+                for result in all_results:
+                    if result.get('success'):
+                        key = result.get('issue_key', '')
+                        props = result.get('properties', {})
+
+                        row_map = {'Issue': key}
+                        for prop_name in property_order:
+                            prop_info = props.get(prop_name, {})
+                            is_set = bool(prop_info.get('is_set'))
+                            value = prop_info.get('value')
+
+                            if isinstance(value, list):
+                                value_str = ', '.join(str(v) for v in value) if value else '-'
+                            else:
+                                value_str = str(value) if value else '-'
+
+                            row_map[prop_name] = value_str if is_set else 'NOT SET'
+
+                        rows.append([
+                            row_map['Issue'],
+                            row_map['labels'],
+                            row_map['component'],
+                            row_map['assignee'],
+                            row_map['solution'],
+                            row_map['epic_link'],
+                            row_map['watcher_group']
+                        ])
+                    else:
+                        rows.append([
+                            result.get('issue_key', ''),
+                            'ERROR',
+                            'ERROR',
+                            'ERROR',
+                            result.get('error', 'Unknown error'),
+                            'ERROR',
+                            'ERROR'
+                        ])
+
+                headers = ['Issue', 'labels', 'component', 'assignee', 'solution', 'epic_link', 'watcher_group']
+                if HAS_TABULATE:
+                    print(tabulate(rows, headers=headers, tablefmt='grid'))
+                else:
+                    print(' | '.join(headers))
+                    print('-' * 120)
+                    for row in rows:
+                        print(' | '.join(row))
 
         # =====================================================================
         # check-commits

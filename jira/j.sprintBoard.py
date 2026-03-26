@@ -612,8 +612,8 @@ Issue Type Indicators:
     # Extract sprint metadata (start/end/state) from returned issues
     sprint_field_id = get_sprint_field_id()
     # Default: show ACTIVE sprint metadata only.
-    # With -d/--show-details: show both ACTIVE and CLOSED sprint metadata.
-    sprint_states_to_show = {'ACTIVE', 'CLOSED'} if args.show_details else {'ACTIVE'}
+    # With both -d/--show-details AND -v/--verbose: show both ACTIVE and CLOSED sprint metadata.
+    sprint_states_to_show = {'ACTIVE', 'CLOSED'} if (args.verbose and args.show_details) else {'ACTIVE'}
     sprint_info = get_sprint_info_from_issues(issues, sprint_field_id, allowed_states=sprint_states_to_show)
 
     # Calculate status counts
