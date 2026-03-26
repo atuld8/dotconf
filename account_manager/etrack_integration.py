@@ -362,6 +362,36 @@ class EtrackExecutor:
             print(f"  X Failed to assign etrack {incident_no} to {user_name}")
             return False
 
+    def update_severity(self, incident_no: str, severity: str, dry_run: bool = False) -> bool:
+        """
+        Update severity for an etrack incident.
+
+        Uses: eset -s <severity> <incident_number>
+
+        Args:
+            incident_no: Etrack incident number
+            severity: New severity value
+            dry_run: If True, only show what would be done
+
+        Returns:
+            True if successful, False otherwise
+        """
+        cmd = f"eset -s {severity} {incident_no}"
+
+        if dry_run:
+            print(f"  [DRY-RUN] Would execute: {cmd}")
+            return True
+
+        print(f"  Executing: {cmd}")
+        output = self._execute_command(cmd)
+
+        if output is not None:
+            print(f"  + Etrack {incident_no} severity updated to {severity}")
+            return True
+
+        print(f"  X Failed to update etrack {incident_no} severity to {severity}")
+        return False
+
     def get_etrack_info(self, incident_no: str) -> Optional[EtrackInfo]:
         """
         Get basic info about an etrack incident.
@@ -419,6 +449,90 @@ class EtrackExecutor:
 
         return None
 
+    def get_etrack_info_batch(self, incident_nos: List[str], verbose: bool = False) -> Dict[str, Optional[EtrackInfo]]:
+        """
+        Get etrack info for multiple incidents in batches.
+
+        Args:
+            incident_nos: List of etrack incident numbers
+            verbose: Print debug information
+
+        Returns:
+            Dict mapping incident number to EtrackInfo or None
+        """
+        if not incident_nos:
+            return {}
+
+        results = {}
+        batch_size = 50
+
+        for i in range(0, len(incident_nos), batch_size):
+            batch = incident_nos[i:i + batch_size]
+            in_list = ','.join(batch)
+            query = (
+                f"SELECT incident, assigned_to, state, severity, priority, abstract "
+                f"FROM incident WHERE incident IN ({in_list})"
+            )
+
+            if verbose:
+                print(f"  [DEBUG] Fetching etrack info batch {i // batch_size + 1} with {len(batch)} incidents")
+
+            output = self._execute_command("esql", stdin_input=query)
+
+            if not output:
+                fallback_query = (
+                    f"SELECT incident, assigned_to, state, abstract "
+                    f"FROM incident WHERE incident IN ({in_list})"
+                )
+                output = self._execute_command("esql", stdin_input=fallback_query)
+
+            if not output:
+                for incident_no in batch:
+                    results[incident_no] = None
+                continue
+
+            found_incidents = set()
+            lines = output.strip().split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                if 'incident' in line.lower() and 'assigned_to' in line.lower():
+                    continue
+                if line.startswith('---') or line.startswith('==='):
+                    continue
+
+                parts = re.split(r'[\t|]+', line)
+                parts = [p.strip() for p in parts if p.strip()]
+                if len(parts) < 2:
+                    continue
+
+                incident_no = parts[0]
+                found_incidents.add(incident_no)
+                if len(parts) >= 6:
+                    severity = parts[3] if len(parts) > 3 else None
+                    priority = parts[4] if len(parts) > 4 else None
+                    abstract = parts[5] if len(parts) > 5 else None
+                else:
+                    severity = None
+                    priority = None
+                    abstract = parts[3] if len(parts) > 3 else None
+
+                results[incident_no] = EtrackInfo(
+                    incident_no=incident_no,
+                    assignee=parts[1] if len(parts) > 1 else None,
+                    state=parts[2] if len(parts) > 2 else None,
+                    severity=severity,
+                    priority=priority,
+                    abstract=abstract,
+                )
+
+            for incident_no in batch:
+                if incident_no not in found_incidents:
+                    results[incident_no] = None
+
+        return results
+
 
 class MockEtrackExecutor:
     """Mock Etrack executor for testing without actual etrack access."""
@@ -466,6 +580,12 @@ class MockEtrackExecutor:
         print(f"  {action}: Etrack {incident_no} to {user_name}")
         return True
 
+    def update_severity(self, incident_no: str, severity: str, dry_run: bool = False) -> bool:
+        """Mock etrack severity update."""
+        action = "[DRY-RUN] Would update severity" if dry_run else "Mock updated severity"
+        print(f"  {action}: Etrack {incident_no} to {severity}")
+        return True
+
     def get_etrack_info(self, incident_no: str) -> Optional[EtrackInfo]:
         """Return mock etrack info."""
         assignee = self.get_etrack_assignee(incident_no)
@@ -479,3 +599,7 @@ class MockEtrackExecutor:
                 abstract='Mock incident'
             )
         return None
+
+    def get_etrack_info_batch(self, incident_nos: List[str], verbose: bool = False) -> Dict[str, Optional[EtrackInfo]]:
+        """Return mock etrack info for a batch of incidents."""
+        return {incident_no: self.get_etrack_info(incident_no) for incident_no in incident_nos}

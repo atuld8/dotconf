@@ -44,6 +44,76 @@ class JiraClient:
         }
 
         self.timeout = 20  # Default timeout in seconds
+        self._field_id_cache = {}
+
+    def get_field_id_by_name(self, field_name: str) -> Optional[str]:
+        """
+        Resolve a Jira field display name to its field ID.
+
+        Args:
+            field_name: Jira field display name (e.g., 'Case Priority')
+
+        Returns:
+            Field ID (e.g., 'customfield_12345') or None if not found
+        """
+        if not field_name:
+            return None
+
+        cache_key = field_name.strip().lower()
+        if cache_key in self._field_id_cache:
+            return self._field_id_cache[cache_key]
+
+        try:
+            url = f"{self.jira_url}/rest/api/2/field"
+            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+
+            if response.status_code != 200:
+                print(f"Error fetching Jira fields: Status {response.status_code}, {response.text}")
+                return None
+
+            fields = response.json()
+            for field in fields:
+                name = (field.get('name') or '').strip().lower()
+                if name == cache_key:
+                    field_id = field.get('id')
+                    self._field_id_cache[cache_key] = field_id
+                    return field_id
+
+            return None
+
+        except requests.exceptions.RequestException as e:
+            print(f"Request error fetching Jira field '{field_name}': {e}")
+            return None
+
+    @staticmethod
+    def extract_field_display_value(field_value: Any) -> Optional[str]:
+        """
+        Extract a comparable string from Jira custom field values.
+
+        Args:
+            field_value: Raw field value from Jira API
+
+        Returns:
+            Normalized string value or None
+        """
+        if field_value is None:
+            return None
+        if isinstance(field_value, str):
+            return field_value.strip() or None
+        if isinstance(field_value, dict):
+            for key in ('value', 'name', 'displayName'):
+                value = field_value.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return None
+        if isinstance(field_value, list):
+            extracted = []
+            for item in field_value:
+                display_value = JiraClient.extract_field_display_value(item)
+                if display_value:
+                    extracted.append(display_value)
+            return ', '.join(extracted) if extracted else None
+        return str(field_value).strip() or None
 
     def get_issue(self, issue_key: str) -> Optional[Dict[str, Any]]:
         """
@@ -438,6 +508,24 @@ class JiraClient:
                 print(f"Batch request error: {e}")
 
         return results
+
+    def get_named_field_batch(self, issue_keys: List[str], field_name: str, batch_size: int = 50) -> Dict[str, Any]:
+        """
+        Get a specific Jira field for multiple issues using the field display name.
+
+        Args:
+            issue_keys: List of issue keys
+            field_name: Jira field display name
+            batch_size: Batch size for Jira search API
+
+        Returns:
+            Dictionary mapping issue key to raw field value
+        """
+        field_id = self.get_field_id_by_name(field_name)
+        if not field_id:
+            print(f"Error: Jira field '{field_name}' was not found")
+            return {key: None for key in issue_keys}
+        return self.get_field_batch(issue_keys, field_id, batch_size=batch_size)
 
     def search_users(self, query: str, max_results: int = 50) -> List[Dict[str, Any]]:
         """

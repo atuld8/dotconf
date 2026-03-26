@@ -183,26 +183,52 @@ Validation Logic:
       - Result: X MISMATCH (should be user.one, not user.two)
 
 Options:
-    --mock              Use mock Jira client (no API calls, for testing)
-    --auto-add          Auto-add missing users with minimal data (etrack_user_id only)
-    --interactive       Prompt to confirm data for each new user
-    --fail-on-unknown   Fail immediately when unknown user found
-    --fix               Fix mismatched FI assignments (only for verified accounts)
-    --dry-run           With --fix: preview changes without applying
-    --fix-interactive   With --fix: prompt (y/n/q) before each fix
-    --fix-from=<user>   Only fix FIs currently assigned to <user> (implies --fix)
-    --skip-fi=<ids>     With --fix: skip specific FIs (comma-separated)
-    --report            Generate formatted reassignment report (no fixes)
-    --report-from=<user> Generate report for FIs currently assigned to <user>
-    --skip-details      Reduce verbose output (summary-focused display)
-    --show-conflicts    Show FIs linked to multiple incidents with different assignees
-    --table             With --show-conflicts: display in table format
-    --incident=<no>     Validate incident(s) by number (comma-separated, or - for stdin)
-    --fi=<id>           Validate FI(s) by ID (comma-separated, or - for stdin)
-    --all-types         With --fi/--incident: include all incident types
-                        (default: SERVICE_REQUEST only)
-    --perform-sr-type-check  With query: filter to SERVICE_REQUEST only
-                        (default: trust query results)
+
+  Input / Source:
+    --incident=<no>          Validate incident(s) by number (comma-separated, or - for stdin)
+    --fi=<id>                Validate FI(s) by ID (e.g. FI-59131, comma-separated, or -)
+    --all-types              Include all incident types (default: SERVICE_REQUEST only)
+    --perform-sr-type-check  With query: filter to SERVICE_REQUEST only (default: trust query)
+
+  User Handling:
+    --auto-add               Auto-add missing users with minimal data (etrack_user_id only)
+    --interactive            Prompt to confirm data for each new user
+    --fail-on-unknown        Fail immediately when unknown user found
+
+  Assignee Validation:
+    --report                 Generate reassignment report without fixing
+    --report-from=<user>     Report only FIs currently assigned to <user>
+    --fix                    Fix mismatched FI assignments (verified accounts only)
+    --fix-from=<user>        Fix only FIs currently assigned to <user> (implies --fix)
+    --fix-interactive        Prompt (y/n/q) before each fix
+    --dry-run                Preview changes without applying
+    --skip-fi=<ids>          Skip specific FIs when fixing (comma-separated)
+    --show-conflicts         Show FIs linked to multiple incidents with different assignees
+    --table                  With --show-conflicts: display in table format
+
+  Severity:
+    --report-severity        Compare etrack severity against linked FI Case Priority
+    --fix-severity           Update etrack severity from linked FI Case Priority
+    --format=<fmt>           Output format for --report-severity (default: text)
+                               text    Full report with narrative and detail blocks
+                               table   Aligned table of all records (no narrative)
+                               csv     CSV, one row per incident
+                               json    JSON object with summary + records array
+        --severity-transition=<rules>
+                                 Filter --report-severity/--fix-severity by transitions (comma-separated)
+                                                             to1     Allow only 2/3/4 -> 1
+                                                             from1   Allow only 1 -> 2/3/4
+                                                             raise   Allow only higher urgency changes (e.g., 4->2, 3->1)
+                                                             lower   Allow only lower urgency changes (e.g., 1->2, 2->4)
+                                                             X->Y    Allow explicit transitions (e.g., 2->1,1->3)
+
+  General:
+    --skip-details           Suppress per-record detail blocks
+                             (applies to --report-severity text, --show-conflicts, --report)
+    --mock                   Use mock Jira/Etrack clients (no API calls, for testing)
+
+  Severity Mapping:  P1->1  P2->2  P3->3  P4->4
+  Conflict Rule:     Multiple FI priorities -> highest priority wins (P1+P3 => 1)
 
 Examples:
     # Basic validation (warns about missing users and mismatches)
@@ -265,6 +291,30 @@ Examples:
 
     # Compact output for large datasets
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report --skip-details
+
+    # Report etrack severity mismatches from linked FI Case Priority values
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-severity
+
+    # Fix etrack severity for selected incidents (dry-run)
+    python3 -m account_manager.cli validate-fi --incident=1234568,1234569 --fix-severity --dry-run
+
+    # Validate severity for selected FI IDs
+    python3 -m account_manager.cli validate-fi --fi=FI-59131,FI-59132 --report-severity
+
+    # Severity report as CSV (pipe to file)
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-severity --format=csv > severity.csv
+
+    # Severity report as JSON
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-severity --format=json
+
+    # Severity report as aligned table (no narrative)
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report-severity --format=table
+
+    # Fix only transitions from 2/3/4 -> 1
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix-severity --severity-transition=to1
+
+    # Fix only 1 -> lower priority transitions, plus explicit 2 -> 1
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix-severity --severity-transition=from1,2->1
 
 Type Filtering:
     - For --fi/--incident: Defaults to SERVICE_REQUEST only. Use --all-types for all.
@@ -920,7 +970,9 @@ FI VALIDATION (esql + Jira)
     validate-fi options: --auto-add, --interactive, --mock, --fail-on-unknown,
                          --fix, --dry-run, --fix-interactive, --fix-from=USER,
                          --skip-fi=IDS, --incident=NUMBER, --fi=ID,
-                         --all-types, --perform-sr-type-check, --skip-details
+                         --all-types, --perform-sr-type-check, --skip-details,
+                         --report-severity, --fix-severity, --format=FMT,
+                         --severity-transition=RULES
     assign-etrack-fi options: --dry-run, --mock, --verbose
 
 VERITAS EMAIL UPDATE (euserls)
@@ -1460,24 +1512,42 @@ def main():
                 print("           cli.py validate-fi --fi=FI-59131,FI-59132")
                 print("")
                 print("Options:")
-                print("  --mock              Use mock Jira client (no API calls)")
-                print("  --auto-add          Auto-populate missing accounts with inferred data")
-                print("  --interactive       Prompt to confirm inferred data for new users")
-                print("  --fail-on-unknown   Fail when unknown user is encountered")
-                print("  --fix               Fix mismatched FI assignments (verified accounts only)")
-                print("  --dry-run           With --fix: preview changes without applying")
-                print("  --fix-interactive   With --fix: prompt before each fix")
-                print("  --fix-from=<user>   Only fix FIs currently assigned to <user> (implies --fix)")
-                print("  --skip-fi=<ids>     With --fix: skip specific FIs (comma-separated)")
-                print("  --report            Generate formatted reassignment report (no fixes)")
-                print("  --report-from=<user> Generate report for FIs currently assigned to <user>")
-                print("  --skip-details      Reduce verbose output (summary-focused display)")
-                print("  --show-conflicts    Show FIs linked to multiple incidents with different assignees")
-                print("  --table             With --show-conflicts: display in table format")
-                print("  --incident=<no>     Validate incident(s) by number (comma-separated or - for stdin)")
-                print("  --fi=<id>           Validate FI(s) by ID (comma-separated or - for stdin)")
-                print("  --all-types         With --fi/--incident: include all incident types")
-                print("  --perform-sr-type-check  With query: filter to SERVICE_REQUEST only")
+                print("")
+                print("  Input / Source:")
+                print("    --incident=<no>          Validate incident(s) (comma-separated or - for stdin)")
+                print("    --fi=<id>                Validate FI(s) (comma-separated or - for stdin)")
+                print("    --all-types              Include all incident types (default: SERVICE_REQUEST)")
+                print("    --perform-sr-type-check  With query: filter to SERVICE_REQUEST only")
+                print("")
+                print("  User Handling:")
+                print("    --auto-add               Auto-add missing users (etrack_user_id only)")
+                print("    --interactive            Prompt to confirm data for each new user")
+                print("    --fail-on-unknown        Fail immediately on unknown user")
+                print("")
+                print("  Assignee Validation:")
+                print("    --report                 Generate reassignment report (no fixes)")
+                print("    --report-from=<user>     Report only FIs assigned to <user>")
+                print("    --fix                    Fix mismatched FI assignments (verified accounts only)")
+                print("    --fix-from=<user>        Fix only FIs assigned to <user> (implies --fix)")
+                print("    --fix-interactive        Prompt (y/n/q) before each fix")
+                print("    --dry-run                Preview changes without applying")
+                print("    --skip-fi=<ids>          Skip specific FIs when fixing (comma-separated)")
+                print("    --show-conflicts         Show FIs linked to multiple incidents with different assignees")
+                print("    --table                  With --show-conflicts: display in table format")
+                print("")
+                print("  Severity:")
+                print("    --report-severity        Compare etrack severity to linked FI Case Priority")
+                print("    --fix-severity           Update etrack severity from FI Case Priority")
+                print("    --format=<fmt>           Output format: text|table|csv|json (default: text)")
+                print("    --severity-transition=<rules>  Filter report/fix severity transitions")
+                print("                               rules: to1, from1, raise, lower, X->Y (comma-separated)")
+                print("")
+                print("  General:")
+                print("    --skip-details           Suppress per-record detail blocks")
+                print("    --mock                   Use mock clients (no API calls)")
+                print("")
+                print("  Severity mapping: P1->1  P2->2  P3->3  P4->4")
+                print("  Conflict rule:    multiple FI priorities -> highest wins (P1+P3 => 1)")
                 return
 
             query_name = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else None
@@ -1485,12 +1555,14 @@ def main():
             # Define valid options for validate-fi command
             valid_options = {
                 '--mock', '--fix', '--dry-run', '--fix-interactive',
-                '--report', '--show-conflicts', '--table',
+                '--report', '--report-severity',
+                '--fix-severity', '--show-conflicts', '--table',
                 '--auto-add', '--interactive', '--fail-on-unknown',
                 '--all-types', '--perform-sr-type-check', '--skip-details'
             }
             valid_option_prefixes = {
-                '--fix-from=', '--report-from=', '--skip-fi=', '--incident=', '--fi='
+                '--fix-from=', '--report-from=', '--skip-fi=', '--incident=', '--fi=', '--format=',
+                '--severity-transition='
             }
 
             # Validate all arguments
@@ -1516,11 +1588,67 @@ def main():
             fix_dry_run = '--dry-run' in sys.argv
             fix_interactive = '--fix-interactive' in sys.argv
             generate_report = '--report' in sys.argv
+            severity_report = '--report-severity' in sys.argv
+            severity_fix = '--fix-severity' in sys.argv
             show_conflicts = '--show-conflicts' in sys.argv
             conflict_table = '--table' in sys.argv
             include_all_types = '--all-types' in sys.argv  # For --fi/--incident
             perform_sr_type_check = '--perform-sr-type-check' in sys.argv  # For query-based
             skip_details = '--skip-details' in sys.argv
+            severity_mode = severity_report or severity_fix
+
+            # Parse --format=<fmt>  (applies to --report-severity output)
+            _valid_severity_formats = {'text', 'table', 'csv', 'json'}
+            severity_fmt = 'text'
+            for arg in sys.argv:
+                if arg.startswith('--format='):
+                    severity_fmt = arg.split('=', 1)[1].lower()
+                    break
+            if severity_fmt not in _valid_severity_formats:
+                print(f"X Error: --format must be one of: {', '.join(sorted(_valid_severity_formats))}")
+                print(f"  Got: {severity_fmt}")
+                return
+
+            # Parse --severity-transition=<rules>
+            severity_transition_raw = None
+            for arg in sys.argv:
+                if arg.startswith('--severity-transition='):
+                    severity_transition_raw = arg.split('=', 1)[1].strip()
+                    break
+
+            severity_transition_explicit = set()
+            severity_transition_to1 = False
+            severity_transition_from1 = False
+            severity_transition_raise = False
+            severity_transition_lower = False
+
+            if severity_transition_raw:
+                transition_tokens = [token.strip().lower().replace(' ', '') for token in severity_transition_raw.split(',') if token.strip()]
+                invalid_tokens = []
+                for token in transition_tokens:
+                    if token in ('to1', 'to-1', 'to_p1', 'to-p1'):
+                        severity_transition_to1 = True
+                    elif token in ('from1', 'from-1', 'from_p1', 'from-p1'):
+                        severity_transition_from1 = True
+                    elif token in ('raise', 'up', 'increase'):
+                        severity_transition_raise = True
+                    elif token in ('lower', 'down', 'decrease'):
+                        severity_transition_lower = True
+                    else:
+                        transition_match = re.match(r'^([1-4])->([1-4])$', token)
+                        if transition_match:
+                            severity_transition_explicit.add((
+                                int(transition_match.group(1)),
+                                int(transition_match.group(2))
+                            ))
+                        else:
+                            invalid_tokens.append(token)
+
+                if invalid_tokens:
+                    print("X Error: invalid --severity-transition rule(s): " + ', '.join(invalid_tokens))
+                    print("  Accepted rules: to1, from1, raise, lower, X->Y")
+                    print("  Example: --severity-transition=to1,1->3")
+                    return
 
             # Parse --fix-from=<user>
             fix_from_user = None
@@ -1657,6 +1785,46 @@ def main():
                 if skip_fi_ids:
                     mode_parts.append(f"SKIP={','.join(skip_fi_ids)}")
                 print(f"Fix mode: {' | '.join(mode_parts)}")
+            if severity_mode:
+                severity_parts = []
+                if severity_report:
+                    severity_parts.append("REPORT")
+                if severity_fix:
+                    severity_parts.append("FIX")
+                if severity_fix and fix_dry_run:
+                    severity_parts.append("DRY-RUN")
+                if severity_fix and fix_interactive:
+                    severity_parts.append("INTERACTIVE")
+                if severity_mode and severity_transition_raw:
+                    severity_parts.append(f"transition={severity_transition_raw}")
+                severity_parts.append(f"format={severity_fmt}")
+                if severity_fmt != 'text' and skip_details:
+                    print("  Note: --skip-details is ignored for non-text formats")
+                print(f"Severity mode: {' | '.join(severity_parts)}")
+                print("Severity mapping: P1 -> 1, P2 -> 2, P3 -> 3, P4 -> 4")
+                print("Severity conflict rule: highest FI Case Priority wins (P1 + P3 => 1)")
+
+            def _severity_transition_matches(old_value, new_value):
+                """Return True when old->new matches --severity-transition rules."""
+                if not severity_transition_raw:
+                    return True
+                try:
+                    old_int = int(old_value)
+                    new_int = int(new_value)
+                except (TypeError, ValueError):
+                    return False
+
+                if (old_int, new_int) in severity_transition_explicit:
+                    return True
+                if severity_transition_to1 and old_int in (2, 3, 4) and new_int == 1:
+                    return True
+                if severity_transition_from1 and old_int == 1 and new_int in (2, 3, 4):
+                    return True
+                if severity_transition_raise and old_int > new_int:
+                    return True
+                if severity_transition_lower and old_int < new_int:
+                    return True
+                return False
             print("=" * 60)
 
             # Execute esql query or fetch incident(s)/FI(s)
@@ -1854,9 +2022,231 @@ def main():
 
             print()
 
+            validator = FIValidator(db, jira_client, auto_populate_strategy=auto_strategy)
+            run_assignee_validation = (
+                fix_mismatches or generate_report or fix_from_user is not None or report_from_user is not None
+                or not severity_mode
+            )
+
+            if severity_mode:
+                if use_mock:
+                    etrack_client = MockEtrackExecutor()
+                else:
+                    try:
+                        etrack_client = EtrackExecutor()
+                    except Exception as e:
+                        print(f"X Error initializing Etrack client: {e}")
+                        print("Tip: Use --mock to test severity validation without live etrack updates")
+                        return
+
+                print("Starting severity validation (this may take a while for large datasets)...")
+                severity_results = validator.validate_severity_records(records, etrack_client)
+
+                print("\n" + "=" * 60)
+                print("SEVERITY VALIDATION RESULTS")
+                print("=" * 60)
+                severity_results_for_output = severity_results
+                if severity_transition_raw:
+                    severity_results_for_output = [
+                        result for result in severity_results
+                        if _severity_transition_matches(result.etrack_severity, result.expected_severity)
+                    ]
+                    filtered_out = len(severity_results) - len(severity_results_for_output)
+                    print(
+                        f"Applying severity transition filter ({severity_transition_raw}): "
+                        f"{len(severity_results_for_output)} kept, {filtered_out} filtered out"
+                    )
+                print(validator.generate_severity_report(severity_results_for_output, fmt=severity_fmt, include_details=not skip_details))
+
+                severity_actionable = validator.get_severity_mismatches(severity_results)
+
+                if severity_fix:
+                    print("\n" + "=" * 60)
+                    if fix_dry_run:
+                        print("FIXING ETRACK SEVERITY (DRY-RUN - no changes will be made)")
+                    else:
+                        print("FIXING ETRACK SEVERITY")
+                    print("=" * 60)
+
+                    severity_fixed_success = []
+                    severity_fixed_failed = []
+                    severity_fixed_skipped = []
+
+                    for severity_result in severity_actionable:
+                        skip_fi_matches = [
+                            fi_info.fi_id for fi_info in severity_result.severity_fis
+                            if fi_info.fi_id in skip_fi_ids
+                        ]
+                        if skip_fi_matches:
+                            severity_fixed_skipped.append({
+                                'incident_no': severity_result.incident_no,
+                                'reason': f"Excluded via --skip-fi ({','.join(_sort_fi_ids(skip_fi_matches))})"
+                            })
+                            continue
+
+                        if severity_result.status in ('missing_case_priority', 'error'):
+                            severity_fixed_failed.append({
+                                'incident_no': severity_result.incident_no,
+                                'reason': severity_result.error or 'Linked FIs do not have usable Case Priority values',
+                                'solution': 'Populate the Jira Case Priority field on the linked FI tickets and retry'
+                            })
+                            continue
+
+                        if not severity_result.expected_severity:
+                            severity_fixed_failed.append({
+                                'incident_no': severity_result.incident_no,
+                                'reason': 'Unable to determine target severity from linked FIs',
+                                'solution': 'Verify the linked FIs have Case Priority values P1-P4'
+                            })
+                            continue
+
+                        if severity_transition_raw:
+                            old_severity = severity_result.etrack_severity
+                            new_severity = severity_result.expected_severity
+                            if not _severity_transition_matches(old_severity, new_severity):
+                                old_display = old_severity if old_severity is not None else 'N/A'
+                                new_display = new_severity if new_severity is not None else 'N/A'
+                                severity_fixed_skipped.append({
+                                    'incident_no': severity_result.incident_no,
+                                    'reason': f"Transition {old_display}->{new_display} excluded by --severity-transition={severity_transition_raw}"
+                                })
+                                continue
+
+                        if fix_interactive and not fix_dry_run:
+                            print(
+                                f"\n  Incident {severity_result.incident_no}: "
+                                f"{severity_result.etrack_severity or 'N/A'} -> {severity_result.expected_severity} "
+                                f"(Case Priority {severity_result.dominant_case_priority or 'N/A'})"
+                            )
+                            response = input("  Fix this severity? (y/n/q to quit): ").strip().lower()
+                            if response == 'q':
+                                print("  Stopping severity fix operation.")
+                                break
+                            if response != 'y':
+                                severity_fixed_skipped.append({
+                                    'incident_no': severity_result.incident_no,
+                                    'reason': 'User declined'
+                                })
+                                continue
+
+                        try:
+                            success = etrack_client.update_severity(
+                                severity_result.incident_no,
+                                severity_result.expected_severity,
+                                dry_run=fix_dry_run
+                            )
+                            if success:
+                                severity_fixed_success.append({
+                                    'incident_no': severity_result.incident_no,
+                                    'old_severity': severity_result.etrack_severity,
+                                    'new_severity': severity_result.expected_severity,
+                                    'case_priority': severity_result.dominant_case_priority,
+                                })
+                                db.log_action(
+                                    'fix_etrack_severity',
+                                    'etrack',
+                                    severity_result.incident_no,
+                                    old_value=severity_result.etrack_severity,
+                                    new_value=severity_result.expected_severity,
+                                    status='dry_run' if fix_dry_run else 'success',
+                                    details=(
+                                        f"case_priority={severity_result.dominant_case_priority}; "
+                                        f"fi_ids={','.join(_sort_fi_ids([fi.fi_id for fi in severity_result.severity_fis]))}; "
+                                        f"conflict={severity_result.has_priority_conflict}"
+                                    )
+                                )
+                            else:
+                                severity_fixed_failed.append({
+                                    'incident_no': severity_result.incident_no,
+                                    'reason': f"etrack update failed (target severity: {severity_result.expected_severity})",
+                                    'solution': f"Run manually: eset -s {severity_result.expected_severity} {severity_result.incident_no}"
+                                })
+                                db.log_action(
+                                    'fix_etrack_severity',
+                                    'etrack',
+                                    severity_result.incident_no,
+                                    old_value=severity_result.etrack_severity,
+                                    new_value=severity_result.expected_severity,
+                                    status='failed',
+                                    details='etrack severity update failed'
+                                )
+                        except Exception as e:
+                            severity_fixed_failed.append({
+                                'incident_no': severity_result.incident_no,
+                                'reason': str(e),
+                                'solution': f"Run manually: eset -s {severity_result.expected_severity} {severity_result.incident_no}"
+                            })
+                            db.log_action(
+                                'fix_etrack_severity',
+                                'etrack',
+                                severity_result.incident_no,
+                                old_value=severity_result.etrack_severity,
+                                new_value=severity_result.expected_severity,
+                                status='failed',
+                                details=str(e)
+                            )
+
+                    print("\n" + "-" * 40)
+                    if fix_dry_run:
+                        print("SEVERITY FIX SUMMARY (DRY-RUN)")
+                    else:
+                        print("SEVERITY FIX SUMMARY")
+                    print("-" * 40)
+
+                    if severity_fixed_success:
+                        label = "Would fix" if fix_dry_run else "Successfully fixed"
+                        print(f"\n+ {label}: {len(severity_fixed_success)}")
+                        for item in sorted(severity_fixed_success, key=lambda x: int(x['incident_no'])):
+                            print(
+                                f"  Incident {item['incident_no']}: "
+                                f"{item['old_severity'] or 'N/A'} -> {item['new_severity']} "
+                                f"(Case Priority {item['case_priority'] or 'N/A'})"
+                            )
+
+                    if severity_fixed_skipped:
+                        print(f"\no Skipped: {len(severity_fixed_skipped)}")
+                        for item in sorted(severity_fixed_skipped, key=lambda x: int(x['incident_no'])):
+                            print(f"  Incident {item['incident_no']}: {item['reason']}")
+
+                    if severity_fixed_failed:
+                        print(f"\nX Failed to fix: {len(severity_fixed_failed)}")
+                        for item in sorted(severity_fixed_failed, key=lambda x: int(x['incident_no'])):
+                            print(f"  Incident {item['incident_no']}: {item['reason']}")
+                            print(f"    Fix: {item['solution']}")
+
+                    if not severity_fixed_success and not severity_fixed_failed and not severity_fixed_skipped:
+                        print("No severity fixes attempted.")
+
+                    if fix_dry_run and severity_fixed_success:
+                        print("\nTo apply these severity changes, run without --dry-run")
+
+                severity_needing_fix = [
+                    result.incident_no for result in severity_results_for_output
+                    if result.status in ('mismatched', 'mismatched_conflict', 'missing_etrack_severity')
+                ]
+                print("\n" + "=" * 60)
+                print("SEVERITY LISTS")
+                print("=" * 60)
+                if severity_needing_fix:
+                    print(f"\nSeverity-Mismatch-Incidents ({len(severity_needing_fix)}):")
+                    print(f"  Incident-List={','.join(sorted(severity_needing_fix, key=int))}")
+                else:
+                    print("\nNo etrack severity mismatches found.")
+
+                conflict_incidents = [result.incident_no for result in severity_results_for_output if result.has_priority_conflict]
+                if conflict_incidents:
+                    print(f"\nSeverity-Conflict-Incidents ({len(conflict_incidents)} - highest FI Case Priority wins):")
+                    print(f"  Incident-List={','.join(sorted(conflict_incidents, key=int))}")
+                else:
+                    print("\nNo severity conflict incidents found.")
+
+                if not run_assignee_validation:
+                    return
+
+                print()
+
             # Validate FI records
             print("Starting validation (this may take a while for large datasets)...")
-            validator = FIValidator(db, jira_client, auto_populate_strategy=auto_strategy)
             results = validator.validate_records(records)
 
             # Show newly added users

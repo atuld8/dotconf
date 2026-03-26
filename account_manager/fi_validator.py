@@ -1,7 +1,10 @@
 """
-FI Validator - Validate FI assignees against Jira and account database
+FI Validator - Validate FI assignees and severity against Jira and account database
 """
 
+import csv
+import io
+import json
 import re
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
@@ -59,8 +62,49 @@ class ValidationResult:
         return sum(1 for v in self.fi_validations if not v.matches)
 
 
+@dataclass
+class SeverityFIInfo:
+    """Severity-relevant FI information for an etrack incident."""
+    fi_id: str
+    case_priority: Optional[str]
+    mapped_severity: Optional[str]
+    error: Optional[str] = None
+
+
+@dataclass
+class SeverityValidationResult:
+    """Result of comparing etrack severity to linked FI case priority."""
+    incident_no: str
+    etrack_user_id: str
+    who_added_fi: str
+    etrack_severity: Optional[str]
+    expected_severity: Optional[str]
+    dominant_case_priority: Optional[str]
+    severity_fis: List[SeverityFIInfo]
+    status: str
+    unique_case_priorities: List[str] = field(default_factory=list)
+    error: Optional[str] = None
+
+    @property
+    def has_priority_conflict(self) -> bool:
+        return len(self.unique_case_priorities) > 1
+
+    @property
+    def matching_fi_count(self) -> int:
+        return sum(1 for fi in self.severity_fis if fi.case_priority and not fi.error)
+
+
 class FIValidator:
     """Validate FI assignees against database"""
+
+    CASE_PRIORITY_TO_SEVERITY = {
+        'P1': '1',
+        'P2': '2',
+        'P3': '3',
+        'P4': '4',
+    }
+    SEVERITY_TO_CASE_PRIORITY = {value: key for key, value in CASE_PRIORITY_TO_SEVERITY.items()}
+    CASE_PRIORITY_FIELD_NAME = 'Case Priority'
 
     def __init__(self, account_manager: AccountManager, jira_client=None,
                  auto_populate_strategy: str = AutoPopulateStrategy.SKIP):
@@ -407,6 +451,390 @@ class FIValidator:
             List of results with at least one mismatch
         """
         return [r for r in results if not r.all_match]
+
+    @classmethod
+    def normalize_case_priority(cls, case_priority: Optional[str]) -> Optional[str]:
+        """Normalize Jira Case Priority values like P1-P4."""
+        if not case_priority:
+            return None
+        normalized = str(case_priority).strip().upper()
+        return normalized if normalized in cls.CASE_PRIORITY_TO_SEVERITY else None
+
+    @classmethod
+    def normalize_severity(cls, severity: Optional[str]) -> Optional[str]:
+        """Normalize etrack severity values like 1-4."""
+        if severity is None:
+            return None
+        normalized = str(severity).strip()
+        return normalized if normalized in cls.SEVERITY_TO_CASE_PRIORITY else None
+
+    def validate_severity_records(self, records: List[FIRecord], etrack_client) -> List[SeverityValidationResult]:
+        """
+        Validate etrack severity against linked FI Case Priority values.
+
+        Mapping:
+            P1 -> 1
+            P2 -> 2
+            P3 -> 3
+            P4 -> 4
+
+        When multiple linked FIs have different priorities, the highest priority wins.
+        Example: P1 + P3 => expected severity 1.
+        """
+        if not records:
+            return []
+
+        all_fi_ids = sorted({fi_id for record in records for fi_id in record.fi_ids}, key=_fi_sort_key)
+
+        fi_case_priorities = {}
+        if self.jira_client and all_fi_ids:
+            print(
+                f"Fetching {len(all_fi_ids)} Jira '{self.CASE_PRIORITY_FIELD_NAME}' values "
+                f"for severity validation (batched)..."
+            )
+            raw_priorities = self.jira_client.get_named_field_batch(all_fi_ids, self.CASE_PRIORITY_FIELD_NAME)
+            fi_case_priorities = {
+                fi_id: self.normalize_case_priority(self.jira_client.extract_field_display_value(value))
+                if self.jira_client else None
+                for fi_id, value in raw_priorities.items()
+            }
+            print(f"+ Fetched {len(raw_priorities)} Case Priority values")
+
+        unique_incident_nos = sorted({record.incident_no for record in records}, key=int)
+        print(
+            f"Fetching etrack severity details for {len(unique_incident_nos)} unique incidents "
+            f"(batched)..."
+        )
+        if hasattr(etrack_client, 'get_etrack_info_batch'):
+            etrack_info_map = etrack_client.get_etrack_info_batch(unique_incident_nos)
+        else:
+            etrack_info_map = {}
+            for incident_no in unique_incident_nos:
+                etrack_info_map[incident_no] = etrack_client.get_etrack_info(incident_no) if etrack_client else None
+        fetched_count = sum(1 for info in etrack_info_map.values() if info is not None)
+        print(f"+ Fetched etrack details for {fetched_count}/{len(unique_incident_nos)} incidents")
+
+        results = []
+        total_records = len(records)
+        for index, record in enumerate(records, 1):
+            if index % 50 == 0 or index == total_records:
+                print(f"\rValidating severity: {index}/{total_records} records...", end='', flush=True)
+            results.append(self._validate_severity_record(record, fi_case_priorities, etrack_info_map.get(record.incident_no)))
+        print()
+        return results
+
+    def _validate_severity_record(self, record: FIRecord, fi_case_priorities: Dict[str, Optional[str]], etrack_info: Optional[Any]) -> SeverityValidationResult:
+        """Validate etrack severity for a single incident using cached Jira field values."""
+        etrack_severity = self.normalize_severity(etrack_info.severity if etrack_info else None)
+
+        severity_fis = []
+        normalized_priorities = []
+        for fi_id in _sort_fi_ids(record.fi_ids):
+            case_priority = fi_case_priorities.get(fi_id)
+            mapped_severity = self.CASE_PRIORITY_TO_SEVERITY.get(case_priority)
+            error = None if case_priority else f"Missing or unsupported {self.CASE_PRIORITY_FIELD_NAME}"
+            severity_fis.append(
+                SeverityFIInfo(
+                    fi_id=fi_id,
+                    case_priority=case_priority,
+                    mapped_severity=mapped_severity,
+                    error=error,
+                )
+            )
+            if case_priority:
+                normalized_priorities.append(case_priority)
+
+        unique_case_priorities = sorted(set(normalized_priorities), key=lambda value: self.CASE_PRIORITY_TO_SEVERITY[value])
+
+        if not etrack_info:
+            return SeverityValidationResult(
+                incident_no=record.incident_no,
+                etrack_user_id=record.etrack_user_id,
+                who_added_fi=record.who_added_fi,
+                etrack_severity=None,
+                expected_severity=None,
+                dominant_case_priority=None,
+                severity_fis=severity_fis,
+                status='error',
+                unique_case_priorities=unique_case_priorities,
+                error='Unable to fetch etrack incident details',
+            )
+
+        if not severity_fis:
+            status = 'no_fi'
+            expected_severity = None
+            dominant_case_priority = None
+        elif not normalized_priorities:
+            status = 'missing_case_priority'
+            expected_severity = None
+            dominant_case_priority = None
+        else:
+            dominant_case_priority = min(unique_case_priorities, key=lambda value: int(self.CASE_PRIORITY_TO_SEVERITY[value]))
+            expected_severity = self.CASE_PRIORITY_TO_SEVERITY[dominant_case_priority]
+            if not etrack_severity:
+                status = 'missing_etrack_severity'
+            elif etrack_severity == expected_severity:
+                status = 'matched' if len(unique_case_priorities) == 1 else 'matched_conflict'
+            else:
+                status = 'mismatched' if len(unique_case_priorities) == 1 else 'mismatched_conflict'
+
+        return SeverityValidationResult(
+            incident_no=record.incident_no,
+            etrack_user_id=record.etrack_user_id,
+            who_added_fi=record.who_added_fi,
+            etrack_severity=etrack_severity,
+            expected_severity=expected_severity,
+            dominant_case_priority=dominant_case_priority,
+            severity_fis=severity_fis,
+            status=status,
+            unique_case_priorities=unique_case_priorities,
+        )
+
+    def get_severity_mismatches(self, results: List[SeverityValidationResult]) -> List[SeverityValidationResult]:
+        """Return severity results that need attention or can be fixed."""
+        actionable_statuses = {
+            'mismatched',
+            'mismatched_conflict',
+            'missing_case_priority',
+            'missing_etrack_severity',
+            'error',
+        }
+        return [result for result in results if result.status in actionable_statuses]
+
+    def generate_severity_report(self, results: List[SeverityValidationResult],
+                                   fmt: str = 'text', include_details: bool = True) -> str:
+        """Generate a severity validation report.
+
+        Args:
+            results: Severity validation results.
+            fmt: Output format — 'text' (default), 'table', 'csv', or 'json'.
+            include_details: For 'text' format only: include per-incident detail blocks.
+                             Ignored for 'table', 'csv', and 'json' formats.
+        """
+        if fmt == 'csv':
+            return self._severity_report_csv(results)
+        elif fmt == 'json':
+            return self._severity_report_json(results)
+        elif fmt == 'table':
+            return self._severity_report_table(results)
+        else:
+            return self._severity_report_text(results, include_details=include_details)
+
+    # ------------------------------------------------------------------ #
+    # Private format helpers                                               #
+    # ------------------------------------------------------------------ #
+
+    def _severity_counts(self, results):
+        """Return (matched, mismatched, conflicts, missing_cp, missing_sev, errors) lists."""
+        matched = [r for r in results if r.status in ('matched', 'matched_conflict')]
+        mismatched = [r for r in results if r.status in ('mismatched', 'mismatched_conflict')]
+        conflicts = [r for r in results if r.has_priority_conflict]
+        missing_cp = [r for r in results if r.status == 'missing_case_priority']
+        missing_sev = [r for r in results if r.status == 'missing_etrack_severity']
+        errors = [r for r in results if r.status == 'error']
+        return matched, mismatched, conflicts, missing_cp, missing_sev, errors
+
+    def _severity_report_text(self, results: List[SeverityValidationResult],
+                               include_details: bool = True) -> str:
+        """Full human-readable text report (original behaviour)."""
+        report = []
+        report.append("=" * 120)
+        report.append("FI CASE PRIORITY VS ETRACK SEVERITY REPORT")
+        report.append("=" * 120)
+        report.append("Mapping: P1 -> 1, P2 -> 2, P3 -> 3, P4 -> 4")
+        report.append("Conflict Rule: If one incident links to multiple FIs with different Case Priority values, the highest priority wins.")
+        report.append("Example: P1 + P3 => target etrack severity 1")
+        report.append(f"Total Records Validated: {len(results)}")
+
+        matched, mismatched, conflicts, missing_case_priority, missing_etrack_severity, errors = \
+            self._severity_counts(results)
+
+        report.append(f"Matched Records: {len(matched)}")
+        report.append(f"Mismatched Records: {len(mismatched)}")
+        report.append(f"Conflict Records: {len(conflicts)}")
+        report.append(f"Missing Case Priority: {len(missing_case_priority)}")
+        report.append(f"Missing Etrack Severity: {len(missing_etrack_severity)}")
+        report.append(f"Errors: {len(errors)}")
+        report.append("")
+
+        if not any([mismatched, missing_case_priority, missing_etrack_severity, errors]):
+            report.append("+ All etrack severities match the linked FI Case Priority values!")
+            report.append("=" * 120)
+            return "\n".join(report)
+
+        report.append("=" * 120)
+        report.append("SUMMARY TABLE")
+        report.append("=" * 120)
+        header = (
+            f"{'Incident':<12} | {'Etrack Sev':<10} | {'Target Sev':<10} | {'Target CP':<10} | "
+            f"{'FI Priorities':<32} | {'Status':<20}"
+        )
+        report.append(header)
+        report.append("-" * 120)
+
+        for result in sorted(results, key=lambda item: int(item.incident_no)):
+            fi_priorities = []
+            for fi_info in result.severity_fis:
+                if fi_info.case_priority:
+                    fi_priorities.append(f"{fi_info.fi_id}:{fi_info.case_priority}")
+                else:
+                    fi_priorities.append(f"{fi_info.fi_id}:N/A")
+            priority_text = ', '.join(fi_priorities)
+            if len(priority_text) > 30:
+                priority_text = priority_text[:27] + '...'
+            row = (
+                f"{result.incident_no:<12} | {(result.etrack_severity or 'N/A'):<10} | {(result.expected_severity or 'N/A'):<10} | "
+                f"{(result.dominant_case_priority or 'N/A'):<10} | {priority_text:<32} | {result.status.upper():<20}"
+            )
+            report.append(row)
+
+        report.append("-" * 120)
+
+        if include_details:
+            report.append("")
+            report.append("=" * 120)
+            report.append("DETAILS")
+            report.append("=" * 120)
+            for result in sorted(results, key=lambda item: int(item.incident_no)):
+                if result.status == 'matched' and not result.has_priority_conflict:
+                    continue
+                fi_ids = ', '.join(_sort_fi_ids([fi_info.fi_id for fi_info in result.severity_fis])) or 'N/A'
+                report.append(f"Incident: {result.incident_no} | FIs: {fi_ids}")
+                report.append(f"  Etrack Assignee: {result.etrack_user_id}")
+                report.append(f"  Etrack Severity: {result.etrack_severity or 'N/A'}")
+                report.append(f"  Target Severity: {result.expected_severity or 'N/A'}")
+                report.append(f"  Dominant Case Priority: {result.dominant_case_priority or 'N/A'}")
+                report.append(f"  Status: {result.status}")
+                if result.has_priority_conflict:
+                    report.append(
+                        "  Conflict Resolution: Multiple Case Priority values found; highest priority selected -> "
+                        f"{result.dominant_case_priority} / severity {result.expected_severity}"
+                    )
+                if result.error:
+                    report.append(f"  Error: {result.error}")
+                report.append("  FI Case Priority Values:")
+                for fi_info in result.severity_fis:
+                    detail = (
+                        f"    {fi_info.fi_id}: {fi_info.case_priority or 'N/A'}"
+                        f" -> severity {fi_info.mapped_severity or 'N/A'}"
+                    )
+                    report.append(detail)
+                    if fi_info.error:
+                        report.append(f"      Error: {fi_info.error}")
+                report.append("")
+        else:
+            report.append("")
+            report.append("COMPACT INSIGHTS (--skip-details)")
+            report.append("-" * 120)
+            if mismatched:
+                target_counts = {}
+                for result in mismatched:
+                    target = result.expected_severity or 'N/A'
+                    target_counts[target] = target_counts.get(target, 0) + 1
+                for target, count in sorted(target_counts.items(), key=lambda item: (item[0], -item[1])):
+                    report.append(f"  Target severity {target}: {count}")
+            if conflicts:
+                report.append(f"  Conflict records requiring highest-priority resolution: {len(conflicts)}")
+            report.append("Run without --skip-details for per-incident detail.")
+
+        report.append("=" * 120)
+        return "\n".join(report)
+
+    def _severity_report_table(self, results: List[SeverityValidationResult]) -> str:
+        """Aligned table of all records — no narrative header or detail blocks."""
+        matched, mismatched, conflicts, missing_cp, missing_sev, errors = self._severity_counts(results)
+        header_line = (
+            f"{'Incident':<12} | {'Assignee':<22} | {'Etrack Sev':<10} | {'Target Sev':<10} | "
+            f"{'Target CP':<10} | {'Conflict':<8} | {'FI Priorities':<36} | {'Status':<24}"
+        )
+        sep = "-" * len(header_line)
+        rows = [header_line, sep]
+        for result in sorted(results, key=lambda r: int(r.incident_no)):
+            fi_priorities = [
+                f"{fi.fi_id}:{fi.case_priority or 'N/A'}" for fi in result.severity_fis
+            ]
+            priority_text = ', '.join(fi_priorities)
+            if len(priority_text) > 34:
+                priority_text = priority_text[:31] + '...'
+            row = (
+                f"{result.incident_no:<12} | {result.etrack_user_id:<22} | "
+                f"{(result.etrack_severity or 'N/A'):<10} | {(result.expected_severity or 'N/A'):<10} | "
+                f"{(result.dominant_case_priority or 'N/A'):<10} | {'YES' if result.has_priority_conflict else 'no':<8} | "
+                f"{priority_text:<36} | {result.status.upper():<24}"
+            )
+            rows.append(row)
+        rows.append(sep)
+        rows.append(
+            f"Total: {len(results)}  Matched: {len(matched)}  Mismatched: {len(mismatched)}  "
+            f"Conflicts: {len(conflicts)}  Missing CP: {len(missing_cp)}  "
+            f"Missing Sev: {len(missing_sev)}  Errors: {len(errors)}"
+        )
+        return "\n".join(rows)
+
+    def _severity_report_csv(self, results: List[SeverityValidationResult]) -> str:
+        """CSV format — one row per incident."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            'incident_no', 'etrack_assignee', 'etrack_severity', 'expected_severity',
+            'dominant_case_priority', 'status', 'has_priority_conflict',
+            'fi_ids', 'fi_case_priorities'
+        ])
+        for result in sorted(results, key=lambda r: int(r.incident_no)):
+            fi_ids = ';'.join(_sort_fi_ids([fi.fi_id for fi in result.severity_fis]))
+            fi_priorities = ';'.join(
+                f"{fi.fi_id}:{fi.case_priority or ''}" for fi in result.severity_fis
+            )
+            writer.writerow([
+                result.incident_no,
+                result.etrack_user_id,
+                result.etrack_severity or '',
+                result.expected_severity or '',
+                result.dominant_case_priority or '',
+                result.status,
+                str(result.has_priority_conflict).lower(),
+                fi_ids,
+                fi_priorities,
+            ])
+        return buf.getvalue()
+
+    def _severity_report_json(self, results: List[SeverityValidationResult]) -> str:
+        """JSON format — summary object plus array of per-incident records."""
+        matched, mismatched, conflicts, missing_cp, missing_sev, errors = self._severity_counts(results)
+        records = []
+        for result in sorted(results, key=lambda r: int(r.incident_no)):
+            records.append({
+                'incident_no': result.incident_no,
+                'etrack_assignee': result.etrack_user_id,
+                'etrack_severity': result.etrack_severity,
+                'expected_severity': result.expected_severity,
+                'dominant_case_priority': result.dominant_case_priority,
+                'status': result.status,
+                'has_priority_conflict': result.has_priority_conflict,
+                'error': result.error,
+                'fi_details': [
+                    {
+                        'fi_id': fi.fi_id,
+                        'case_priority': fi.case_priority,
+                        'mapped_severity': fi.mapped_severity,
+                        'error': fi.error,
+                    }
+                    for fi in result.severity_fis
+                ],
+            })
+        output = {
+            'summary': {
+                'total': len(results),
+                'matched': len(matched),
+                'mismatched': len(mismatched),
+                'conflicts': len(conflicts),
+                'missing_case_priority': len(missing_cp),
+                'missing_etrack_severity': len(missing_sev),
+                'errors': len(errors),
+            },
+            'records': records,
+        }
+        return json.dumps(output, indent=2)
 
     def generate_report(self, results: List[ValidationResult], include_details: bool = True) -> str:
         """
