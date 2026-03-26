@@ -1303,9 +1303,21 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Get Jira issue details (generic + FI profiles).")
+    parser = argparse.ArgumentParser(
+        description="Get Jira issue details (generic + FI profiles).",
+        usage=(
+            "%(prog)s [-h] [-t|--type {auto,fi,generic,default}] [-s|--search] "
+            "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
+            "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections SECTIONS] "
+            "[-E|--show-empty] [-l|--long-text-style {paragraph,wrapped,raw}] "
+            "[-w|--wrap-width WRAP_WIDTH] [-d|--desc {none,short,mid,full}] "
+            "[-v|--verbose] [-i|--include-empty-customfields] [-f|--show-field SHOW_FIELD] "
+            "[-F|--format {compact,grouped,table,minimal,json}] issue_key"
+        ),
+    )
     parser.add_argument("issue_key", help="Issue key (for example, PROJ-12345)")
     parser.add_argument(
+        "-t",
         "--type",
         "-type",
         dest="issue_type",
@@ -1314,6 +1326,7 @@ def main() -> int:
         help="Profile type: auto (default), fi, generic, or default.",
     )
     parser.add_argument(
+        "-s",
         "--search",
         action="store_true",
         help=(
@@ -1322,28 +1335,33 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "-S",
         "--search-debug",
         action="store_true",
         help="With --search, print available Salesforce fields for debugging.",
     )
     parser.add_argument(
+        "-e",
         "--show-etrack-details",
         action="store_true",
         help="If etrack incident IDs are present, fetch and show etrack summary details.",
     )
     parser.add_argument(
+        "-c",
         "--show-comments",
         type=int,
         default=2,
         help="Number of latest comments to show (default: 2). Use 0 to disable comments.",
     )
     parser.add_argument(
+        "-m",
         "--mode",
         choices=["standard", "summary", "investigate", "ops"],
         default="standard",
         help="Display preset mode: standard (default), summary, investigate, or ops.",
     )
     parser.add_argument(
+        "-x",
         "--sections",
         default="",
         help=(
@@ -1352,46 +1370,53 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "-E",
         "--show-empty",
         action="store_true",
         help="Show section headers even when no data is available.",
     )
     parser.add_argument(
+        "-l",
         "--long-text-style",
         choices=["paragraph", "wrapped", "raw"],
         default="paragraph",
         help="Format for long text fields and comments: paragraph (default), wrapped, or raw.",
     )
     parser.add_argument(
+        "-w",
         "--wrap-width",
         type=int,
         default=110,
         help="Wrap width for long text output (default: 110).",
     )
     parser.add_argument(
+        "-d",
         "--desc",
         choices=["none", "short", "mid", "full"],
         default="short",
         help="Description display: none (hide), short (default, 300 chars), mid (700 chars), full (no truncation).",
     )
     parser.add_argument(
-        "--verbose",
         "-v",
+        "--verbose",
         action="store_true",
         help="Show verbose output section with full raw Jira response JSON.",
     )
     parser.add_argument(
+        "-i",
         "--include-empty-customfields",
         action="store_true",
         help="With --verbose, include customfield_* entries even when null or empty.",
     )
     parser.add_argument(
+        "-f",
         "--show-field",
         action="append",
         default=[],
         help="Show specific Jira fields by field key or display name. Can be repeated or comma-separated.",
     )
     parser.add_argument(
+        "-F",
         "--format",
         choices=["compact", "grouped", "table", "minimal", "json"],
         default="compact",
