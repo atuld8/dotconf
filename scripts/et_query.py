@@ -312,6 +312,12 @@ def _write_output(content: str, output_path: Optional[str]) -> None:
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Query Etrack incidents and render table/CSV/JSON/Markdown output.",
+        usage=(
+            "%(prog)s [-h] [-i|--incidents INCIDENTS] [-f|--file FILE] [-F|--fields FIELDS] "
+            "[-e|--exclude EXCLUDE] [-I|--include-cols INCLUDE_COLS] [-E|--exclude-cols EXCLUDE_COLS] "
+            "[-m|--format {table,csv,json,markdown}] [-o|--output OUTPUT] [-t|--timeout TIMEOUT] "
+            "[-s|--show-query] [-v|--verbose] [incident_ids ...]"
+        ),
         epilog=(
             "Examples:\n"
             "  et_query.py --incidents 4221396,4221397,4221398\n"
@@ -325,34 +331,37 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
     parser.add_argument("incident_ids", nargs="*", help="Incident IDs, e.g. 4221396 4221397")
     parser.add_argument(
+        "-i",
         "--incidents",
         help="Comma/space-separated incident IDs, e.g. 4221396,4221397",
     )
     parser.add_argument("-f", "--file", help="File containing incident IDs")
 
     parser.add_argument(
+        "-F",
         "--fields",
         help=(
             "Comma-separated query fields. "
             "Default: INCIDENT,ASSIGNED_TO,STATE,TYPE,VERSION,COMPONENT,SEVERITY,CHANGED_BY,CUSTOMER,ABSTRACT"
         ),
     )
-    parser.add_argument("--exclude", help="Comma-separated fields to remove from selected fields")
+    parser.add_argument("-e", "--exclude", help="Comma-separated fields to remove from selected fields")
 
-    parser.add_argument("--include-cols", help="Comma-separated output columns to include")
-    parser.add_argument("--exclude-cols", help="Comma-separated output columns to exclude")
+    parser.add_argument("-I", "--include-cols", help="Comma-separated output columns to include")
+    parser.add_argument("-E", "--exclude-cols", help="Comma-separated output columns to exclude")
 
     parser.add_argument(
+        "-m",
         "--format",
         choices=["table", "csv", "json", "markdown"],
         default="table",
         help="Output format (default: table)",
     )
-    parser.add_argument("--output", help="Write formatted output to file instead of stdout")
+    parser.add_argument("-o", "--output", help="Write formatted output to file instead of stdout")
 
-    parser.add_argument("--timeout", type=int, default=120, help="esql timeout in seconds (default: 120)")
-    parser.add_argument("--show-query", action="store_true", help="Print generated SQL query to stderr")
-    parser.add_argument("--verbose", action="store_true", help="Print progress details to stderr")
+    parser.add_argument("-t", "--timeout", type=int, default=120, help="esql timeout in seconds (default: 120)")
+    parser.add_argument("-s", "--show-query", action="store_true", help="Print generated SQL query to stderr")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print progress details to stderr")
 
     return parser.parse_args(argv)
 
