@@ -310,6 +310,35 @@ def get_mapped_status(status_name):
     return STATUS_MAPPING.get(status_name, 'To-Do')
 
 
+def _format_details_status_bucket(status_name):
+    """Return compact status bucket for issue details display.
+
+    Uses board mapping and normalizes Closed -> Done to keep final state concise.
+    """
+    mapped = get_mapped_status(status_name)
+    return 'Done' if mapped == 'Closed' else mapped
+
+
+def _format_issue_details_title(issue_key, issue_type, priority, status_name, widths=None):
+    """Format issue details line prefix for readability.
+
+    Example: + NBU-256751 (Story) (P3) (To-Do)
+    """
+    widths = widths or {}
+    type_width = max(5, int(widths.get('type', 0)))
+    priority_width = max(2, int(widths.get('priority', 0)))
+    status_width = max(5, int(widths.get('status', 0)))
+
+    priority_text = priority if priority and priority != 'N/A' else 'N/A'
+    status_bucket = _format_details_status_bucket(status_name)
+    return (
+        f"{issue_key} "
+        f"({issue_type:<{type_width}}) "
+        f"({priority_text:<{priority_width}}) "
+        f"({status_bucket:<{status_width}})"
+    )
+
+
 def organize_issues_by_assignee_and_status(issues):
     """
     Organize issues by assignee and status, grouping sub-tasks under their parents.
@@ -497,10 +526,18 @@ def display_issue_details(issue_details_list, verbose=False):
     print("ISSUE DETAILS")
     print("="*80)
 
+    # Widths for aligned (Type) (Priority) (Status) blocks
+    type_width = max((len(issue_type or '') for _, issue_type, *_ in issue_details_list), default=5)
+    priority_width = max((len((priority if priority and priority != 'N/A' else 'N/A')) for *_, priority, _ in issue_details_list), default=2)
+    status_width = max((len(_format_details_status_bucket(status)) for *_, status, _, _, _, _ in issue_details_list), default=5)
+    widths = {'type': type_width, 'priority': priority_width, 'status': status_width}
+
     for i, (issue_key, issue_type, summary, status, assignee, reporter, priority, severity) in enumerate(issue_details_list):
         # Truncate summary if too long
         if len(summary) > 100:
             summary = summary[:97] + "..."
+        assignee_display = assignee if assignee and assignee != 'N/A' else 'Unassigned'
+        summary_with_assignee = f"{summary} [{assignee_display}]"
 
         is_subtask = issue_type in ['Sub-task', 'Subtask']
 
@@ -511,13 +548,14 @@ def display_issue_details(issue_details_list, verbose=False):
             next_is_subtask = next_issue_type in ['Sub-task', 'Subtask']
 
         # Add indentation for sub-tasks to show tree structure
+        title = _format_issue_details_title(issue_key, issue_type, priority, status, widths=widths)
         if is_subtask:
             # Add extra indentation for sub-tasks to create tree view
-            print(f"  {issue_key} ({issue_type}): {summary}")
+            print(f"  {title}: {summary_with_assignee}")
             if verbose:
                 print(f"    Status: {status} | Assignee: {assignee} | Reporter: {reporter} | Priority: {priority} | Severity: {severity}")
         else:
-            print(f"{issue_key} ({issue_type}): {summary}")
+            print(f"{title}: {summary_with_assignee}")
             if verbose:
                 print(f"  Status: {status} | Assignee: {assignee} | Reporter: {reporter} | Priority: {priority} | Severity: {severity}")
 

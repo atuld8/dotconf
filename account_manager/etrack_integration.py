@@ -32,6 +32,8 @@ class EtrackInfo:
     incident_no: str
     assignee: Optional[str]
     state: Optional[str]
+    severity: Optional[str]
+    priority: Optional[str]
     abstract: Optional[str]
 
 
@@ -370,11 +372,15 @@ class EtrackExecutor:
         Returns:
             EtrackInfo object or None
         """
-        query = f"SELECT incident, assigned_to, state, abstract FROM incident WHERE incident = {incident_no}"
+        query = (
+            f"SELECT incident, assigned_to, state, severity, priority, abstract "
+            f"FROM incident WHERE incident = {incident_no}"
+        )
         output = self._execute_command("esql", stdin_input=query)
 
         if not output:
-            return None
+            fallback_query = f"SELECT incident, assigned_to, state, abstract FROM incident WHERE incident = {incident_no}"
+            output = self._execute_command("esql", stdin_input=fallback_query)
 
         if not output:
             return None
@@ -394,11 +400,21 @@ class EtrackExecutor:
             parts = [p.strip() for p in parts if p.strip()]
 
             if len(parts) >= 2:
+                if len(parts) >= 6:
+                    severity = parts[3] if len(parts) > 3 else None
+                    priority = parts[4] if len(parts) > 4 else None
+                    abstract = parts[5] if len(parts) > 5 else None
+                else:
+                    severity = None
+                    priority = None
+                    abstract = parts[3] if len(parts) > 3 else None
                 return EtrackInfo(
                     incident_no=incident_no,
                     assignee=parts[1] if len(parts) > 1 else None,
                     state=parts[2] if len(parts) > 2 else None,
-                    abstract=parts[3] if len(parts) > 3 else None
+                    severity=severity,
+                    priority=priority,
+                    abstract=abstract,
                 )
 
         return None
@@ -458,6 +474,8 @@ class MockEtrackExecutor:
                 incident_no=incident_no,
                 assignee=assignee,
                 state='OPEN',
+                severity='3',
+                priority='3',
                 abstract='Mock incident'
             )
         return None

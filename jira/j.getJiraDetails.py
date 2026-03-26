@@ -450,6 +450,8 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 details[et] = {
                     "state": "-",
                     "assignee": "-",
+                    "severity": "-",
+                    "priority": "-",
                     "abstract": f"Etrack module unavailable: {exc}",
                 }
             return details
@@ -461,6 +463,8 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
             details[et] = {
                 "state": "-",
                 "assignee": "-",
+                "severity": "-",
+                "priority": "-",
                 "abstract": f"Unable to initialize Etrack executor: {exc}",
             }
         return details
@@ -474,12 +478,16 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
             details[et] = {
                 "state": info.state or "-",
                 "assignee": info.assignee or "-",
+                "severity": info.severity or "-",
+                "priority": info.priority or "-",
                 "abstract": abstract,
             }
         else:
             details[et] = {
                 "state": "-",
                 "assignee": "-",
+                "severity": "-",
+                "priority": "-",
                 "abstract": "No etrack details found",
             }
 
@@ -617,6 +625,21 @@ def _summary_value(summary_rows: List[List[str]], label: str) -> str:
     return "-"
 
 
+def _print_compact_segments(segments: List[str], max_width: int = 140) -> None:
+    if not segments:
+        return
+
+    current_line = segments[0]
+    for segment in segments[1:]:
+        candidate = f"{current_line} | {segment}"
+        if len(candidate) <= max_width:
+            current_line = candidate
+        else:
+            print(current_line)
+            current_line = segment
+    print(current_line)
+
+
 def _field_value_by_name(issue: Dict[str, Any], display_name: str) -> Any:
     fields = issue.get("fields")
     names = issue.get("names")
@@ -722,6 +745,27 @@ def _parse_sfdc_case_links(raw: str) -> List[Dict[str, str]]:
     for match in re.finditer(r"\[([^|\]]+)\|([^\]]+)\]", raw):
         results.append({"label": match.group(1).strip(), "url": match.group(2).strip()})
     return results
+
+
+def _format_sfdc_case_links_for_display(links: List[Dict[str, str]]) -> str:
+    if not links:
+        return "-"
+
+    parts: List[str] = []
+    for link in links:
+        label = str(link.get("label", "-")).strip() or "-"
+        parts.append(label)
+    return ", ".join(parts) if parts else "-"
+
+
+def _print_sfdc_case_links_section(links: List[Dict[str, str]]) -> None:
+    print("\nSalesForce Case Links:")
+    rows: List[List[str]] = []
+    for link in links:
+        label = str(link.get("label", "-")).strip() or "-"
+        url = str(link.get("url", "-")).strip() or "-"
+        rows.append([label, url])
+    _print_table(rows, ["Case #", "Link"])
 
 
 def _extract_sfdc_case_links(issue: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -868,6 +912,7 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
         return []
 
     rows: List[List[str]] = []
+    sfdc_case_links = _extract_sfdc_case_links(issue)
 
     _append_if_present(rows, "Solution", _field_value_by_name(issue, "Solution"))
     _append_if_present(rows, "Progress Status", _field_value_by_name(issue, "Progress Status"))
@@ -887,6 +932,10 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
         rows.append(["Etrack Incident", ", ".join(etrack_ids)])
     _append_if_present(rows, "Etrack Ref", fields.get("customfield_36508"))
     _append_if_present(rows, "Case#", fields.get("customfield_11814"))
+    if sfdc_case_links:
+        rows.append(["SalesForce Case Link", _format_sfdc_case_links_for_display(sfdc_case_links)])
+    if _has_display_value(fields.get("customfield_11814")):
+        _append_if_present(rows, "Case Priority", fields.get("priority"))
     _append_if_present(rows, "Customer", fields.get("customfield_18901"))
     _append_if_present(rows, "Slack", fields.get("customfield_24004"))
 
@@ -899,12 +948,14 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "Etrack Incident": 5,
             "Etrack Ref": 6,
             "Case#": 7,
-            "Customer": 8,
-            "Epic Link": 9,
-            "Sprint": 10,
-            "Watchers": 11,
-            "Watcher Groups": 12,
-            "Slack": 13,
+            "SalesForce Case Link": 8,
+            "Case Priority": 9,
+            "Customer": 10,
+            "Epic Link": 11,
+            "Sprint": 12,
+            "Watchers": 13,
+            "Watcher Groups": 14,
+            "Slack": 15,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
 
@@ -954,6 +1005,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Etrack Incident",
         "Etrack Ref",
         "Case#",
+        "SalesForce Case Link",
+        "Case Priority",
         "Customer",
         "Epic Link",
         "Sprint",
@@ -1041,7 +1094,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         if _summary_value(summary_rows, label) != "-"
     ]
     if optional_parts:
-        print(" | ".join(optional_parts))
+        _print_compact_segments(optional_parts)
     print(
         f"Updated: {_summary_value(summary_rows, 'Updated')} | "
         f"Comments: {_summary_value(summary_rows, 'Comments')} | "
@@ -1211,6 +1264,7 @@ def _get_selected_field_rows(issue: Dict[str, Any], selectors: List[str]) -> Lis
 def _build_json_output(
     profile_type: str,
     summary_rows: List[List[str]],
+    sfdc_case_links: List[Dict[str, str]],
     status_context: Dict[str, str],
     linked_fis: List[str],
     linked_status: Optional[Dict[str, Dict[str, str]]],
@@ -1226,6 +1280,15 @@ def _build_json_output(
         "profile": profile_type,
         "summary": _summary_rows_to_dict(summary_rows),
     }
+
+    if sfdc_case_links:
+        payload["salesforce_case_links"] = [
+            {
+                "case_number": (str(link.get("label", "-")).strip() or "-"),
+                "link": (str(link.get("url", "-")).strip() or "-"),
+            }
+            for link in sfdc_case_links
+        ]
 
     if status_context:
         payload["current_context"] = status_context
@@ -1469,6 +1532,7 @@ def main() -> int:
     linked_fis = _extract_linked_fis(issue)
     linked_status: Optional[Dict[str, Dict[str, str]]] = None
     etrack_ids = _extract_etrack_ids(fields)
+    sfdc_case_links = _extract_sfdc_case_links(issue)
     etrack_info: Optional[Dict[str, Dict[str, str]]] = None
     sections_override_active = bool(args.sections.strip())
     show_etrack_requested = (
@@ -1509,6 +1573,7 @@ def main() -> int:
         json_payload = _build_json_output(
             profile_type,
             summary_rows,
+            sfdc_case_links,
             status_context,
             linked_fis,
             linked_status,
@@ -1607,10 +1672,18 @@ def main() -> int:
                     rows.append([
                         et,
                         info.get("state", "-"),
+                        info.get("severity", "-"),
+                        info.get("priority", "-"),
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "State", "Assignee", "Abstract"])
+                _print_table(rows, ["Incident", "State", "Severity", "Priority", "Assignee", "Abstract"])
+
+            if args.show_etrack_details:
+                if sfdc_case_links:
+                    _print_sfdc_case_links_section(sfdc_case_links)
+                elif args.show_empty:
+                    print("\nSalesForce Case Links: None")
         elif args.show_empty:
             print("\nEtrack details: disabled (use --show-etrack-details or mode investigate/ops)")
 
