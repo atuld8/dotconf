@@ -493,6 +493,7 @@ class JiraClient:
         self.token = os.getenv("JIRA_ACC_TOKEN")
         self.base_url = f"https://{self.server}" if self.server else None
         self.timeout = 30
+        self._fields_by_name: Optional[Dict[str, str]] = None
 
         if not self.base_url or not self.token:
             raise RuntimeError("Missing JIRA_SERVER_NAME or JIRA_ACC_TOKEN in environment")
@@ -509,6 +510,37 @@ class JiraClient:
         if response.status_code != 200:
             raise RuntimeError(f"Failed to fetch {issue_key}: {response.status_code} {response.text[:400]}")
         return response.json()
+
+    def search_issues(self, jql: str, max_results: int = 50) -> List[Dict[str, Any]]:
+        url = f"{self.base_url}/rest/api/2/search"
+        params = {
+            "jql": jql,
+            "maxResults": max_results,
+            "fields": "*all",   # return all fields including custom fields
+            "expand": "names",  # include field-id→display-name mapping per issue
+        }
+        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to search issues: {response.status_code} {response.text[:400]}")
+        return response.json().get("issues", [])
+
+    def get_field_key_by_name(self, display_name: str) -> Optional[str]:
+        if self._fields_by_name is None:
+            url = f"{self.base_url}/rest/api/2/field"
+            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"Failed to fetch Jira fields: {response.status_code} {response.text[:400]}"
+                )
+
+            self._fields_by_name = {}
+            for field in response.json():
+                name = field.get("name")
+                field_id = field.get("id")
+                if isinstance(name, str) and isinstance(field_id, str):
+                    self._fields_by_name[_normalize_field_selector(name)] = field_id
+
+        return self._fields_by_name.get(_normalize_field_selector(display_name))
 
     def get_issue_status_batch(self, issue_keys: List[str]) -> Dict[str, Dict[str, str]]:
         if not issue_keys:
@@ -606,6 +638,220 @@ def _resolve_profile_type(requested_type: str, issue_key: str) -> str:
     if normalized == "default":
         return "generic"
     return normalized
+
+
+def _jql_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _field_key_to_jql_ref(field_key: str) -> str:
+    if field_key.startswith("customfield_"):
+        return f"cf[{field_key.split('_', 1)[1]}]"
+    return f'"{field_key}"'
+
+
+def _build_fi_search_jql(jira: JiraClient, raw_query: str) -> str:
+    """Build a JQL query to find FI issues linked to an FI key, eTrack incident, or SFDC case.
+
+    Numeric-type fields (etrack incident, etrack ref, case#) only support = equality.
+    Text/string fields (Salesforce Case # / Link) support ~ fuzzy search.
+    """
+    stripped = raw_query.strip()
+    if not stripped:
+        raise ValueError("Search query is empty")
+
+    clauses: List[str] = []
+
+    # --- Direct FI key(s) (e.g. FI-59868) ---
+    fi_keys = [m.upper() for m in re.findall(r"FI-\d+", stripped, re.IGNORECASE)]
+    if fi_keys:
+        if len(fi_keys) == 1:
+            clauses.append(f'key = "{_jql_escape(fi_keys[0])}"')
+        else:
+            fi_values = ", ".join(f'"{_jql_escape(k)}"' for k in sorted(set(fi_keys)))
+            clauses.append(f"key in ({fi_values})")
+
+    # --- Numeric tokens → eTrack Incident (cf[33802]) ---
+    # cf[33802] = Etrack Incident : multi-value numeric field; use "in (v)" to match any entry
+    # cf[36508] = Etrack Ref      : text field, only supports ~
+    # cf[11814] = Case#           : text field, only supports ~
+    numeric_tokens = list(dict.fromkeys(re.findall(r"\d{4,}", stripped)))
+    if numeric_tokens:
+        et_ref = _field_key_to_jql_ref("customfield_33802")
+        in_values = ", ".join(numeric_tokens)
+        clauses.append(f"{et_ref} in ({in_values})")
+
+    # Text-search fields: Etrack Ref, Case#, Salesforce fields — all use ~
+    is_pure_fi_key = re.fullmatch(r"FI-\d+", stripped, re.IGNORECASE) is not None
+    if not is_pure_fi_key:
+        text_field_keys: List[str] = ["customfield_36508", "customfield_11814"]
+        for field_name in ("Salesforce Case #", "Salesforce Case Link"):
+            field_key = jira.get_field_key_by_name(field_name)
+            if field_key:
+                text_field_keys.append(field_key)
+        for field_key in text_field_keys:
+            field_ref = _field_key_to_jql_ref(field_key)
+            clauses.append(f'{field_ref} ~ "{_jql_escape(stripped)}"')
+
+    if not clauses:
+        raise ValueError(f"Unable to build FI search JQL for query: {stripped}")
+
+    return f"project = FI AND ({' OR '.join(clauses)}) ORDER BY updated DESC"
+
+
+def _first_present_display_value(*values: Any) -> str:
+    for value in values:
+        formatted = _format_selected_field_value(value)
+        if formatted and formatted != "-":
+            return formatted
+    return "-"
+
+
+def _extract_sfdc_case_number(issue: Dict[str, Any]) -> str:
+    fields = issue.get("fields", {})
+    return _first_present_display_value(
+        _field_value_by_name(issue, "Salesforce Case #"),
+        _field_value_by_name(issue, "Case#"),
+        fields.get("customfield_11814"),
+    )
+
+
+def _parse_sfdc_case_links(raw: str) -> List[Dict[str, str]]:
+    """Parse Jira wiki-markup links: '[label|url] [label|url] ...' -> list of {label, url}."""
+    results: List[Dict[str, str]] = []
+    for match in re.finditer(r"\[([^|\]]+)\|([^\]]+)\]", raw):
+        results.append({"label": match.group(1).strip(), "url": match.group(2).strip()})
+    return results
+
+
+def _extract_sfdc_case_links(issue: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Extract SFDC Case Link field using multiple name variations and fallbacks."""
+    fields = issue.get("fields", {})
+    names = issue.get("names", {})
+
+    # Try standard name variations
+    for field_name in ("Salesforce Case Link", "Salesforce Case", "SFDC Case Link"):
+        raw = _first_present_display_value(_field_value_by_name(issue, field_name))
+        if raw != "-":
+            links = _parse_sfdc_case_links(raw)
+            if links:
+                return links
+            # Fallback: treat as plain case number(s)
+            links = []
+            for token in raw.split():
+                token = token.strip(",;")
+                if token:
+                    links.append({"label": token, "url": "-"})
+            if links:
+                return links
+
+    # Fallback: search names map for any field containing "salesforce" (case-insensitive)
+    for field_key, display_name in names.items():
+        if isinstance(display_name, str) and "salesforce" in display_name.lower():
+            value = fields.get(field_key)
+            if value:
+                raw = _format_selected_field_value(value)
+                if raw and raw != "-":
+                    links = _parse_sfdc_case_links(raw)
+                    if links:
+                        return links
+
+    return []
+
+
+def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = None) -> Dict[str, Any]:
+    # If the issue doesn't have names mapping (from search endpoint), fetch it directly
+    if not issue.get("names") and jira_client and issue.get("key"):
+        try:
+            issue = jira_client.get_issue(issue["key"])
+        except Exception:
+            pass  # Fall back to partial data
+
+    fields = issue.get("fields", {})
+    etrack_ids = _extract_etrack_ids(fields)
+    sfdc_links = _extract_sfdc_case_links(issue)
+
+    return {
+        "FI": issue.get("key", "-"),
+        "Status": _opt_value(fields.get("status")),
+        "Assignee": _opt_value(fields.get("assignee")),
+        "Etrack Incident": ", ".join(etrack_ids) if etrack_ids else "-",
+        "Etrack Ref": _first_present_display_value(fields.get("customfield_36508")),
+        "SFDC Case #": _extract_sfdc_case_number(issue),
+        "SFDC Cases": sfdc_links,  # list of {label, url}
+        "Summary": _compact_text(fields.get("summary", "-"), max_len=100),
+    }
+
+
+def _print_fi_search_results(raw_query: str, issues: List[Dict[str, Any]], output_format: str, debug: bool = False, jira_client: "JiraClient" = None):
+    results = [_build_fi_search_result(issue, jira_client) for issue in issues]
+
+    if output_format == "json":
+        # Serialize SFDC Cases as list of {label, url}
+        print(json.dumps({"query": raw_query, "matches": results}, indent=2, ensure_ascii=False))
+        return
+
+    print(f"FI search query: {raw_query}")
+    print(f"Matches: {len(results)}")
+
+    # Debug: show available fields
+    if debug and issues:
+        print("\n[DEBUG] Checking field data...", file=sys.stderr)
+        import sys
+        fields = issues[0].get("fields", {})
+        names = issues[0].get("names", {})
+        print(f"[DEBUG] Total custom fields in response: {len([k for k in fields.keys() if k.startswith('customfield')])}", file=sys.stderr)
+        print(f"[DEBUG] Records in 'names' dict: {len(names)}", file=sys.stderr)
+
+        # Show known Case/Salesforce custom field IDs
+        print("\n[DEBUG] Known custom fields queried:", file=sys.stderr)
+        for cf_id in ["customfield_11814", "customfield_36508", "customfield_33802"]:
+            value = fields.get(cf_id, "NOT_PRESENT")
+            display_name = names.get(cf_id, "NO_NAME_MAPPING")
+            print(f"  {cf_id}: {display_name} = {str(value)[:150]}", file=sys.stderr)
+
+        # Show any field that might contain 'salesforce' or 'case'
+        print("\n[DEBUG] All custom fields containing 'salesforce' or 'case':", file=sys.stderr)
+        matched = False
+        for cf_key in sorted(fields.keys()):
+            if "customfield" in cf_key:
+                display_name = names.get(cf_key, cf_key)
+                if "salesforce" in str(display_name).lower() or "case" in str(display_name).lower():
+                    value = fields.get(cf_key, "")
+                    print(f"  {cf_key}: {display_name} = {str(value)[:150]}", file=sys.stderr)
+                    matched = True
+        if not matched:
+            print("  (none found)", file=sys.stderr)
+
+        print(file=sys.stderr)
+
+    print()
+
+    # Expand one row per SFDC case link; repeat FI info on subsequent rows.
+    rows: List[List[str]] = []
+    for item in results:
+        sfdc_links = item["SFDC Cases"]  # list of {label, url}
+        if not sfdc_links:
+            sfdc_links = [{"label": "-", "url": "-"}]
+        for idx, link in enumerate(sfdc_links):
+            case_num = link["label"]
+            case_url = link["url"] if link["url"] != "-" else "-"
+            rows.append([
+                item["FI"] if idx == 0 else "",
+                item["Status"] if idx == 0 else "",
+                item["Assignee"] if idx == 0 else "",
+                item["Etrack Incident"] if idx == 0 else "",
+                item["Etrack Ref"] if idx == 0 else "",
+                item["SFDC Case #"] if idx == 0 else "",
+                case_num,
+                case_url,
+                item["Summary"] if idx == 0 else "",
+            ])
+
+    _print_table(
+        rows,
+        ["FI", "Status", "Assignee", "Etrack Incident", "Etrack Ref", "SFDC Case #", "SFDC Case", "SFDC URL", "Summary"],
+    )
 
 
 def _append_if_present(rows: List[List[str]], label: str, value: Any, formatter: Optional[Any] = None):
@@ -1068,6 +1314,19 @@ def main() -> int:
         help="Profile type: auto (default), fi, generic, or default.",
     )
     parser.add_argument(
+        "--search",
+        action="store_true",
+        help=(
+            "FI search mode. With --type fi, treat the positional value as an FI, "
+            "etrack incident, or Salesforce case identifier and return associated FI details."
+        ),
+    )
+    parser.add_argument(
+        "--search-debug",
+        action="store_true",
+        help="With --search, print available Salesforce fields for debugging.",
+    )
+    parser.add_argument(
         "--show-etrack-details",
         action="store_true",
         help="If etrack incident IDs are present, fetch and show etrack summary details.",
@@ -1140,12 +1399,21 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    issue_key = args.issue_key.strip().upper()
-    if not re.match(r"^[A-Z][A-Z0-9_]*-\d+$", issue_key):
+    raw_issue_input = args.issue_key.strip()
+    if not raw_issue_input:
+        print("Issue key/search value cannot be empty")
+        return 2
+
+    if args.search and args.issue_type not in {"auto", "fi"}:
+        print("Error: --search is only supported with --type fi or --type auto")
+        return 2
+
+    issue_key = raw_issue_input.upper()
+    if not args.search and not re.match(r"^[A-Z][A-Z0-9_]*-\d+$", issue_key):
         print(f"Invalid Jira issue key format: {issue_key}. Expected PROJECT-<digits>")
         return 2
 
-    profile_type = _resolve_profile_type(args.issue_type, issue_key)
+    profile_type = "fi" if args.search else _resolve_profile_type(args.issue_type, issue_key)
     try:
         enabled_sections = _resolve_enabled_sections(args.mode, args.sections)
     except ValueError as exc:
@@ -1154,8 +1422,17 @@ def main() -> int:
 
     try:
         jira = JiraClient()
+        if args.search:
+            search_jql = _build_fi_search_jql(jira, raw_issue_input)
+            issues = jira.search_issues(search_jql)
+            if not issues:
+                print(f"No matching FI issues found for: {raw_issue_input}")
+                return 1
+            _print_fi_search_results(raw_issue_input, issues, args.format, debug=args.search_debug, jira_client=jira)
+            return 0
+
         issue = jira.get_issue(issue_key)
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"Error: {exc}")
         return 1
 
