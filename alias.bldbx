@@ -47,6 +47,8 @@ alias g.etdetall='git branch 2> /dev/null | sed -e "s/.*\///" | sed -e "s/et//" 
 alias g.etsuper='git branch 2> /dev/null | sed -e "/^[^*]/d" | sed -e "s/.*\///" | sed -e "s/et//" | xargs -I {} eprint -v {} | grep "superincident:" | awk '"'"'{ print $2}'"'"' | xargs -I {} eprint -vdK  {}'
 alias g.istrkd='function f() { git ls-files --error-unmatch $1 >/dev/null 2>/dev/null && echo "Info: $1 is tracked." || echo "Error: $1 is not tracked..."; }; f'
 
+alias x.esrch.unSr='esrch '"'"'-j NetBackup type=SERVICE_REQUEST -U -k ESC_BL -k ESC_TRIAGE -f "%{incident:-7} s:%{severity:2} p:%{priority:2} cust:%{customer:*30.30} : %abstract"'"'"''
+alias x.esrch.sr='esrch '"'"'-j NetBackup type=SERVICE_REQUEST -k ESC_BL -k ESC_TRIAGE -f "%{incident:-7} s:%{severity:2} p:%{priority:2} cust:%{customer:*30.30} : %abstract"'"'"''
 
 # change dir quickly
 alias cd.nbdt='af.cd ~/nbdata'
