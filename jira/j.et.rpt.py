@@ -1363,6 +1363,7 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         jr_key = find_column(row, ['key', 'jrkey', 'fikey', 'issue'])
         jr_status = find_column(row, ['jrstatus', 'status'], exclude_patterns=['case', 'et']).lower().strip()
         jr_case_status = find_column(row, ['casestatus', 'jrcase']).lower().strip()
+        jr_resolution = find_column(row, ['resolution', 'jr_resolution']).lower().strip()
         jr_assignee = find_column(row, ['assignee', 'jrassignee'], exclude_patterns=['et'])
         jr_priority = find_column(row, ['priority', 'jrpriority'], exclude_patterns=['et'])
         et_state = find_column(row, ['etstate', 'state'], exclude_patterns=['case', 'jr']).lower().strip()
@@ -1392,6 +1393,7 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
             'key': jr_key,
             'jr_status': jr_status,
             'jr_case_status': jr_case_status,
+            'jr_resolution': jr_resolution,
             'jr_assignee': jr_assignee,
             'jr_priority': jr_priority,
             'et_state': et_state,
@@ -1537,7 +1539,7 @@ def fi_sort_key(issue: Dict) -> tuple:
 
 def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
     """Print summary statistics for analyzer results."""
-    print()
+    print("\n")
     print(Colors.header("=" * 80))
     print(Colors.header("ANALYZER SUMMARY"))
     print(Colors.header("=" * 80))
@@ -1567,6 +1569,7 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
                     'key': issue['key'],
                     'jr_status': issue.get('jr_status', ''),
                     'jr_case_status': issue.get('jr_case_status', ''),
+                    'jr_resolution': issue.get('jr_resolution', ''),
                     'category': cat_id
                 })
 
@@ -1577,7 +1580,8 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
     for et, fis in dup_etracks.items():
         jr_statuses = set(f['jr_status'] for f in fis if f['jr_status'])
         case_statuses = set(f['jr_case_status'] for f in fis if f['jr_case_status'])
-        if len(jr_statuses) > 1 or len(case_statuses) > 1:
+        resolutions = set(f['jr_resolution'] for f in fis if f['jr_resolution'])
+        if len(jr_statuses) > 1 or len(case_statuses) > 1 or len(resolutions) > 1:
             diff_status_etracks[et] = fis
 
     for cat_id, cat_data in sorted_cats:
@@ -1609,6 +1613,8 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
                     status_info = f"{f['key']} ({f['jr_status']}"
                     if f['jr_case_status']:
                         status_info += f" / {f['jr_case_status']}"
+                    if f['jr_resolution']:
+                        status_info += f" / {f['jr_resolution']}"
                     status_info += ")"
                     fi_details.append(status_info)
                 print(f"  {et}: {', '.join(fi_details)}")
@@ -1622,9 +1628,12 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
                 # Get the common status
                 common_status = fis[0]['jr_status'] if fis else ''
                 common_case = fis[0]['jr_case_status'] if fis else ''
+                common_resolution = fis[0]['jr_resolution'] if fis else ''
                 status_str = common_status
                 if common_case:
                     status_str += f" / {common_case}"
+                if common_resolution:
+                    status_str += f" / {common_resolution}"
                 print(f"  {et}: {', '.join(fi_keys)} (all: {status_str})")
 
     # Warning about FIs with multiple Etracks
@@ -1636,6 +1645,7 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
             print(f"  {fi_info['key']}: {etracks_str} (classified using state: {fi_info['et_state'].upper() or 'N/A'})")
 
     print(Colors.header("=" * 80))
+    print()  # Extra blank line after section
 
 
 def print_analyzer_detailed(categories: Dict[str, Any]):
@@ -1667,7 +1677,7 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
         et_count = len(unique_etracks)
         fi_count = len(issues)
 
-        print("\n" + "=" * 80)
+        print("\n\n" + "=" * 80)
         if et_count > 0 and et_count != fi_count:
             print(f"{cat_data['title']} ({fi_count} FIs / {et_count} unique Etracks)")
         else:
@@ -1678,7 +1688,7 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
         # Build table for this category
         if PrettyTable:
             table = PrettyTable()
-            base_fields = ['#', 'Key', 'Assignee', 'Priority', 'Jr Status', 'Case Status', 'ET State', 'ET Incident']
+            base_fields = ['#', 'Key', 'Assignee', 'Jr Priority', 'Jr Status', 'Case Status', 'Jr Resolution', 'ET State', 'ET Incident']
             table.field_names = base_fields + extra_et_cols
             table.align = 'l'
 
@@ -1693,6 +1703,7 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                     issue['jr_priority'],
                     issue['jr_status'][:20] if issue['jr_status'] else '',
                     issue['jr_case_status'][:25] if issue['jr_case_status'] else '',
+                    issue['jr_resolution'][:40] if issue['jr_resolution'] else '',
                     issue['et_state'].upper() if issue['et_state'] else '',
                     issue['et_incident']
                 ]
@@ -1714,14 +1725,15 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                 print(f"... and {len(issues) - 50} more issues")
         else:
             # Fallback: simple format
-            print(f"{'#':<4} {'Key':<10} {'Assignee':<20} {'Jr Status':<20} {'Case Status':<25} {'ET State':<10}")
-            print("-" * 90)
+            print(f"{'#':<4} {'Key':<10} {'Assignee':<20} {'Jr Status':<20} {'Case Status':<25} {'Jr Resolution':<40} {'ET State':<10}")
+            print("-" * 130)
             # Sort issues by FI key
             sorted_issues = sorted(issues, key=fi_sort_key)
             display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
                 print(f"{idx:<4} {issue['key']:<10} {str(issue['jr_assignee'])[:18]:<20} "
                       f"{issue['jr_status'][:18]:<20} {issue['jr_case_status'][:23]:<25} "
+                      f"{issue['jr_resolution'][:40]:<40} "
                       f"{issue['et_state'].upper():<10}")
 
         # Print FI list for easy copy-paste
@@ -1730,6 +1742,7 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             print(f"\nFI List: {fi_list}")
         else:
             print(f"\nFI List: {fi_list[:500]}...")
+        print()  # Extra blank line after FI List
 
         # For categories where action is on Etrack, also print Etrack list (deduplicated)
         if cat_id in ['ET_WAITING_CASE_CLOSED', 'CASE_CLOSED_ET_NOT_CLOSED', 'JIRA_DONE_ET_ACTIVE', 'READY_TO_CLOSE']:
@@ -1740,10 +1753,12 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                     print(f"Etrack List ({len(unique_et)} unique): {et_list}")
                 else:
                     print(f"Etrack List ({len(unique_et)} unique): {et_list[:500]}...")
+                print()  # Extra blank line after Etrack List
 
                 notify_emails = get_notify_cohesity_emails(issues)
                 notify_str = ';'.join(notify_emails) if notify_emails else 'none found'
                 print(f"Notify Cohesity Emails ({len(notify_emails)}): {notify_str}")
+                print()  # Extra blank line after Notify Cohesity Emails
 
                 # Check for duplicates (same etrack linked to multiple FIs in this category)
                 et_to_fis = {}
@@ -1755,7 +1770,8 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                         et_to_fis[et].append({
                             'key': issue['key'],
                             'jr_status': issue.get('jr_status', ''),
-                            'jr_case_status': issue.get('jr_case_status', '')
+                            'jr_case_status': issue.get('jr_case_status', ''),
+                            'jr_resolution': issue.get('jr_resolution', '')
                         })
 
                 multi_fi_etracks = {et: fis for et, fis in et_to_fis.items() if len(fis) > 1}
@@ -1766,12 +1782,15 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                         # Check if FIs have different statuses
                         jr_statuses = set(f['jr_status'] for f in fis if f['jr_status'])
                         case_statuses = set(f['jr_case_status'] for f in fis if f['jr_case_status'])
+                        resolutions = set(f['jr_resolution'] for f in fis if f['jr_resolution'])
 
                         status_note = ""
                         if len(jr_statuses) > 1:
                             status_note += f" [Jr Status differs: {', '.join(sorted(jr_statuses))}]"
                         if len(case_statuses) > 1:
                             status_note += f" [Case Status differs: {', '.join(sorted(case_statuses))}]"
+                        if len(resolutions) > 1:
+                            status_note += f" [Resolution differs: {', '.join(sorted(resolutions))}]"
 
                         if status_note:
                             print(Colors.error(f"      {et} -> {', '.join(fi_keys)}{status_note}"))
@@ -1789,7 +1808,7 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
 
 def print_analyzer_state_matrix(categories: Dict[str, Any], processed_data: List[Dict]):
     """Print state combination matrix."""
-    print("\n" + "=" * 80)
+    print("\n\n" + "=" * 80)
     print("STATE COMBINATION MATRIX")
     print("=" * 80)
 
@@ -1823,11 +1842,12 @@ def print_analyzer_state_matrix(categories: Dict[str, Any], processed_data: List
         print("-" * 50)
         for (jr_status, et_state), count in sorted_combos:
             print(f"{jr_status:<25} {et_state:<15} {count:>8}")
+    print()  # Extra blank line after section
 
 
 def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
     """Print breakdown by Jira priority for actionable categories."""
-    print("\n" + "=" * 80)
+    print("\n\n" + "=" * 80)
     print("PRIORITY BREAKDOWN (Actionable Categories)")
     print("=" * 80)
 
@@ -1853,10 +1873,10 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
 
     if PrettyTable:
         table = PrettyTable()
-        table.field_names = ['Priority', 'Total', 'No Etrack', 'ET Closed/Jira Active',
+        table.field_names = ['Jr Priority', 'Total', 'No Etrack', 'ET Closed/Jira Active',
                              'Jira Done/ET Active', 'Ready to Close']
         table.align = 'r'
-        table.align['Priority'] = 'l'
+        table.align['Jr Priority'] = 'l'
 
         for priority, counts in sorted_priorities:
             table.add_row([
@@ -1870,17 +1890,18 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
 
         Colors.print_table(table)
     else:
-        print(f"{'Priority':<12} {'Total':>6} {'No ET':>8} {'ET Closed':>10} {'Jr Done':>8} {'Ready':>6}")
+        print(f"{'Jr Priority':<12} {'Total':>6} {'No ET':>8} {'ET Closed':>10} {'Jr Done':>8} {'Ready':>6}")
         print("-" * 60)
         for priority, counts in sorted_priorities:
             print(f"{priority:<12} {counts['total']:>6} {counts.get('NO_ETRACK', 0):>8} "
                   f"{counts.get('ET_CLOSED_JIRA_ACTIVE', 0):>10} {counts.get('JIRA_DONE_ET_ACTIVE', 0):>8} "
                   f"{counts.get('READY_TO_CLOSE', 0):>6}")
+    print()  # Extra blank line after section
 
 
 def print_analyzer_assignee_breakdown(categories: Dict[str, Any]):
     """Print breakdown by assignee for actionable categories."""
-    print("\n" + "=" * 80)
+    print("\n\n" + "=" * 80)
     print("ASSIGNEE BREAKDOWN (Actionable Categories)")
     print("=" * 80)
 
@@ -2311,7 +2332,7 @@ def print_risk_report(categories: Dict[str, Any]):
 
     if PrettyTable:
         table = PrettyTable()
-        table.field_names = ['#', 'Priority', 'FI', 'Assignee', 'Issue', 'Etrack']
+        table.field_names = ['#', 'Jr Priority', 'FI', 'Assignee', 'Issue', 'Etrack']
         table.align = 'l'
 
         display_issues = high_priority_issues if Colors.notruncate else high_priority_issues[:30]
@@ -2330,7 +2351,7 @@ def print_risk_report(categories: Dict[str, Any]):
         if not Colors.notruncate and len(high_priority_issues) > 30:
             print(f"\n  ... and {len(high_priority_issues) - 30} more high-priority items")
     else:
-        print(f"\n{'#':>3} {'Priority':<10} {'FI':<10} {'Assignee':<20} {'Issue':<20}")
+        print(f"\n{'#':>3} {'Jr Priority':<10} {'FI':<10} {'Assignee':<20} {'Issue':<20}")
         print("-" * 65)
         display_issues = high_priority_issues if Colors.notruncate else high_priority_issues[:30]
         for idx, issue in enumerate(display_issues, 1):
