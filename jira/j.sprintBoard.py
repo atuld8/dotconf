@@ -553,7 +553,12 @@ def display_issue_details(issue_details_list, verbose=False):
     status_width = max((len(_format_details_status_bucket(status)) for *_, status, _, _, _, _ in sorted_issue_details), default=5)
     widths = {'type': type_width, 'priority': priority_width, 'status': status_width}
 
+    previous_status_bucket = None
     for i, (issue_key, issue_type, summary, status, assignee, reporter, priority, severity) in enumerate(sorted_issue_details):
+        current_status_bucket = _format_details_status_bucket(status)
+        if previous_status_bucket is not None and current_status_bucket != previous_status_bucket:
+            print()
+
         # Truncate summary if too long
         if len(summary) > 100:
             summary = summary[:97] + "..."
@@ -583,6 +588,8 @@ def display_issue_details(issue_details_list, verbose=False):
         # Add blank line when verbose and not transitioning from parent to sub-task
         if verbose and not next_is_subtask and i + 1 < len(sorted_issue_details):
             print()  # Add blank line between parent groups or after sub-task group ends
+
+        previous_status_bucket = current_status_bucket
 
     print()
 
