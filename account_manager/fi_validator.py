@@ -602,7 +602,8 @@ class FIValidator:
         return [result for result in results if result.status in actionable_statuses]
 
     def generate_severity_report(self, results: List[SeverityValidationResult],
-                                   fmt: str = 'text', include_details: bool = True) -> str:
+                                   fmt: str = 'text', include_details: bool = True,
+                                   exclude_items: set = None) -> str:
         """Generate a severity validation report.
 
         Args:
@@ -610,19 +611,69 @@ class FIValidator:
             fmt: Output format — 'text' (default), 'table', 'csv', or 'json'.
             include_details: For 'text' format only: include per-incident detail blocks.
                              Ignored for 'table', 'csv', and 'json' formats.
+            exclude_items: Set of status items to exclude from report. Valid values:
+                          'matched', 'mismatched', 'conflict', 'missing_case_priority',
+                          'missing_etrack_severity', 'error'. Default: None (no exclusions).
         """
+        if exclude_items is None:
+            exclude_items = set()
+
+        # Filter results based on exclude_items
+        filtered_results = self._filter_severity_results(results, exclude_items)
+
         if fmt == 'csv':
-            return self._severity_report_csv(results)
+            return self._severity_report_csv(filtered_results)
         elif fmt == 'json':
-            return self._severity_report_json(results)
+            return self._severity_report_json(filtered_results)
         elif fmt == 'table':
-            return self._severity_report_table(results)
+            return self._severity_report_table(filtered_results)
         else:
-            return self._severity_report_text(results, include_details=include_details)
+            return self._severity_report_text(filtered_results, include_details=include_details)
 
     # ------------------------------------------------------------------ #
     # Private format helpers                                               #
     # ------------------------------------------------------------------ #
+
+    def _filter_severity_results(self, results, exclude_items):
+        """Filter severity results based on excluded status items.
+
+        Args:
+            results: List of SeverityValidationResult objects.
+            exclude_items: Set of status items to exclude (e.g., {'matched', 'conflict'}).
+
+        Returns:
+            Filtered list of results.
+        """
+        if not exclude_items:
+            return results
+
+        filtered = []
+        for r in results:
+            # Check which category this result belongs to
+            is_matched = r.status in ('matched', 'matched_conflict')
+            is_mismatched = r.status in ('mismatched', 'mismatched_conflict')
+            is_conflict = r.has_priority_conflict
+            is_missing_cp = r.status == 'missing_case_priority'
+            is_missing_sev = r.status == 'missing_etrack_severity'
+            is_error = r.status == 'error'
+
+            # Skip if any matching category is excluded
+            if (is_matched and 'matched' in exclude_items):
+                continue
+            if (is_mismatched and 'mismatched' in exclude_items):
+                continue
+            if (is_conflict and 'conflict' in exclude_items):
+                continue
+            if (is_missing_cp and 'missing_case_priority' in exclude_items):
+                continue
+            if (is_missing_sev and 'missing_etrack_severity' in exclude_items):
+                continue
+            if (is_error and 'error' in exclude_items):
+                continue
+
+            filtered.append(r)
+
+        return filtered
 
     def _severity_counts(self, results):
         """Return (matched, mismatched, conflicts, missing_cp, missing_sev, errors) lists."""

@@ -519,7 +519,7 @@ def display_issue_details(issue_details_list, verbose=False):
 
     Args:
         issue_details_list (list): List of tuples (issue_key, type, summary, status, assignee, reporter, priority, severity) in order
-        verbose (bool): If True, display detailed metadata (status, assignee, reporter, priority, severity)
+        verbose (bool): If True, include table header row (used for -d -v)
     """
     print("\n" + "="*80)
     print("ISSUE DETAILS")
@@ -547,49 +547,50 @@ def display_issue_details(issue_details_list, verbose=False):
         )
     )
 
-    # Widths for aligned (Type) (Priority) (Status) blocks
-    type_width = max((len(issue_type or '') for _, issue_type, *_ in sorted_issue_details), default=5)
-    priority_width = max((len((priority if priority and priority != 'N/A' else 'N/A')) for *_, priority, _ in sorted_issue_details), default=2)
-    status_width = max((len(_format_details_status_bucket(status)) for *_, status, _, _, _, _ in sorted_issue_details), default=5)
-    widths = {'type': type_width, 'priority': priority_width, 'status': status_width}
+    table = PrettyTable()
+    table.header = bool(verbose)
+    table.field_names = ['Issue', 'Type', 'Priority', 'Status', 'Summary', 'Assignee', 'Reporter', 'Severity']
 
-    previous_status_bucket = None
-    for i, (issue_key, issue_type, summary, status, assignee, reporter, priority, severity) in enumerate(sorted_issue_details):
-        current_status_bucket = _format_details_status_bucket(status)
-        if previous_status_bucket is not None and current_status_bucket != previous_status_bucket:
-            print()
+    table.align['Issue'] = 'l'
+    table.align['Type'] = 'l'
+    table.align['Priority'] = 'l'
+    table.align['Status'] = 'l'
+    table.align['Summary'] = 'l'
+    table.align['Assignee'] = 'l'
+    table.align['Reporter'] = 'l'
+    table.align['Severity'] = 'l'
 
-        # Truncate summary if too long
-        if len(summary) > 100:
-            summary = summary[:97] + "..."
+    current_status_bucket = None
+    has_rows = False
+
+    for issue_key, issue_type, summary, status, assignee, reporter, priority, severity in sorted_issue_details:
+        summary_display = summary if len(summary) <= 100 else summary[:97] + '...'
         assignee_display = assignee if assignee and assignee != 'N/A' else 'Unassigned'
-        summary_with_assignee = f"{summary} [{assignee_display}]"
+        priority_display = priority if priority and priority != 'N/A' else 'N/A'
+        status_bucket = _format_details_status_bucket(status)
 
-        is_subtask = issue_type in ['Sub-task', 'Subtask']
+        if current_status_bucket is None:
+            current_status_bucket = status_bucket
+        elif status_bucket != current_status_bucket:
+            if has_rows:
+                table.add_row([''] * len(table.field_names))
+            current_status_bucket = status_bucket
 
-        # Check if next item is also a sub-task (to avoid blank line between parent and sub-task)
-        next_is_subtask = False
-        if i + 1 < len(sorted_issue_details):
-            next_issue_type = sorted_issue_details[i + 1][1]
-            next_is_subtask = next_issue_type in ['Sub-task', 'Subtask']
+        table.add_row([
+            issue_key,
+            issue_type,
+            priority_display,
+            status_bucket,
+            summary_display,
+            assignee_display,
+            reporter,
+            severity,
+        ])
+        has_rows = True
 
-        # Add indentation for sub-tasks to show tree structure
-        title = _format_issue_details_title(issue_key, issue_type, priority, status, widths=widths)
-        if is_subtask:
-            # Add extra indentation for sub-tasks to create tree view
-            print(f"  {title}: {summary_with_assignee}")
-            if verbose:
-                print(f"    Status: {status} | Assignee: {assignee} | Reporter: {reporter} | Priority: {priority} | Severity: {severity}")
-        else:
-            print(f"{title}: {summary_with_assignee}")
-            if verbose:
-                print(f"  Status: {status} | Assignee: {assignee} | Reporter: {reporter} | Priority: {priority} | Severity: {severity}")
-
-        # Add blank line when verbose and not transitioning from parent to sub-task
-        if verbose and not next_is_subtask and i + 1 < len(sorted_issue_details):
-            print()  # Add blank line between parent groups or after sub-task group ends
-
-        previous_status_bucket = current_status_bucket
+    # Always print table so headers are visible under ISSUE DETAILS,
+    # including verbose mode (-d -v) even when there are no rows.
+    print(table)
 
     print()
 
@@ -697,8 +698,17 @@ Issue Type Indicators:
     print(f"Total Issues Found: {len(issues)}")
     if sprint_info:
         print("Sprint(s):")
+        sprint_name_width = max(len(sprint['name']) for sprint in sprint_info)
+        sprint_start_width = max(len(sprint['start']) for sprint in sprint_info)
+        sprint_end_width = max(len(sprint['end']) for sprint in sprint_info)
+        sprint_state_width = max(len(sprint['state']) for sprint in sprint_info)
         for sprint in sprint_info:
-            print(f"  - {sprint['name']} | Start: {sprint['start']} | End: {sprint['end']} | State: {sprint['state']}")
+            print(
+                f"  - {sprint['name']:<{sprint_name_width}} | "
+                f"Start: {sprint['start']:<{sprint_start_width}} | "
+                f"End: {sprint['end']:<{sprint_end_width}} | "
+                f"State: {sprint['state']:<{sprint_state_width}}"
+            )
     if args.show_sub_tasks:
         print("Sub-tasks: INCLUDED")
     #print()
@@ -710,7 +720,8 @@ Issue Type Indicators:
 
     # Display issue details if requested
     if args.show_details:
-        display_issue_details(issue_details_list, verbose=args.verbose)
+        details_verbose = args.verbose and any(flag in sys.argv for flag in ('-v', '--verbose'))
+        display_issue_details(issue_details_list, verbose=details_verbose)
 
     print(f"\nTotal issues displayed: {len(issue_details_list)}")
 

@@ -214,7 +214,10 @@ Options:
                                table   Aligned table of all records (no narrative)
                                csv     CSV, one row per incident
                                json    JSON object with summary + records array
-        --severity-transition=<rules>
+    --exclude-severity=<items> Exclude status items from --report-severity output
+                               Options: matched, mismatched, conflict, missing_case_priority,
+                               missing_etrack_severity, error (comma-separated)
+    --severity-transition=<rules>
                                  Filter --report-severity/--fix-severity by transitions (comma-separated)
                                                              to1     Allow only 2/3/4 -> 1
                                                              from1   Allow only 1 -> 2/3/4
@@ -720,7 +723,7 @@ Requirements:
 Workflow:
     1. Lookup etrack_user_id in database to get jira_account
     2. Verify account is marked as verified (manual_verified = 'yes')
-    3. Query etrack for external_reference where ext_src = 'TOOLS_AGILE'
+    3. Query etrack for external_reference where ext_src in ('TOOLS_AGILE', 'JIRA')
     4. Extract linked FI ID(s) (e.g., FI-58985)
     5. If etrack not assigned to user -> reassign using 'eset -o'
     6. If FI not assigned to jira_account -> update Jira assignee
@@ -1609,6 +1612,21 @@ def main():
                 print(f"  Got: {severity_fmt}")
                 return
 
+            # Parse --exclude-severity=<items>
+            exclude_severity_items = set()
+            valid_exclude_items = {'matched', 'mismatched', 'conflict', 'missing_case_priority', 'missing_etrack_severity', 'error'}
+            for arg in sys.argv:
+                if arg.startswith('--exclude-severity='):
+                    exclude_raw = arg.split('=', 1)[1].strip()
+                    exclude_tokens = [token.strip().lower() for token in exclude_raw.split(',') if token.strip()]
+                    invalid_exclude = [t for t in exclude_tokens if t not in valid_exclude_items]
+                    if invalid_exclude:
+                        print(f"X Error: invalid --exclude-severity item(s): {', '.join(invalid_exclude)}")
+                        print(f"  Valid options: {', '.join(sorted(valid_exclude_items))}")
+                        return
+                    exclude_severity_items = set(exclude_tokens)
+                    break
+
             # Parse --severity-transition=<rules>
             severity_transition_raw = None
             for arg in sys.argv:
@@ -2056,7 +2074,7 @@ def main():
                         f"Applying severity transition filter ({severity_transition_raw}): "
                         f"{len(severity_results_for_output)} kept, {filtered_out} filtered out"
                     )
-                print(validator.generate_severity_report(severity_results_for_output, fmt=severity_fmt, include_details=not skip_details))
+                print(validator.generate_severity_report(severity_results_for_output, fmt=severity_fmt, include_details=not skip_details, exclude_items=exclude_severity_items))
 
                 severity_actionable = validator.get_severity_mismatches(severity_results)
 
@@ -3125,10 +3143,10 @@ def main():
                 else:
                     etrack_client = EtrackExecutor()
 
-                external_refs = etrack_client.get_external_references(etrack_number, ext_src='TOOLS_AGILE', verbose=verbose)
+                external_refs = etrack_client.get_external_references(etrack_number, verbose=verbose)
 
                 if not external_refs:
-                    print(f"X No FI found linked to etrack {etrack_number} (ext_src=TOOLS_AGILE)")
+                    print(f"X No FI found linked to etrack {etrack_number} (ext_src in TOOLS_AGILE/JIRA)")
                     print("")
                     print("Possible reasons:")
                     print("  - Etrack doesn't have an FI linked")

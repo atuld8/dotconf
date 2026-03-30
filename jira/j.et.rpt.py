@@ -38,6 +38,7 @@ import csv
 import argparse
 import time
 import shutil
+import sqlite3
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
@@ -534,6 +535,24 @@ class JiraReportClient:
 # Etrack Client
 # ============================================================================
 
+def normalize_incident_id(value: Any) -> str:
+    """Normalize etrack incident value to a numeric incident id string."""
+    if value is None:
+        return ''
+
+    text = str(value).strip()
+    if not text:
+        return ''
+
+    if text.isdigit():
+        return text
+
+    if text.endswith('.0') and text[:-2].isdigit():
+        return text[:-2]
+
+    match = re.search(r'(\d+)', text)
+    return match.group(1) if match else ''
+
 class EtrackClient:
     """Client for fetching etrack incident data via esql command"""
 
@@ -614,19 +633,32 @@ class EtrackClient:
             if 'incident' in line.lower() and ('assigned_to' in line.lower() or 'priority' in line.lower()):
                 continue
 
-            # Handle pipe-delimited format (PrettyTable style)
-            if '|' in line:
-                # Split by pipe and strip each part
-                parts = [p.strip() for p in line.split('|')]
-                # Remove empty parts from start/end (from leading/trailing |)
-                parts = [p for p in parts if p]
+            # Detect format by whether the line starts with '|' (PrettyTable style).
+            # Do NOT use 'if "|" in line' because abstract/description text can
+            # itself contain '|', which would mis-classify a tab-separated row.
+            if line.startswith('|'):
+                # Pipe-delimited (PrettyTable) format.
+                # Strip the mandatory leading and trailing '|' borders first,
+                # then split with maxsplit so embedded '|' in the last field
+                # (e.g., abstract) is preserved intact.
+                cleaned = line[1:]           # remove leading |
+                if cleaned.endswith('|'):
+                    cleaned = cleaned[:-1]   # remove trailing |
+
+                max_splits = max(len(fields) - 1, 0)
+                parts = [p.strip() for p in cleaned.split('|', maxsplit=max_splits)]
             else:
-                # Parse tab-separated values
+                # Tab-separated format.  Abstract may contain '|' – safe because
+                # we are not splitting on '|' here.
                 parts = line.split('\t')
                 parts = [p.strip() for p in parts]
 
-            if len(parts) >= 1 and parts[0].isdigit():
-                incident_id = parts[0]
+            if len(parts) >= 1:
+                incident_id = normalize_incident_id(parts[0])
+            else:
+                incident_id = ''
+
+            if incident_id:
                 data = {}
                 for i, field in enumerate(fields):
                     if i < len(parts):
@@ -653,7 +685,13 @@ class EtrackClient:
         if not incident_ids:
             return {}
 
-        unique_ids = list(set(eid.strip() for eid in incident_ids if eid.strip() and eid.strip().isdigit()))
+        normalized_ids = []
+        for eid in incident_ids:
+            normalized = normalize_incident_id(eid)
+            if normalized:
+                normalized_ids.append(normalized)
+
+        unique_ids = list(set(normalized_ids))
         if not unique_ids:
             return {}
 
@@ -681,11 +719,20 @@ class EtrackClient:
 
             # Build SQL query with date formatting
             id_list = ', '.join(batch)
+            # Fields that may contain embedded newlines — strip them at SQL level
+            # so the line-based output parser never sees a mid-row newline.
+            NEWLINE_FIELDS = {'abstract', 'description', 'workaround', 'comments'}
             # Format date fields with TO_CHAR for time display
             field_exprs = []
             for f in fields:
                 if f.lower() in DATE_FIELDS:
                     field_exprs.append(f"TO_CHAR({f}, 'YYYY-MM-DD HH24:MI:SS') AS {f}")
+                elif f.lower() in NEWLINE_FIELDS:
+                    # Replace newline (LF) and carriage-return (CR) so esql output
+                    # stays on a single line per row.
+                    field_exprs.append(
+                        f"REPLACE(REPLACE({f}, CHR(10), ' '), CHR(13), ' ') AS {f}"
+                    )
                 else:
                     field_exprs.append(f)
             field_list = ', '.join(field_exprs)
@@ -708,6 +755,13 @@ class EtrackClient:
 
         if sys.stderr.isatty():
             print(f"\rFetched etrack data for {len(all_data)} incidents.    ", file=sys.stderr)
+
+        if verbose:
+            missing_ids = sorted(set(unique_ids) - set(all_data.keys()))
+            if missing_ids:
+                preview = ', '.join(missing_ids[:20])
+                extra = '' if len(missing_ids) <= 20 else f" (+{len(missing_ids) - 20} more)"
+                print(f"Warning: No etrack incident rows returned for {len(missing_ids)} ID(s): {preview}{extra}", file=sys.stderr)
 
         return all_data
 
@@ -746,7 +800,13 @@ class EtrackClient:
 
             # Query external_reference table for FI links
             id_list = ', '.join(batch)
-            query = f"SELECT incident, ext_inc FROM external_reference WHERE incident IN ({id_list}) AND ext_src = 'TOOLS_AGILE'"
+            query = (
+                f"SELECT DISTINCT incident, ext_inc "
+                f"FROM external_reference "
+                f"WHERE incident IN ({id_list}) "
+                f"AND ext_src IN ('TOOLS_AGILE', 'JIRA') "
+                f"AND ext_inc LIKE 'FI-%'"
+            )
 
             start = time.time()
 
@@ -777,7 +837,8 @@ class EtrackClient:
                             all_fis.append(fi_id)
                             if inc_id not in incident_to_fis:
                                 incident_to_fis[inc_id] = []
-                            incident_to_fis[inc_id].append(fi_id)
+                            if fi_id not in incident_to_fis[inc_id]:
+                                incident_to_fis[inc_id].append(fi_id)
 
             except subprocess.TimeoutExpired:
                 print(f"\nWarning: esql timed out for batch {batch_num}", file=sys.stderr)
@@ -996,6 +1057,8 @@ def print_table(data: List[Dict[str, str]], format_style: str = 'grid'):
             if isinstance(v, str):
                 # Replace newlines with spaces and strip
                 v = ' '.join(v.split())
+                # Keep table parsing/rendering stable when content contains pipe char
+                v = v.replace('|', '(|)')
             cleaned_row[k] = v
         cleaned_data.append(cleaned_row)
     data = cleaned_data
@@ -1022,6 +1085,8 @@ def print_table(data: List[Dict[str, str]], format_style: str = 'grid'):
             field_max_widths[field] = 25
         elif field_lower in ('assignee', 'reporter'):
             field_max_widths[field] = 20
+        elif 'abstract' in field_lower:
+            field_max_widths[field] = 80
 
     # Pre-truncate all fields to prevent PrettyTable wrapping
     truncated_data = []
@@ -1386,6 +1451,79 @@ def get_unique_etracks(issues: List[Dict]) -> set:
     return etracks
 
 
+_ACCOUNT_DB_CACHE = {
+    'db': None,
+    'error': None,
+    'initialized': False,
+}
+
+
+def get_account_manager_db():
+    """Return AccountManager database handle if available, else None."""
+    if _ACCOUNT_DB_CACHE['initialized']:
+        return _ACCOUNT_DB_CACHE['db']
+
+    try:
+        repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        db_path = os.environ.get('ET_JR_ACCOUNTS_DB')
+        if not db_path:
+            db_path = os.path.join(repo_dir, 'account_manager', 'accounts.db')
+
+        if not os.path.exists(db_path):
+            _ACCOUNT_DB_CACHE['error'] = f"accounts database not found: {db_path}"
+            _ACCOUNT_DB_CACHE['initialized'] = True
+            return None
+
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        _ACCOUNT_DB_CACHE['db'] = conn
+        _ACCOUNT_DB_CACHE['initialized'] = True
+        return conn
+    except (OSError, sqlite3.Error) as exc:
+        _ACCOUNT_DB_CACHE['error'] = str(exc)
+        _ACCOUNT_DB_CACHE['initialized'] = True
+        return None
+
+
+def get_notify_cohesity_emails(issues: List[Dict]) -> List[str]:
+    """Resolve unique Cohesity emails for Etrack assignees in analyzer issues."""
+    db = get_account_manager_db()
+    if not db:
+        return []
+
+    assignees = set()
+    for issue in issues:
+        et_assigned = (issue.get('et_assigned') or '').strip()
+        if not et_assigned:
+            row = issue.get('row', {}) or {}
+            for key in ('ET Assigned To', 'et assigned to', 'assigned_to'):
+                value = row.get(key)
+                if value and str(value).strip():
+                    et_assigned = str(value).strip()
+                    break
+        if et_assigned:
+            assignees.add(et_assigned)
+
+    emails = set()
+    cursor = db.cursor()
+    for assignee in sorted(assignees):
+        try:
+            cursor.execute(
+                "SELECT cohesity_email FROM accounts WHERE etrack_user_id = ?",
+                (assignee,)
+            )
+            row = cursor.fetchone()
+        except sqlite3.Error:
+            row = None
+        if not row:
+            continue
+        email = (row['cohesity_email'] or '').strip()
+        if email:
+            emails.add(email)
+
+    return sorted(emails)
+
+
 def fi_sort_key(issue: Dict) -> tuple:
     """Extract sort key from FI key for natural sorting (e.g., FI-9 < FI-123)."""
     import re
@@ -1562,7 +1700,12 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                 row_data = issue.get('row', {})
                 for et_col in extra_et_cols:
                     val = row_data.get(et_col, '')
-                    base_row.append(str(val)[:30] if val else '')
+                    if not val:
+                        base_row.append('')
+                        continue
+
+                    max_len = 80 if et_col.strip().lower() == 'et abstract' else 30
+                    base_row.append(str(val)[:max_len])
                 table.add_row(base_row)
 
             Colors.print_table(table)
@@ -1597,6 +1740,10 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                     print(f"Etrack List ({len(unique_et)} unique): {et_list}")
                 else:
                     print(f"Etrack List ({len(unique_et)} unique): {et_list[:500]}...")
+
+                notify_emails = get_notify_cohesity_emails(issues)
+                notify_str = ';'.join(notify_emails) if notify_emails else 'none found'
+                print(f"Notify Cohesity Emails ({len(notify_emails)}): {notify_str}")
 
                 # Check for duplicates (same etrack linked to multiple FIs in this category)
                 et_to_fis = {}
@@ -2000,6 +2147,10 @@ def print_action_report(categories: Dict[str, Any]):
                     print(f"  {Colors.info('Etrack List')} ({len(unique_et_sorted)} unique): {et_str}")
                 else:
                     print(f"  {Colors.info('Etrack List')} ({len(unique_et_sorted)} unique): {et_str[:200]}{'...' if len(et_str) > 200 else ''}")
+
+                notify_emails = get_notify_cohesity_emails(issues)
+                notify_str = ';'.join(notify_emails) if notify_emails else 'none found'
+                print(f"  {Colors.info('Notify Cohesity Emails')} ({len(notify_emails)}): {notify_str}")
 
     print()
     print(Colors.header("=" * w))
@@ -2844,7 +2995,13 @@ def main():
                     pt.field_names = no_fi_fields
                     pt.align = 'l'
                     for row in table_data:
-                        pt.add_row([row.get(f, '') for f in no_fi_fields])
+                        sanitized_row = []
+                        for field in no_fi_fields:
+                            value = row.get(field, '')
+                            if isinstance(value, str):
+                                value = value.replace('|', '(|)')
+                            sanitized_row.append(value)
+                        pt.add_row(sanitized_row)
                     print(pt.get_string(), file=sys.stderr)
                 else:
                     # Fallback to simple format
@@ -3076,9 +3233,9 @@ def main():
             if etrack_val:
                 # Handle comma-separated IDs
                 for eid in str(etrack_val).split(','):
-                    eid = eid.strip()
-                    if eid and eid.isdigit():
-                        etrack_ids.append(eid)
+                    normalized_eid = normalize_incident_id(eid)
+                    if normalized_eid:
+                        etrack_ids.append(normalized_eid)
 
         if args.verbose:
             print(f"Etrack display name: '{etrack_display_name}'", file=sys.stderr)
@@ -3117,7 +3274,7 @@ def main():
                             break
 
                 # Get first etrack ID if multiple
-                first_eid = str(etrack_val).split(',')[0].strip() if etrack_val else ''
+                first_eid = normalize_incident_id(str(etrack_val).split(',')[0]) if etrack_val else ''
 
                 if first_eid and first_eid in etrack_data:
                     et_row = etrack_data[first_eid]

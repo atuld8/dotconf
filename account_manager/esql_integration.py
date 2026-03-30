@@ -18,8 +18,8 @@ def _fi_sort_key(fi_id: str) -> int:
 
 
 def _sort_fi_ids(fi_ids) -> List[str]:
-    """Sort FI IDs numerically by their numeric part."""
-    return sorted(fi_ids, key=_fi_sort_key)
+    """Sort FI IDs numerically by their numeric part (deduplicated)."""
+    return sorted(set(fi_ids), key=_fi_sort_key)
 
 
 @dataclass
@@ -295,7 +295,13 @@ class EsqlExecutor:
                 return []
 
         # Step 2: Get FI links from external_reference table
-        fi_sql = f"SELECT incident, ext_src, ext_inc FROM external_reference WHERE incident = {incident_no} AND ext_src = 'TOOLS_AGILE'"
+        fi_sql = (
+            f"SELECT DISTINCT incident, ext_src, ext_inc "
+            f"FROM external_reference "
+            f"WHERE incident = {incident_no} "
+            f"AND ext_src IN ('TOOLS_AGILE', 'JIRA') "
+            f"AND ext_inc LIKE 'FI-%'"
+        )
         fi_output = self.execute_raw_query(fi_sql, timeout)
 
         # Parse FI IDs
@@ -398,7 +404,13 @@ class EsqlExecutor:
 
             # Step 2: Get FI links for valid incidents
             valid_incident_list = ', '.join(inc for inc, _, _ in valid_incidents)
-            fi_sql = f"SELECT incident, ext_inc FROM external_reference WHERE incident IN ({valid_incident_list}) AND ext_src = 'TOOLS_AGILE'"
+            fi_sql = (
+                f"SELECT DISTINCT incident, ext_inc "
+                f"FROM external_reference "
+                f"WHERE incident IN ({valid_incident_list}) "
+                f"AND ext_src IN ('TOOLS_AGILE', 'JIRA') "
+                f"AND ext_inc LIKE 'FI-%'"
+            )
             try:
                 fi_output = self.execute_raw_query(fi_sql, timeout)
             except Exception as e:
@@ -460,7 +472,12 @@ class EsqlExecutor:
             fi_id = f'FI-{fi_id}'
 
         # Step 1: Find incident(s) linked to this FI
-        incident_sql = f"SELECT incident, ext_src, ext_inc FROM external_reference WHERE ext_src = 'TOOLS_AGILE' AND ext_inc = '{fi_id}'"
+        incident_sql = (
+            f"SELECT DISTINCT incident, ext_src, ext_inc "
+            f"FROM external_reference "
+            f"WHERE ext_src IN ('TOOLS_AGILE', 'JIRA') "
+            f"AND ext_inc = '{fi_id}'"
+        )
         incident_output = self.execute_raw_query(incident_sql, timeout)
 
         # Parse incident numbers

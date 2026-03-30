@@ -129,7 +129,7 @@ class EtrackExecutor:
             print(f"Error executing command: {e}")
             return None
 
-    def get_external_references(self, incident_no: str, ext_src: str = "TOOLS_AGILE", verbose: bool = False) -> List[ExternalReference]:
+    def get_external_references(self, incident_no: str, ext_src: Optional[str] = None, verbose: bool = False) -> List[ExternalReference]:
         """
         Get external references for an etrack incident.
 
@@ -137,7 +137,7 @@ class EtrackExecutor:
 
         Args:
             incident_no: Etrack incident number
-            ext_src: External source filter (default: TOOLS_AGILE for FI tickets)
+            ext_src: External source filter. If None, includes TOOLS_AGILE and JIRA.
             verbose: Print debug information
 
         Returns:
@@ -145,7 +145,23 @@ class EtrackExecutor:
         """
         # Query external_reference table for this incident
         # Expected columns: incident, ext_src, ext_inc
-        query = f"SELECT incident, ext_src, ext_inc FROM external_reference WHERE incident = {incident_no} AND ext_src = '{ext_src}'"
+        if not ext_src:
+            src_clause = "IN ('TOOLS_AGILE', 'JIRA')"
+        else:
+            src_values = [s.strip() for s in str(ext_src).split(',') if s.strip()]
+            if len(src_values) == 1:
+                src_clause = f"= '{src_values[0]}'"
+            else:
+                src_list = ', '.join(f"'{s}'" for s in src_values)
+                src_clause = f"IN ({src_list})"
+
+        query = (
+            f"SELECT DISTINCT incident, ext_src, ext_inc "
+            f"FROM external_reference "
+            f"WHERE incident = {incident_no} "
+            f"AND ext_src {src_clause} "
+            f"AND ext_inc LIKE 'FI-%'"
+        )
 
         # Pass query via stdin to avoid shell escaping issues
         cmd = "esql"
@@ -177,6 +193,7 @@ class EtrackExecutor:
             List of ExternalReference objects
         """
         references = []
+        seen_refs = set()
         lines = output.strip().split('\n')
 
         if verbose:
@@ -212,26 +229,32 @@ class EtrackExecutor:
                 ext_src = parts[1]
                 ext_ref_id = parts[2]
 
-                # Validate FI ID format if it's from TOOLS_AGILE
-                if ext_src == 'TOOLS_AGILE' and re.match(r'^FI-\d+$', ext_ref_id):
-                    references.append(ExternalReference(
-                        incident_no=incident_no,
-                        ext_src=ext_src,
-                        ext_ref_id=ext_ref_id
-                    ))
-                    if verbose:
-                        print(f"  [DEBUG] Found FI: {ext_ref_id}")
+                # Validate FI ID format from supported sources
+                if ext_src in ('TOOLS_AGILE', 'JIRA') and re.match(r'^FI-\d+$', ext_ref_id):
+                    ref_key = (incident_no, ext_ref_id)
+                    if ref_key not in seen_refs:
+                        seen_refs.add(ref_key)
+                        references.append(ExternalReference(
+                            incident_no=incident_no,
+                            ext_src=ext_src,
+                            ext_ref_id=ext_ref_id
+                        ))
+                        if verbose:
+                            print(f"  [DEBUG] Found FI: {ext_ref_id} ({ext_src})")
             elif len(parts) >= 1:
                 # Maybe just the ext_ref_id or different column order
                 for part in parts:
                     if re.match(r'^FI-\d+$', part):
-                        references.append(ExternalReference(
-                            incident_no=incident_no,
-                            ext_src='TOOLS_AGILE',
-                            ext_ref_id=part
-                        ))
-                        if verbose:
-                            print(f"  [DEBUG] Found FI (single): {part}")
+                        ref_key = (incident_no, part)
+                        if ref_key not in seen_refs:
+                            seen_refs.add(ref_key)
+                            references.append(ExternalReference(
+                                incident_no=incident_no,
+                                ext_src='TOOLS_AGILE',
+                                ext_ref_id=part
+                            ))
+                            if verbose:
+                                print(f"  [DEBUG] Found FI (single): {part}")
 
         return references
 
@@ -555,7 +578,7 @@ class MockEtrackExecutor:
             '1234568': 'user_two',
         }
 
-    def get_external_references(self, incident_no: str, ext_src: str = "TOOLS_AGILE", verbose: bool = False) -> List[ExternalReference]:
+    def get_external_references(self, incident_no: str, ext_src: Optional[str] = None, verbose: bool = False) -> List[ExternalReference]:
         """Return mock external references."""
         if 'external_refs' in self.mock_data:
             return self.mock_data['external_refs'].get(incident_no, [])
