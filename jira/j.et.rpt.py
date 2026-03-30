@@ -1365,7 +1365,7 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         jr_case_status = find_column(row, ['casestatus', 'jrcase']).lower().strip()
         jr_resolution = find_column(row, ['resolution', 'jr_resolution']).lower().strip()
         jr_assignee = find_column(row, ['assignee', 'jrassignee'], exclude_patterns=['et'])
-        jr_priority = find_column(row, ['priority', 'jrpriority'], exclude_patterns=['et'])
+        jr_priority = find_column(row, ['priority', 'jrpriority'], exclude_patterns=['et', 'case'])
         et_state = find_column(row, ['etstate', 'state'], exclude_patterns=['case', 'jr']).lower().strip()
         et_incident_raw = find_column(row, ['etrack', 'incident', 'etincident', 'jretrack'])
         et_assigned = find_column(row, ['etassign', 'etassignedto'])

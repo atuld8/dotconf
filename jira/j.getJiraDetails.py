@@ -934,8 +934,13 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
     _append_if_present(rows, "Case#", fields.get("customfield_11814"))
     if sfdc_case_links:
         rows.append(["SalesForce Case Link", _format_sfdc_case_links_for_display(sfdc_case_links)])
-    if _has_display_value(fields.get("customfield_11814")):
-        _append_if_present(rows, "Case Priority", fields.get("priority"))
+    case_priority_value = _first_present_display_value(
+        _field_value_by_name(issue, "Case Priority"),
+    )
+    if profile_type == "fi":
+        rows.append(["Case Priority", case_priority_value if case_priority_value else "-"])
+    elif case_priority_value != "-":
+        rows.append(["Case Priority", case_priority_value])
     _append_if_present(rows, "Customer", fields.get("customfield_18901"))
     _append_if_present(rows, "Slack", fields.get("customfield_24004"))
 
@@ -1058,7 +1063,11 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         print(f"  Labels: {_summary_value(summary_rows, 'Labels')}")
         print(f"  Fix Versions: {_summary_value(summary_rows, 'Fix Versions')}")
         print(f"  Affects Versions: {_summary_value(summary_rows, 'Affects Versions')}")
-        optional_present = [label for label in optional_labels if _summary_value(summary_rows, label) != "-"]
+        optional_present = [
+            label
+            for label in optional_labels
+            if _summary_value(summary_rows, label) != "-" or (profile_type == "fi" and label == "Case Priority")
+        ]
         if optional_present:
             print("\nAdditional:")
             for label in optional_present:
@@ -1072,6 +1081,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         print(f"  Resolved: {_summary_value(summary_rows, 'Resolved')}")
         return
 
+    separator = "-" * 140
+
     print()
     print(
         f"Issue: {_summary_value(summary_rows, 'Issue')} | "
@@ -1081,20 +1092,24 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         f"Status: {_summary_value(summary_rows, 'Status')} | "
         f"Resolution: {_summary_value(summary_rows, 'Resolution')}"
     )
+    print(separator)
     print(f"Summary: {_compact_text(_summary_value(summary_rows, 'Summary'), max_len=180)}")
+    print(separator)
     print(
         f"Assignee: {_summary_value(summary_rows, 'Assignee')} | "
         f"Reporter: {_summary_value(summary_rows, 'Reporter')} | "
         f"Components: {_summary_value(summary_rows, 'Components')} | "
         f"Labels: {_summary_value(summary_rows, 'Labels')}"
     )
+    print(separator)
     optional_parts = [
         f"{label}: {_compact_text(_summary_value(summary_rows, label), max_len=80)}"
         for label in optional_labels
-        if _summary_value(summary_rows, label) != "-"
+        if _summary_value(summary_rows, label) != "-" or (profile_type == "fi" and label == "Case Priority")
     ]
     if optional_parts:
         _print_compact_segments(optional_parts)
+        print(separator)
     print(
         f"Updated: {_summary_value(summary_rows, 'Updated')} | "
         f"Comments: {_summary_value(summary_rows, 'Comments')} | "
@@ -1594,6 +1609,7 @@ def main() -> int:
         f"etrack={'on' if show_etrack_requested else 'off'} "
         f"long={args.long_text_style}/{args.wrap_width}"
     )
+    section_separator = "-" * 140
 
     if "summary" in enabled_sections:
         _print_summary(summary_rows, args.format, profile_type)
@@ -1602,6 +1618,7 @@ def main() -> int:
     _desc_max_len = {"short": 300, "mid": 700, "full": 0}
     if "description" in enabled_sections:
         if args.desc != "none" and description and _is_meaningful_text(_clean_text(description)):
+            print(section_separator)
             print("\nDescription:")
             print(
                 _format_multiline_text(
@@ -1612,11 +1629,15 @@ def main() -> int:
                     style=args.long_text_style,
                 )
             )
+            print(section_separator)
         elif args.show_empty:
+            print(section_separator)
             print("\nDescription: None")
+            print(section_separator)
 
     if "status" in enabled_sections:
         if status_context:
+            print(section_separator)
             print("\nCurrent Status / Next Steps:")
             if "current_status" in status_context:
                 print("  Current Status:")
@@ -1640,11 +1661,15 @@ def main() -> int:
                         style=args.long_text_style,
                     )
                 )
+            print(section_separator)
         elif args.show_empty:
+            print(section_separator)
             print("\nCurrent Status / Next Steps: None")
+            print(section_separator)
 
     if "linked-fis" in enabled_sections:
         if linked_fis:
+            print(section_separator)
             print("\nLinked FIs:")
             rows = []
             for linked_key in linked_fis:
@@ -1657,11 +1682,15 @@ def main() -> int:
                     data.get("updated", "-"),
                 ])
             _print_table(rows, ["FI", "Status", "Resolution", "Assignee", "Updated"])
+            print(section_separator)
         elif args.show_empty:
+            print(section_separator)
             print("\nLinked FIs: None")
+            print(section_separator)
 
     if "etrack" in enabled_sections:
         if show_etrack_requested:
+            print(section_separator)
             print("\nEtrack details:")
             if not etrack_ids:
                 print("  No etrack incident linked in Jira fields.")
@@ -1684,11 +1713,15 @@ def main() -> int:
                     _print_sfdc_case_links_section(sfdc_case_links)
                 elif args.show_empty:
                     print("\nSalesForce Case Links: None")
+            print(section_separator)
         elif args.show_empty:
+            print(section_separator)
             print("\nEtrack details: disabled (use --show-etrack-details or mode investigate/ops)")
+            print(section_separator)
 
     if "comments" in enabled_sections:
         if args.show_comments > 0 and comments:
+            print(section_separator)
             print(f"\nLatest {min(args.show_comments, len(comments))} comment(s):")
             latest = comments[-args.show_comments:]
             for index, comment in enumerate(latest, 1):
@@ -1706,24 +1739,35 @@ def main() -> int:
                 )
                 if index < len(latest):
                     print()
+            print(section_separator)
         elif args.show_empty:
+            print(section_separator)
             print("\nComments: None")
+            print(section_separator)
 
     if "fields" in enabled_sections:
         if requested_fields:
+            print(section_separator)
             print("\nSelected Fields:")
             _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"])
+            print(section_separator)
         elif args.show_empty:
+            print(section_separator)
             print("\nSelected Fields: None (use --show-field)")
+            print(section_separator)
 
     if "verbose" in enabled_sections and args.verbose:
+        print(section_separator)
         print("\nVerbose Output:")
         verbose_issue = _filtered_issue_for_verbose(issue, args.include_empty_customfields)
         verbose_issue = _replace_customfield_keys_with_names(verbose_issue)
         verbose_issue = _prune_verbose_noise(verbose_issue)
         print(json.dumps(verbose_issue, indent=2, ensure_ascii=False))
+        print(section_separator)
     elif "verbose" in enabled_sections and args.show_empty:
+        print(section_separator)
         print("\nVerbose Output: disabled (use --verbose)")
+        print(section_separator)
 
     return 0
 
