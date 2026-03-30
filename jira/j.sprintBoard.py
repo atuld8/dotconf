@@ -313,10 +313,9 @@ def get_mapped_status(status_name):
 def _format_details_status_bucket(status_name):
     """Return compact status bucket for issue details display.
 
-    Uses board mapping and normalizes Closed -> Done to keep final state concise.
+    Uses the same board mapping as sprint board columns.
     """
-    mapped = get_mapped_status(status_name)
-    return 'Done' if mapped == 'Closed' else mapped
+    return get_mapped_status(status_name)
 
 
 def _format_issue_details_title(issue_key, issue_type, priority, status_name, widths=None):
@@ -526,13 +525,35 @@ def display_issue_details(issue_details_list, verbose=False):
     print("ISSUE DETAILS")
     print("="*80)
 
+    state_order = {
+        'To-Do': 0,
+        'In Progress': 1,
+        'Blocked': 2,
+        'Done': 3,
+        'Closed': 4,
+    }
+
+    def _jira_key_sort_value(issue_key):
+        match = re.search(r'([A-Z][A-Z0-9_]*-)(\d+)', issue_key or '')
+        if not match:
+            return (issue_key or '', 0)
+        return (match.group(1), int(match.group(2)))
+
+    sorted_issue_details = sorted(
+        issue_details_list,
+        key=lambda item: (
+            state_order.get(_format_details_status_bucket(item[3]), 99),
+            _jira_key_sort_value(item[0])
+        )
+    )
+
     # Widths for aligned (Type) (Priority) (Status) blocks
-    type_width = max((len(issue_type or '') for _, issue_type, *_ in issue_details_list), default=5)
-    priority_width = max((len((priority if priority and priority != 'N/A' else 'N/A')) for *_, priority, _ in issue_details_list), default=2)
-    status_width = max((len(_format_details_status_bucket(status)) for *_, status, _, _, _, _ in issue_details_list), default=5)
+    type_width = max((len(issue_type or '') for _, issue_type, *_ in sorted_issue_details), default=5)
+    priority_width = max((len((priority if priority and priority != 'N/A' else 'N/A')) for *_, priority, _ in sorted_issue_details), default=2)
+    status_width = max((len(_format_details_status_bucket(status)) for *_, status, _, _, _, _ in sorted_issue_details), default=5)
     widths = {'type': type_width, 'priority': priority_width, 'status': status_width}
 
-    for i, (issue_key, issue_type, summary, status, assignee, reporter, priority, severity) in enumerate(issue_details_list):
+    for i, (issue_key, issue_type, summary, status, assignee, reporter, priority, severity) in enumerate(sorted_issue_details):
         # Truncate summary if too long
         if len(summary) > 100:
             summary = summary[:97] + "..."
@@ -543,8 +564,8 @@ def display_issue_details(issue_details_list, verbose=False):
 
         # Check if next item is also a sub-task (to avoid blank line between parent and sub-task)
         next_is_subtask = False
-        if i + 1 < len(issue_details_list):
-            next_issue_type = issue_details_list[i + 1][1]
+        if i + 1 < len(sorted_issue_details):
+            next_issue_type = sorted_issue_details[i + 1][1]
             next_is_subtask = next_issue_type in ['Sub-task', 'Subtask']
 
         # Add indentation for sub-tasks to show tree structure
@@ -560,7 +581,7 @@ def display_issue_details(issue_details_list, verbose=False):
                 print(f"  Status: {status} | Assignee: {assignee} | Reporter: {reporter} | Priority: {priority} | Severity: {severity}")
 
         # Add blank line when verbose and not transitioning from parent to sub-task
-        if verbose and not next_is_subtask and i + 1 < len(issue_details_list):
+        if verbose and not next_is_subtask and i + 1 < len(sorted_issue_details):
             print()  # Add blank line between parent groups or after sub-task group ends
 
     print()
