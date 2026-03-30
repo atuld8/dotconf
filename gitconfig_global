@@ -144,7 +144,7 @@
     forgcb = "!git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\""
     fus = fetch --unshallow
     fp  = fetch --prune
-    frsthcb = "!f_rsthocb() {git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\" && git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\"; }; f_rsthocb"
+    frsthorgcb ="!f_rsthocb() { git fetch origin \"$(git rev-parse --abbrev-ref HEAD)\";  git reset --hard origin/\"$(git rev-parse --abbrev-ref HEAD)\"; }; f_rsthocb"
 
     gcNow = gc --prune=now
     gcprune = !git gc --prune=now && git remote prune origin
