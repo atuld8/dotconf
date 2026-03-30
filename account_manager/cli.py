@@ -2240,6 +2240,55 @@ def main():
                 else:
                     print("\nNo severity conflict incidents found.")
 
+                missing_case_priority_rows = []
+                for result in sorted(severity_results, key=lambda item: int(item.incident_no)):
+                    missing_fis = [
+                        fi_info.fi_id
+                        for fi_info in result.severity_fis
+                        if not fi_info.case_priority
+                    ]
+                    for fi_id in _sort_fi_ids(missing_fis):
+                        missing_case_priority_rows.append((
+                            result.incident_no,
+                            fi_id,
+                            result.etrack_user_id or 'N/A',
+                            result.etrack_severity or 'N/A',
+                        ))
+
+                if missing_case_priority_rows:
+                    missing_case_priority_incidents = sorted({incident_no for incident_no, _, _, _ in missing_case_priority_rows}, key=int)
+                    missing_case_priority_fis = _sort_fi_ids({fi_id for _, fi_id, _, _ in missing_case_priority_rows})
+                    print("\nMissing-Case-Priority")
+                    print("  Jira FIs below do not carry a usable 'Case Priority' value.")
+                    print(f"  Incident-Count={len(missing_case_priority_incidents)}")
+                    print(f"  FI-Count={len(missing_case_priority_fis)}")
+                    print()
+
+                    incident_width = max(len('Incident'), max(len(incident_no) for incident_no, _, _, _ in missing_case_priority_rows))
+                    fi_width = max(len('FI ID'), max(len(fi_id) for _, fi_id, _, _ in missing_case_priority_rows))
+                    assignee_width = max(len('Assignee'), max(len(assignee) for _, _, assignee, _ in missing_case_priority_rows))
+                    severity_width = max(len('Etrack Sev'), max(len(severity) for _, _, _, severity in missing_case_priority_rows))
+                    separator = (
+                        f"+-{'-' * incident_width}-+-{'-' * fi_width}-"
+                        f"+-{'-' * assignee_width}-+-{'-' * severity_width}-+"
+                    )
+                    header = (
+                        f"| {'Incident':<{incident_width}} | {'FI ID':<{fi_width}} | "
+                        f"{'Assignee':<{assignee_width}} | {'Etrack Sev':<{severity_width}} |"
+                    )
+
+                    print(separator)
+                    print(header)
+                    print(separator)
+                    for incident_no, fi_id, assignee, severity in missing_case_priority_rows:
+                        print(
+                            f"| {incident_no:<{incident_width}} | {fi_id:<{fi_width}} | "
+                            f"{assignee:<{assignee_width}} | {severity:<{severity_width}} |"
+                        )
+                    print(separator)
+                else:
+                    print("\nNo FIs missing Case Priority found.")
+
                 if not run_assignee_validation:
                     return
 
