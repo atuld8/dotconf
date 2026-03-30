@@ -1685,28 +1685,58 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
         print(f"{cat_data['description']}")
         print("=" * 80)
 
+        # Determine which base fields have data in this category's issues
+        # Include only columns that have non-empty values in at least one issue
+        def has_column_data(issues, field_key):
+            """Check if any issue has data in the given field."""
+            return any(issue.get(field_key, '') for issue in issues)
+
+        # Start with required columns
+        active_base_fields = ['#', 'Key']
+
+        # Check optional columns
+        optional_fields = [
+            ('Assignee', 'jr_assignee'),
+            ('Jr Priority', 'jr_priority'),
+            ('Jr Status', 'jr_status'),
+            ('Case Status', 'jr_case_status'),
+            ('Jr Resolution', 'jr_resolution'),
+            ('ET State', 'et_state'),
+            ('ET Incident', 'et_incident')
+        ]
+
+        for display_name, field_key in optional_fields:
+            if has_column_data(issues, field_key):
+                active_base_fields.append(display_name)
+
         # Build table for this category
         if PrettyTable:
             table = PrettyTable()
-            base_fields = ['#', 'Key', 'Assignee', 'Jr Priority', 'Jr Status', 'Case Status', 'Jr Resolution', 'ET State', 'ET Incident']
-            table.field_names = base_fields + extra_et_cols
+            table.field_names = active_base_fields + extra_et_cols
             table.align = 'l'
 
             # Sort issues by FI key
             sorted_issues = sorted(issues, key=fi_sort_key)
             display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
-                base_row = [
-                    idx,
-                    issue['key'],
-                    issue['jr_assignee'][:20] if issue['jr_assignee'] else '',
-                    issue['jr_priority'],
-                    issue['jr_status'][:20] if issue['jr_status'] else '',
-                    issue['jr_case_status'][:25] if issue['jr_case_status'] else '',
-                    issue['jr_resolution'][:40] if issue['jr_resolution'] else '',
-                    issue['et_state'].upper() if issue['et_state'] else '',
-                    issue['et_incident']
-                ]
+                # Build row based on active fields
+                base_row = [idx, issue['key']]
+
+                if 'Assignee' in active_base_fields:
+                    base_row.append(issue['jr_assignee'][:20] if issue['jr_assignee'] else '')
+                if 'Jr Priority' in active_base_fields:
+                    base_row.append(issue['jr_priority'])
+                if 'Jr Status' in active_base_fields:
+                    base_row.append(issue['jr_status'][:20] if issue['jr_status'] else '')
+                if 'Case Status' in active_base_fields:
+                    base_row.append(issue['jr_case_status'][:25] if issue['jr_case_status'] else '')
+                if 'Jr Resolution' in active_base_fields:
+                    base_row.append(issue['jr_resolution'][:40] if issue['jr_resolution'] else '')
+                if 'ET State' in active_base_fields:
+                    base_row.append(issue['et_state'].upper() if issue['et_state'] else '')
+                if 'ET Incident' in active_base_fields:
+                    base_row.append(issue['et_incident'])
+
                 # Add extra ET columns from original row
                 row_data = issue.get('row', {})
                 for et_col in extra_et_cols:
@@ -1724,17 +1754,48 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             if not Colors.notruncate and len(issues) > 50:
                 print(f"... and {len(issues) - 50} more issues")
         else:
-            # Fallback: simple format
-            print(f"{'#':<4} {'Key':<10} {'Assignee':<20} {'Jr Status':<20} {'Case Status':<25} {'Jr Resolution':<40} {'ET State':<10}")
-            print("-" * 130)
+            # Fallback: simple format - build header based on active fields
+            header_parts = [f"{'#':<4}", f"{'Key':<10}"]
+            if 'Assignee' in active_base_fields:
+                header_parts.append(f"{'Assignee':<20}")
+            if 'Jr Priority' in active_base_fields:
+                header_parts.append(f"{'Jr Priority':<12}")
+            if 'Jr Status' in active_base_fields:
+                header_parts.append(f"{'Jr Status':<20}")
+            if 'Case Status' in active_base_fields:
+                header_parts.append(f"{'Case Status':<25}")
+            if 'Jr Resolution' in active_base_fields:
+                header_parts.append(f"{'Jr Resolution':<40}")
+            if 'ET State' in active_base_fields:
+                header_parts.append(f"{'ET State':<10}")
+            if 'ET Incident' in active_base_fields:
+                header_parts.append(f"{'ET Incident':<15}")
+
+            print(' '.join(header_parts))
+            # Print separator - calculate based on total width
+            total_width = sum(int(part.split('<')[1].split('}')[0]) for part in header_parts if '<' in part)
+            print("-" * max(130, total_width))
+
             # Sort issues by FI key
             sorted_issues = sorted(issues, key=fi_sort_key)
             display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
-                print(f"{idx:<4} {issue['key']:<10} {str(issue['jr_assignee'])[:18]:<20} "
-                      f"{issue['jr_status'][:18]:<20} {issue['jr_case_status'][:23]:<25} "
-                      f"{issue['jr_resolution'][:40]:<40} "
-                      f"{issue['et_state'].upper():<10}")
+                row_parts = [f"{idx:<4}", f"{issue['key']:<10}"]
+                if 'Assignee' in active_base_fields:
+                    row_parts.append(f"{str(issue['jr_assignee'])[:18]:<20}")
+                if 'Jr Priority' in active_base_fields:
+                    row_parts.append(f"{issue['jr_priority']:<12}")
+                if 'Jr Status' in active_base_fields:
+                    row_parts.append(f"{issue['jr_status'][:18]:<20}")
+                if 'Case Status' in active_base_fields:
+                    row_parts.append(f"{issue['jr_case_status'][:23]:<25}")
+                if 'Jr Resolution' in active_base_fields:
+                    row_parts.append(f"{issue['jr_resolution'][:40]:<40}")
+                if 'ET State' in active_base_fields:
+                    row_parts.append(f"{issue['et_state'].upper():<10}")
+                if 'ET Incident' in active_base_fields:
+                    row_parts.append(f"{issue['et_incident']:<15}")
+                print(' '.join(row_parts))
 
         # Print FI list for easy copy-paste
         fi_list = ','.join([i['key'] for i in issues])
