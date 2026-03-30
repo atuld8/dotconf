@@ -154,6 +154,7 @@ class Colors:
         color_map = {
             'NO_ETRACK': cls.RED,
             'ET_CLOSED_JIRA_ACTIVE': cls.YELLOW,
+            'ET_CLOSED_CASE_NOT_CLOSED': cls.YELLOW,
             'JIRA_DONE_ET_ACTIVE': cls.YELLOW,
             'ET_WAITING_CASE_CLOSED': cls.YELLOW,
             'CASE_CLOSED_ET_NOT_CLOSED': cls.YELLOW,
@@ -1286,6 +1287,12 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
             'issues': [],
             'priority': 2
         },
+        'ET_CLOSED_CASE_NOT_CLOSED': {
+            'title': 'ETRACK CLOSED BUT CASE NOT CLOSED',
+            'description': 'Etrack is CLOSED but FI Case Status is not yet closed - may need to follow up on case closure',
+            'issues': [],
+            'priority': 2
+        },
         'JIRA_DONE_ET_ACTIVE': {
             'title': 'JIRA DONE BUT ETRACK ACTIVE',
             'description': 'Jira Solution Provided but Etrack still OPEN/WORKING/REOPEN - needs eng follow-up',
@@ -1411,6 +1418,9 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         # BOTH_CLOSED now requires ALL THREE to be done/closed
         elif et_state in ET_CLOSED_STATES and jr_case_status in CASE_CLOSED_STATUSES and jr_status in JIRA_DONE_STATUSES:
             categories['BOTH_CLOSED']['issues'].append(issue_info)
+        # Etrack CLOSED but Case Status not closed (JR status irrelevant)
+        elif et_state in ET_CLOSED_STATES and jr_case_status not in CASE_CLOSED_STATUSES:
+            categories['ET_CLOSED_CASE_NOT_CLOSED']['issues'].append(issue_info)
         elif jr_status in JIRA_DONE_STATUSES and et_state in ET_CLOSED_STATES:
             categories['READY_TO_CLOSE']['issues'].append(issue_info)
         elif et_state in ET_CLOSED_STATES and jr_status in JIRA_ACTIVE_STATUSES:
@@ -1806,7 +1816,7 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
         print()  # Extra blank line after FI List
 
         # For categories where action is on Etrack, also print Etrack list (deduplicated)
-        if cat_id in ['ET_WAITING_CASE_CLOSED', 'CASE_CLOSED_ET_NOT_CLOSED', 'JIRA_DONE_ET_ACTIVE', 'READY_TO_CLOSE']:
+        if cat_id in ['ET_WAITING_CASE_CLOSED', 'CASE_CLOSED_ET_NOT_CLOSED', 'JIRA_DONE_ET_ACTIVE', 'READY_TO_CLOSE', 'ET_CLOSED_CASE_NOT_CLOSED']:
             unique_et = sorted(get_unique_etracks(issues))
             if unique_et:
                 et_list = ','.join(unique_et)
@@ -1912,7 +1922,7 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
     print("PRIORITY BREAKDOWN (Actionable Categories)")
     print("=" * 80)
 
-    actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'JIRA_DONE_ET_ACTIVE',
+    actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'ET_CLOSED_CASE_NOT_CLOSED', 'JIRA_DONE_ET_ACTIVE',
                        'ET_WAITING_CASE_CLOSED', 'READY_TO_CLOSE']
 
     priority_counts = {}
@@ -1935,7 +1945,7 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
     if PrettyTable:
         table = PrettyTable()
         table.field_names = ['Jr Priority', 'Total', 'No Etrack', 'ET Closed/Jira Active',
-                             'Jira Done/ET Active', 'Ready to Close']
+                             'ET Closed/Case Open', 'Jira Done/ET Active', 'Ready to Close']
         table.align = 'r'
         table.align['Jr Priority'] = 'l'
 
@@ -1945,17 +1955,19 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
                 counts['total'],
                 counts.get('NO_ETRACK', 0),
                 counts.get('ET_CLOSED_JIRA_ACTIVE', 0),
+                counts.get('ET_CLOSED_CASE_NOT_CLOSED', 0),
                 counts.get('JIRA_DONE_ET_ACTIVE', 0),
                 counts.get('READY_TO_CLOSE', 0)
             ])
 
         Colors.print_table(table)
     else:
-        print(f"{'Jr Priority':<12} {'Total':>6} {'No ET':>8} {'ET Closed':>10} {'Jr Done':>8} {'Ready':>6}")
-        print("-" * 60)
+        print(f"{'Jr Priority':<12} {'Total':>6} {'No ET':>8} {'ET Closed':>10} {'ET/Case Open':>12} {'Jr Done':>8} {'Ready':>6}")
+        print("-" * 75)
         for priority, counts in sorted_priorities:
             print(f"{priority:<12} {counts['total']:>6} {counts.get('NO_ETRACK', 0):>8} "
-                  f"{counts.get('ET_CLOSED_JIRA_ACTIVE', 0):>10} {counts.get('JIRA_DONE_ET_ACTIVE', 0):>8} "
+                  f"{counts.get('ET_CLOSED_JIRA_ACTIVE', 0):>10} {counts.get('ET_CLOSED_CASE_NOT_CLOSED', 0):>12} "
+                  f"{counts.get('JIRA_DONE_ET_ACTIVE', 0):>8} "
                   f"{counts.get('READY_TO_CLOSE', 0):>6}")
     print()  # Extra blank line after section
 
@@ -1966,7 +1978,7 @@ def print_analyzer_assignee_breakdown(categories: Dict[str, Any]):
     print("ASSIGNEE BREAKDOWN (Actionable Categories)")
     print("=" * 80)
 
-    actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'JIRA_DONE_ET_ACTIVE',
+    actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'ET_CLOSED_CASE_NOT_CLOSED', 'JIRA_DONE_ET_ACTIVE',
                        'ET_WAITING_CASE_CLOSED', 'READY_TO_CLOSE']
 
     assignee_counts = {}

@@ -198,6 +198,7 @@ Options:
   Assignee Validation:
     --report                 Generate reassignment report without fixing
     --report-from=<user>     Report only FIs currently assigned to <user>
+    --only-unassigned        Filter to FIs with no current Jira assignee (works with --report or --fix)
     --fix                    Fix mismatched FI assignments (verified accounts only)
     --fix-from=<user>        Fix only FIs currently assigned to <user> (implies --fix)
     --fix-interactive        Prompt (y/n/q) before each fix
@@ -267,7 +268,11 @@ Examples:
     # Fix only FIs currently assigned to manager (e.g., reassign from manager to engineer)
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix-from=manager.name
 
-    # Interactive fix (prompt for each)
+    # Fix only unassigned FIs
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix --only-unassigned
+
+    # Report only unassigned FIs
+    python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report --only-unassigned
     python3 -m account_manager.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --fix --fix-interactive
 
     # Show FIs linked to multiple incidents with different assignees
@@ -1530,6 +1535,7 @@ def main():
                 print("  Assignee Validation:")
                 print("    --report                 Generate reassignment report (no fixes)")
                 print("    --report-from=<user>     Report only FIs assigned to <user>")
+                print("    --only-unassigned        Filter to FIs with no current Jira assignee (with --report or --fix)")
                 print("    --fix                    Fix mismatched FI assignments (verified accounts only)")
                 print("    --fix-from=<user>        Fix only FIs assigned to <user> (implies --fix)")
                 print("    --fix-interactive        Prompt (y/n/q) before each fix")
@@ -1561,11 +1567,12 @@ def main():
                 '--report', '--report-severity',
                 '--fix-severity', '--show-conflicts', '--table',
                 '--auto-add', '--interactive', '--fail-on-unknown',
-                '--all-types', '--perform-sr-type-check', '--skip-details'
+                '--all-types', '--perform-sr-type-check', '--skip-details',
+                '--only-unassigned'
             }
             valid_option_prefixes = {
                 '--fix-from=', '--report-from=', '--skip-fi=', '--incident=', '--fi=', '--format=',
-                '--severity-transition='
+                '--severity-transition=', '--exclude-severity='
             }
 
             # Validate all arguments
@@ -1675,6 +1682,9 @@ def main():
                     fix_from_user = arg.split('=', 1)[1]
                     fix_mismatches = True  # Implies --fix
                     break
+
+            # Parse --only-unassigned flag
+            only_unassigned = '--only-unassigned' in sys.argv
 
             # Parse --report-from=<user>
             report_from_user = None
@@ -1800,6 +1810,8 @@ def main():
                     mode_parts.append("INTERACTIVE")
                 if fix_from_user:
                     mode_parts.append(f"FROM={fix_from_user}")
+                if only_unassigned:
+                    mode_parts.append("ONLY-UNASSIGNED")
                 if skip_fi_ids:
                     mode_parts.append(f"SKIP={','.join(skip_fi_ids)}")
                 print(f"Fix mode: {' | '.join(mode_parts)}")
@@ -2352,6 +2364,20 @@ def main():
                 if report_from_user:
                     mismatch_data = [m for m in mismatch_data if m['current_assignee'] == report_from_user]
 
+                # Filter by --only-unassigned if specified
+                if only_unassigned:
+                    mismatch_data = [m for m in mismatch_data if not m['current_assignee'] or m['current_assignee'] == 'N/A']
+
+                # Print filter status
+                if generate_report or report_from_user or only_unassigned:
+                    filter_parts = []
+                    if report_from_user:
+                        filter_parts.append(f"FROM={report_from_user}")
+                    if only_unassigned:
+                        filter_parts.append("ONLY-UNASSIGNED")
+                    if filter_parts:
+                        print(f"\nReport filters: {' | '.join(filter_parts)}")
+
                 # Generate formatted report if --report or --report-from
                 if generate_report:
                     print("\n" + ReportGenerator.generate_fi_reassignment_report(
@@ -2422,9 +2448,15 @@ def main():
                 fixed_failed = []
                 fixed_skipped = []
 
-                # Helper to check --fix-from filter
+                # Helper to check --fix-from and --only-unassigned filters
                 def should_skip_for_filter(fi_validation):
                     """Returns (should_skip, reason) tuple"""
+                    # Check --only-unassigned filter first
+                    if only_unassigned:
+                        current_assignee = fi_validation.jira_assignee or ''
+                        if current_assignee.strip():  # Has an assignee
+                            return True, f'FI is assigned to {current_assignee} (--only-unassigned filter)'
+                    # Check --fix-from filter
                     if fix_from_user:
                         current_assignee = fi_validation.jira_assignee or ''
                         if current_assignee.lower() != fix_from_user.lower():
