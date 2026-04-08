@@ -197,10 +197,10 @@ Options:
 
   Assignee Validation:
     --report                 Generate reassignment report without fixing
-    --report-from=<user>     Report only FIs currently assigned to <user>
-    --only-unassigned        Filter to FIs with no current Jira assignee (works with --report or --fix)
-    --fix                    Fix mismatched FI assignments (verified accounts only)
-    --fix-from=<user>        Fix only FIs currently assigned to <user> (implies --fix)
+        --report-from=<user>     Report only FIs where Assignee or Consulting with R&D matches <user>
+        --only-unassigned        Filter to FIs with no Assignee and no Consulting with R&D value
+        --fix                    Fix mismatched Assignee and Consulting with R&D values (verified accounts only)
+        --fix-from=<user>        Fix only FIs where Assignee or Consulting with R&D matches <user> (implies --fix)
     --fix-interactive        Prompt (y/n/q) before each fix
     --dry-run                Preview changes without applying
     --skip-fi=<ids>          Skip specific FIs when fixing (comma-separated)
@@ -1534,10 +1534,10 @@ def main():
                 print("")
                 print("  Assignee Validation:")
                 print("    --report                 Generate reassignment report (no fixes)")
-                print("    --report-from=<user>     Report only FIs assigned to <user>")
-                print("    --only-unassigned        Filter to FIs with no current Jira assignee (with --report or --fix)")
-                print("    --fix                    Fix mismatched FI assignments (verified accounts only)")
-                print("    --fix-from=<user>        Fix only FIs assigned to <user> (implies --fix)")
+                print("    --report-from=<user>     Report only FIs where Assignee or Consulting with R&D matches <user>")
+                print("    --only-unassigned        Filter to FIs with no Assignee and no Consulting with R&D value")
+                print("    --fix                    Fix mismatched Assignee and Consulting with R&D values (verified accounts only)")
+                print("    --fix-from=<user>        Fix only FIs where Assignee or Consulting with R&D matches <user> (implies --fix)")
                 print("    --fix-interactive        Prompt (y/n/q) before each fix")
                 print("    --dry-run                Preview changes without applying")
                 print("    --skip-fi=<ids>          Skip specific FIs when fixing (comma-separated)")
@@ -1606,6 +1606,7 @@ def main():
             perform_sr_type_check = '--perform-sr-type-check' in sys.argv  # For query-based
             skip_details = '--skip-details' in sys.argv
             severity_mode = severity_report or severity_fix
+            fi_sync_field_name = 'Consulting with R&D'
 
             # Parse --format=<fmt>  (applies to --report-severity output)
             _valid_severity_formats = {'text', 'table', 'csv', 'json'}
@@ -2348,59 +2349,135 @@ def main():
 
             # Show mismatches
             mismatches = validator.get_mismatches(results)
-            if mismatches:
-                # Collect mismatch data for report
-                mismatch_data = []
+            assignment_sync_mode = (
+                fix_mismatches or generate_report or fix_from_user is not None or report_from_user is not None
+            )
+            mismatch_data = []
+            actionable_by_incident = {}
+
+            def _normalize_assignment_value(value):
+                return (value or '').strip().lower()
+
+            def _display_assignment_value(value):
+                normalized = (value or '').strip()
+                return normalized or 'N/A'
+
+            def _matches_expected(current_value, expected_value):
+                return _normalize_assignment_value(current_value) == _normalize_assignment_value(expected_value)
+
+            if assignment_sync_mode:
+                all_fi_ids = [
+                    fi_validation.fi_id
+                    for result in results
+                    for fi_validation in result.fi_validations
+                    if fi_validation.fi_id
+                ]
+                consulting_values = {fi_id: None for fi_id in all_fi_ids}
+
+                if all_fi_ids:
+                    consulting_field_id = jira_client.get_field_id_by_name(fi_sync_field_name)
+                    if not consulting_field_id:
+                        print(f"X Error: Jira field '{fi_sync_field_name}' was not found")
+                        return
+
+                    consulting_raw_values = jira_client.get_field_batch(all_fi_ids, consulting_field_id)
+                    consulting_values = {
+                        fi_id: JiraClient.extract_field_display_value(consulting_raw_values.get(fi_id))
+                        for fi_id in all_fi_ids
+                    }
+
+                for result in results:
+                    for fi_validation in result.fi_validations:
+                        current_assignee = fi_validation.jira_assignee
+                        current_consulting = consulting_values.get(fi_validation.fi_id)
+                        expected_jira = fi_validation.expected_jira_id or result.db_jira_account
+                        assignee_matches = _matches_expected(current_assignee, expected_jira)
+                        consulting_matches = _matches_expected(current_consulting, expected_jira)
+
+                        if assignee_matches and consulting_matches:
+                            continue
+
+                        item = {
+                            'result': result,
+                            'validation': fi_validation,
+                            'fi_id': fi_validation.fi_id,
+                            'current_assignee': _display_assignment_value(current_assignee),
+                            'current_secondary': _display_assignment_value(current_consulting),
+                            'expected_assignee': _display_assignment_value(expected_jira),
+                            'assignee_matches': assignee_matches,
+                            'secondary_matches': consulting_matches,
+                        }
+                        mismatch_data.append(item)
+                        actionable_by_incident.setdefault(result.incident_no, []).append(item)
+            else:
                 for result in mismatches:
-                    for v in result.fi_validations:
-                        if not v.matches:
-                            mismatch_data.append({
-                                'fi_id': v.fi_id,
-                                'current_assignee': v.jira_assignee or 'N/A',
-                                'expected_assignee': v.expected_jira_id or 'N/A'
-                            })
+                    for fi_validation in result.fi_validations:
+                        if fi_validation.matches:
+                            continue
+                        item = {
+                            'result': result,
+                            'validation': fi_validation,
+                            'fi_id': fi_validation.fi_id,
+                            'current_assignee': _display_assignment_value(fi_validation.jira_assignee),
+                            'current_secondary': 'N/A',
+                            'expected_assignee': _display_assignment_value(fi_validation.expected_jira_id),
+                            'assignee_matches': False,
+                            'secondary_matches': True,
+                        }
+                        mismatch_data.append(item)
+                        actionable_by_incident.setdefault(result.incident_no, []).append(item)
 
-                # Filter by report_from_user if specified
+            filtered_mismatch_data = mismatch_data
+            if report_from_user:
+                report_from_normalized = _normalize_assignment_value(report_from_user)
+                filtered_mismatch_data = [
+                    item for item in filtered_mismatch_data
+                    if _normalize_assignment_value(item['current_assignee']) == report_from_normalized
+                    or _normalize_assignment_value(item['current_secondary']) == report_from_normalized
+                ]
+
+            if only_unassigned:
+                filtered_mismatch_data = [
+                    item for item in filtered_mismatch_data
+                    if item['current_assignee'] == 'N/A' and item['current_secondary'] == 'N/A'
+                ]
+
+            filtered_actionable_by_incident = {}
+            for item in filtered_mismatch_data:
+                filtered_actionable_by_incident.setdefault(item['result'].incident_no, []).append(item)
+
+            if generate_report or report_from_user or only_unassigned:
+                filter_parts = []
                 if report_from_user:
-                    mismatch_data = [m for m in mismatch_data if m['current_assignee'] == report_from_user]
-
-                # Filter by --only-unassigned if specified
+                    filter_parts.append(f"FROM={report_from_user}")
                 if only_unassigned:
-                    mismatch_data = [m for m in mismatch_data if not m['current_assignee'] or m['current_assignee'] == 'N/A']
+                    filter_parts.append("ONLY-UNASSIGNED")
+                if filter_parts:
+                    print(f"\nReport filters: {' | '.join(filter_parts)}")
 
-                # Print filter status
-                if generate_report or report_from_user or only_unassigned:
-                    filter_parts = []
-                    if report_from_user:
-                        filter_parts.append(f"FROM={report_from_user}")
-                    if only_unassigned:
-                        filter_parts.append("ONLY-UNASSIGNED")
-                    if filter_parts:
-                        print(f"\nReport filters: {' | '.join(filter_parts)}")
-
-                # Generate formatted report if --report or --report-from
-                if generate_report:
-                    print("\n" + ReportGenerator.generate_fi_reassignment_report(
-                        mismatch_data,
-                        include_details=not skip_details
-                    ))
-                else:
-                    # Default output
+            if generate_report:
+                print("\n" + ReportGenerator.generate_fi_reassignment_report(
+                    filtered_mismatch_data,
+                    include_details=not skip_details,
+                    secondary_field_label=fi_sync_field_name
+                ))
+            elif filtered_mismatch_data:
                     print("\n" + "=" * 60)
-                    print(f"MISMATCHES FOUND: {len(mismatches)}")
+                    print(f"MISMATCHED FIs FOUND: {len(filtered_mismatch_data)}")
                     print("=" * 60)
                     if skip_details:
-                        total_mismatched_fis = sum(
-                            1 for result in mismatches for v in result.fi_validations if not v.matches
-                        )
-                        print(f"Total mismatched FIs: {total_mismatched_fis}")
                         mismatch_by_expected = {}
                         mismatch_by_current = {}
-                        for item in mismatch_data:
+                        for item in filtered_mismatch_data:
                             exp = item.get('expected_assignee') or 'N/A'
-                            cur = item.get('current_assignee') or 'N/A'
                             mismatch_by_expected[exp] = mismatch_by_expected.get(exp, 0) + 1
-                            mismatch_by_current[cur] = mismatch_by_current.get(cur, 0) + 1
+
+                            current_sources = {
+                                item.get('current_assignee') or 'N/A',
+                                item.get('current_secondary') or 'N/A'
+                            }
+                            for current_source in current_sources:
+                                mismatch_by_current[current_source] = mismatch_by_current.get(current_source, 0) + 1
 
                         top_expected = sorted(
                             mismatch_by_expected.items(),
@@ -2416,27 +2493,35 @@ def main():
                             for assignee, count in top_expected:
                                 print(f"  {assignee}: {count}")
                         if top_current:
-                            print("Top current assignees (source):")
+                            print("Top current values (Assignee / Consulting with R&D):")
                             for assignee, count in top_current:
                                 print(f"  {assignee}: {count}")
 
                         print("Use without --skip-details for full per-FI mismatch rows.")
                     else:
-                        for result in mismatches:
-                            # Get FI IDs from validations
-                            fi_ids = _sort_fi_ids([v.fi_id for v in result.fi_validations])
+                        for incident_no in sorted(filtered_actionable_by_incident.keys(), key=int):
+                            incident_items = filtered_actionable_by_incident[incident_no]
+                            result = incident_items[0]['result']
+                            fi_ids = _sort_fi_ids([item['fi_id'] for item in incident_items])
                             fi_list = ', '.join(fi_ids) if fi_ids else 'N/A'
                             print(f"\nFIs: {fi_list}")
                             print(f"  Incident: {result.incident_no}")
                             print(f"  Etrack Assignee: {result.etrack_user_id}")
                             print(f"  Expected Jira Account (from DB): {result.db_jira_account or 'N/A'}")
                             print(f"  Status: {result.status}")
-                            for v in result.fi_validations:
-                                if not v.matches:
-                                    print(f"    {v.fi_id}: Jira has '{v.jira_assignee or 'N/A'}' (should be '{v.expected_jira_id or 'N/A'}')")
+                            for item in sorted(incident_items, key=lambda x: _fi_sort_key(x['fi_id'])):
+                                mismatched_fields = []
+                                if not item['assignee_matches']:
+                                    mismatched_fields.append(f"Assignee='{item['current_assignee']}'")
+                                if not item['secondary_matches']:
+                                    mismatched_fields.append(f"{fi_sync_field_name}='{item['current_secondary']}'")
+                                print(
+                                    f"    {item['fi_id']}: {' | '.join(mismatched_fields)} "
+                                    f"(should be '{item['expected_assignee']}')"
+                                )
 
             # Fix mismatches if --fix is enabled
-            if fix_mismatches and mismatches:
+            if fix_mismatches and mismatch_data:
                 print("\n" + "=" * 60)
                 if fix_dry_run:
                     print("FIXING MISMATCHES (DRY-RUN - no changes will be made)")
@@ -2449,35 +2534,47 @@ def main():
                 fixed_skipped = []
 
                 # Helper to check --fix-from and --only-unassigned filters
-                def should_skip_for_filter(fi_validation):
+                def should_skip_for_filter(item):
                     """Returns (should_skip, reason) tuple"""
-                    # Check --only-unassigned filter first
+                    current_assignee = '' if item['current_assignee'] == 'N/A' else item['current_assignee']
+                    current_secondary = '' if item['current_secondary'] == 'N/A' else item['current_secondary']
+
                     if only_unassigned:
-                        current_assignee = fi_validation.jira_assignee or ''
-                        if current_assignee.strip():  # Has an assignee
-                            return True, f'FI is assigned to {current_assignee} (--only-unassigned filter)'
-                    # Check --fix-from filter
+                        assigned_fields = []
+                        if current_assignee.strip():
+                            assigned_fields.append(f"Assignee={current_assignee}")
+                        if current_secondary.strip():
+                            assigned_fields.append(f"{fi_sync_field_name}={current_secondary}")
+                        if assigned_fields:
+                            return True, f"FI has values set ({', '.join(assigned_fields)}) (--only-unassigned filter)"
+
                     if fix_from_user:
-                        current_assignee = fi_validation.jira_assignee or ''
-                        if current_assignee.lower() != fix_from_user.lower():
-                            return True, f'Current assignee ({current_assignee}) != {fix_from_user}'
+                        fix_from_normalized = _normalize_assignment_value(fix_from_user)
+                        if (
+                            _normalize_assignment_value(current_assignee) != fix_from_normalized
+                            and _normalize_assignment_value(current_secondary) != fix_from_normalized
+                        ):
+                            return True, (
+                                f"Neither Assignee ({current_assignee or 'N/A'}) nor {fi_sync_field_name} "
+                                f"({current_secondary or 'N/A'}) matches {fix_from_user}"
+                            )
                     return False, None
 
-                for result in mismatches:
+                for incident_no in sorted(actionable_by_incident.keys(), key=int):
+                    incident_items = actionable_by_incident[incident_no]
+                    result = incident_items[0]['result']
                     etrack_user_id = result.etrack_user_id
                     expected_jira = result.db_jira_account
 
                     # Check prerequisites
                     if not expected_jira:
-                        for v in result.fi_validations:
-                            if not v.matches:
-                                # Apply --fix-from filter first
-                                skip, reason = should_skip_for_filter(v)
-                                if skip:
-                                    fixed_skipped.append({'fi_id': v.fi_id, 'reason': reason})
-                                else:
-                                    fixed_failed.append({
-                                        'fi_id': v.fi_id,
+                        for item in incident_items:
+                            skip, reason = should_skip_for_filter(item)
+                            if skip:
+                                fixed_skipped.append({'fi_id': item['fi_id'], 'reason': reason})
+                            else:
+                                fixed_failed.append({
+                                        'fi_id': item['fi_id'],
                                         'reason': 'No jira_account in database',
                                         'solution': f'python3 -m account_manager.cli fetch-jira-id {etrack_user_id}'
                                     })
@@ -2486,15 +2583,13 @@ def main():
                     # Check if account is verified
                     account = db.get_account(etrack_user_id=etrack_user_id)
                     if not account:
-                        for v in result.fi_validations:
-                            if not v.matches:
-                                # Apply --fix-from filter first
-                                skip, reason = should_skip_for_filter(v)
-                                if skip:
-                                    fixed_skipped.append({'fi_id': v.fi_id, 'reason': reason})
-                                else:
-                                    fixed_failed.append({
-                                        'fi_id': v.fi_id,
+                        for item in incident_items:
+                            skip, reason = should_skip_for_filter(item)
+                            if skip:
+                                fixed_skipped.append({'fi_id': item['fi_id'], 'reason': reason})
+                            else:
+                                fixed_failed.append({
+                                        'fi_id': item['fi_id'],
                                         'reason': 'Account not found',
                                         'solution': f'python3 -m account_manager.cli add {etrack_user_id} && python3 -m account_manager.cli fetch-email {etrack_user_id} && python3 -m account_manager.cli fetch-jira-id {etrack_user_id}'
                                     })
@@ -2529,93 +2624,118 @@ def main():
                             reason_msg = f'Account verification status unknown (manual_verified={manual_verified or "empty"})'
                             solution_msg = f'python3 -m account_manager.cli get {etrack_user_id}  # Check data, then: python3 -m account_manager.cli update-verified {etrack_user_id} <status>'
 
-                        for v in result.fi_validations:
-                            if not v.matches:
-                                # Apply --fix-from filter first
-                                skip, reason = should_skip_for_filter(v)
-                                if skip:
-                                    fixed_skipped.append({'fi_id': v.fi_id, 'reason': reason})
-                                else:
-                                    fixed_failed.append({
-                                        'fi_id': v.fi_id,
+                        for item in incident_items:
+                            skip, reason = should_skip_for_filter(item)
+                            if skip:
+                                fixed_skipped.append({'fi_id': item['fi_id'], 'reason': reason})
+                            else:
+                                fixed_failed.append({
+                                        'fi_id': item['fi_id'],
                                         'reason': reason_msg,
                                         'solution': solution_msg
                                     })
                         continue
 
                     # Attempt to fix each mismatched FI
-                    for v in result.fi_validations:
-                        if not v.matches:
-                            # Check if FI should be skipped
-                            if v.fi_id in skip_fi_ids:
+                    for item in sorted(incident_items, key=lambda x: _fi_sort_key(x['fi_id'])):
+                        fi_validation = item['validation']
+
+                        if item['fi_id'] in skip_fi_ids:
+                            fixed_skipped.append({
+                                'fi_id': item['fi_id'],
+                                'reason': 'Excluded via --skip-fi'
+                            })
+                            continue
+
+                        skip, reason = should_skip_for_filter(item)
+                        if skip:
+                            fixed_skipped.append({'fi_id': item['fi_id'], 'reason': reason})
+                            continue
+
+                        if fix_interactive and not fix_dry_run:
+                            print(
+                                f"\n  {item['fi_id']}: Assignee={item['current_assignee']}, "
+                                f"{fi_sync_field_name}={item['current_secondary']} -> {expected_jira}"
+                            )
+                            response = input("  Fix this? (y/n/q to quit): ").strip().lower()
+                            if response == 'q':
+                                print("  Stopping fix operation.")
+                                break
+                            if response != 'y':
                                 fixed_skipped.append({
-                                    'fi_id': v.fi_id,
-                                    'reason': 'Excluded via --skip-fi'
+                                    'fi_id': item['fi_id'],
+                                    'reason': 'User declined'
                                 })
                                 continue
 
-                            # Check --fix-from filter
-                            skip, reason = should_skip_for_filter(v)
-                            if skip:
-                                fixed_skipped.append({'fi_id': v.fi_id, 'reason': reason})
-                                continue
+                        try:
+                            if fix_dry_run:
+                                fixed_success.append({
+                                    'fi_id': item['fi_id'],
+                                    'old_assignee': item['current_assignee'],
+                                    'old_secondary': item['current_secondary'],
+                                    'new_assignee': expected_jira,
+                                    'dry_run': True
+                                })
+                                db.log_action(
+                                    'fix_fi', 'fi', item['fi_id'],
+                                    old_value=f"assignee={item['current_assignee']}; {fi_sync_field_name}={item['current_secondary']}",
+                                    new_value=expected_jira,
+                                    status='dry_run',
+                                    details=f'etrack_user={etrack_user_id}'
+                                )
+                            else:
+                                update_failures = []
 
-                            # Interactive prompt
-                            if fix_interactive and not fix_dry_run:
-                                print(f"\n  {v.fi_id}: {v.jira_assignee or 'None'} -> {expected_jira}")
-                                response = input("  Fix this? (y/n/q to quit): ").strip().lower()
-                                if response == 'q':
-                                    print("  Stopping fix operation.")
-                                    break
-                                if response != 'y':
-                                    fixed_skipped.append({
-                                        'fi_id': v.fi_id,
-                                        'reason': 'User declined'
-                                    })
-                                    continue
+                                if not item['assignee_matches']:
+                                    if not jira_client.update_assignee(item['fi_id'], expected_jira):
+                                        update_failures.append('Assignee')
 
-                            try:
-                                if fix_dry_run:
-                                    # Dry-run: just report what would happen
+                                if not item['secondary_matches']:
+                                    if not jira_client.update_named_field(item['fi_id'], fi_sync_field_name, expected_jira):
+                                        update_failures.append(fi_sync_field_name)
+
+                                if not update_failures:
                                     fixed_success.append({
-                                        'fi_id': v.fi_id,
-                                        'old_assignee': v.jira_assignee,
+                                        'fi_id': item['fi_id'],
+                                        'old_assignee': item['current_assignee'],
+                                        'old_secondary': item['current_secondary'],
                                         'new_assignee': expected_jira,
-                                        'dry_run': True
+                                        'dry_run': False
                                     })
-                                    db.log_action('fix_fi', 'fi', v.fi_id,
-                                                 old_value=v.jira_assignee, new_value=expected_jira,
-                                                 status='dry_run', details=f'etrack_user={etrack_user_id}')
+                                    db.log_action(
+                                        'fix_fi', 'fi', item['fi_id'],
+                                        old_value=f"assignee={item['current_assignee']}; {fi_sync_field_name}={item['current_secondary']}",
+                                        new_value=expected_jira,
+                                        status='success',
+                                        details=f'etrack_user={etrack_user_id}'
+                                    )
                                 else:
-                                    success = jira_client.update_assignee(v.fi_id, expected_jira)
-                                    if success:
-                                        fixed_success.append({
-                                            'fi_id': v.fi_id,
-                                            'old_assignee': v.jira_assignee,
-                                            'new_assignee': expected_jira,
-                                            'dry_run': False
-                                        })
-                                        db.log_action('fix_fi', 'fi', v.fi_id,
-                                                     old_value=v.jira_assignee, new_value=expected_jira,
-                                                     status='success', details=f'etrack_user={etrack_user_id}')
-                                    else:
-                                        fixed_failed.append({
-                                            'fi_id': v.fi_id,
-                                            'reason': f'Jira API update failed (target: {expected_jira})',
-                                            'solution': f'Check: 1) FI status allows reassign, 2) {expected_jira} is valid Jira user, 3) API token has permission'
-                                        })
-                                        db.log_action('fix_fi', 'fi', v.fi_id,
-                                                     old_value=v.jira_assignee, new_value=expected_jira,
-                                                     status='failed', details='Jira API update failed')
-                            except Exception as e:
-                                fixed_failed.append({
-                                    'fi_id': v.fi_id,
-                                    'reason': str(e),
-                                    'solution': f'Check Jira connection and verify {expected_jira} exists in Jira'
-                                })
-                                db.log_action('fix_fi', 'fi', v.fi_id,
-                                             old_value=v.jira_assignee, new_value=expected_jira,
-                                             status='failed', details=str(e))
+                                    fixed_failed.append({
+                                        'fi_id': item['fi_id'],
+                                        'reason': f"Jira API update failed for: {', '.join(update_failures)} (target: {expected_jira})",
+                                        'solution': f'Check: 1) FI status allows updates, 2) {expected_jira} is a valid Jira user, 3) API token has permission for both fields'
+                                    })
+                                    db.log_action(
+                                        'fix_fi', 'fi', item['fi_id'],
+                                        old_value=f"assignee={item['current_assignee']}; {fi_sync_field_name}={item['current_secondary']}",
+                                        new_value=expected_jira,
+                                        status='failed',
+                                        details=f"failed_fields={','.join(update_failures)}"
+                                    )
+                        except Exception as e:
+                            fixed_failed.append({
+                                'fi_id': item['fi_id'],
+                                'reason': str(e),
+                                'solution': f'Check Jira connection and verify {expected_jira} exists in Jira'
+                            })
+                            db.log_action(
+                                'fix_fi', 'fi', item['fi_id'],
+                                old_value=f"assignee={item['current_assignee']}; {fi_sync_field_name}={item['current_secondary']}",
+                                new_value=expected_jira,
+                                status='failed',
+                                details=str(e)
+                            )
 
                 # Summary
                 print("\n" + "-" * 40)
@@ -2629,7 +2749,10 @@ def main():
                     label = "Would fix" if fix_dry_run else "Successfully fixed"
                     print(f"\n+ {label}: {len(fixed_success)}")
                     for item in sorted(fixed_success, key=lambda x: _fi_sort_key(x['fi_id'])):
-                        print(f"  {item['fi_id']}: {item['old_assignee'] or 'None'} -> {item['new_assignee']}")
+                        print(
+                            f"  {item['fi_id']}: Assignee={item['old_assignee'] or 'N/A'}, "
+                            f"{fi_sync_field_name}={item['old_secondary'] or 'N/A'} -> {item['new_assignee']}"
+                        )
 
                 if fixed_skipped:
                     print(f"\no Skipped: {len(fixed_skipped)}")
@@ -2662,12 +2785,8 @@ def main():
                 print("\nNo conflict FIs found.")
 
             # Mismatch FIs (excluding conflict FIs)
-            if mismatches:
-                all_mismatch_fi_ids = set()
-                for result in mismatches:
-                    for v in result.fi_validations:
-                        if not v.matches:
-                            all_mismatch_fi_ids.add(v.fi_id)
+            if mismatch_data:
+                all_mismatch_fi_ids = {item['fi_id'] for item in mismatch_data}
 
                 # Exclude conflict FIs from mismatch list
                 conflict_fi_ids = set(conflicts.keys()) if conflicts else set()
@@ -2675,7 +2794,7 @@ def main():
 
                 if mismatch_only_fi_ids:
                     mismatch_fi_list = ','.join(_sort_fi_ids(mismatch_only_fi_ids))
-                    print(f"\nMismatch FIs ({len(mismatch_only_fi_ids)} - Jira assignee doesn't match expected):")
+                    print(f"\nMismatch FIs ({len(mismatch_only_fi_ids)} - Assignee or {fi_sync_field_name} doesn't match expected):")
                     print(f"  Mismatch-List={mismatch_fi_list}")
                 else:
                     print("\nNo mismatch FIs found (all mismatches are conflicts).")

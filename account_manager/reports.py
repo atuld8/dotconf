@@ -841,14 +841,16 @@ class ReportGenerator:
     @staticmethod
     def generate_fi_reassignment_report(mismatches: List[Dict[str, Any]],
                                          group_by_current: bool = True,
-                                         include_details: bool = True) -> str:
+                                         include_details: bool = True,
+                                         secondary_field_label: str = 'Consulting with R&D') -> str:
         """
         Generate a report of FI reassignments needed.
 
         Args:
-            mismatches: List of dicts with 'fi_id', 'current_assignee', 'expected_assignee'
+            mismatches: List of dicts with 'fi_id', 'current_assignee', 'current_secondary', 'expected_assignee'
             group_by_current: If True, group by current assignee; else by expected
             include_details: If False, suppress full FI list and fix command block
+            secondary_field_label: Label for the secondary Jira field being validated
 
         Returns:
             Formatted reassignment report
@@ -860,11 +862,18 @@ class ReportGenerator:
         report.append("=" * 80)
         report.append("                    FI REASSIGNMENT REPORT")
 
-        # Determine if there's a common current assignee
+        # Determine if there's a common source user across assignee and secondary field.
+        current_sources = set()
         current_assignees = set(m.get('current_assignee', '') for m in mismatches)
-        if len(current_assignees) == 1:
-            common_current = list(current_assignees)[0]
-            report.append(f"                 Current Assignee: {common_current}")
+        current_secondary_values = set(m.get('current_secondary', '') for m in mismatches)
+        for value in current_assignees | current_secondary_values:
+            normalized = (value or '').strip()
+            if normalized and normalized != 'N/A':
+                current_sources.add(normalized)
+
+        if len(current_sources) == 1:
+            common_current = list(current_sources)[0]
+            report.append(f"                    Current Source: {common_current}")
         else:
             common_current = None
 
@@ -900,14 +909,15 @@ class ReportGenerator:
             report.append("")
             report.append("FULL LIST")
             report.append("-" * 9)
-            report.append(f"{'FI ID':<12} {'Current Assignee':<20} {'Should Be':<28}")
-            report.append(f"{'-'*12} {'-'*20} {'-'*28}")
+            report.append(f"{'FI ID':<12} {'Assignee':<18} {secondary_field_label:<22} {'Should Be':<28}")
+            report.append(f"{'-'*12} {'-'*18} {'-'*22} {'-'*28}")
 
             for m in sorted(mismatches, key=lambda x: _fi_sort_key(x.get('fi_id', ''))):
                 fi_id = m.get('fi_id', 'N/A')
                 current = m.get('current_assignee', 'N/A')
+                current_secondary = m.get('current_secondary', 'N/A')
                 expected = m.get('expected_assignee', 'N/A')
-                report.append(f"{fi_id:<12} {current:<18} ->  {expected}")
+                report.append(f"{fi_id:<12} {current:<18} {current_secondary:<22} {expected}")
 
             report.append("")
             report.append("=" * 80)

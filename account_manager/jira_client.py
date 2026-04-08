@@ -238,6 +238,52 @@ class JiraClient:
             print(f"Request error updating assignee for {issue_key}: {e}")
             return False
 
+    def update_named_field(self, issue_key: str, field_name: str, field_value: Any) -> bool:
+        """
+        Update a Jira field using its display name.
+
+        Args:
+            issue_key: Jira issue key (e.g., 'FI-59131')
+            field_name: Jira field display name
+            field_value: New field value
+
+        Returns:
+            True if successful, False otherwise
+        """
+        field_id = self.get_field_id_by_name(field_name)
+        if not field_id:
+            print(f"X Failed to update {field_name} for {issue_key}: field not found")
+            return False
+
+        payload_options = [
+            {'fields': {field_id: {'name': field_value}}},
+            {'fields': {field_id: {'value': field_value}}},
+            {'fields': {field_id: field_value}},
+        ]
+
+        url = f"{self.jira_url}/rest/api/2/issue/{issue_key}"
+        last_error = None
+
+        for payload in payload_options:
+            try:
+                response = requests.put(
+                    url,
+                    headers=self.headers,
+                    data=json.dumps(payload),
+                    timeout=self.timeout
+                )
+
+                if response.status_code == 204:
+                    print(f"+ Successfully updated {field_name} for {issue_key} to {field_value}")
+                    return True
+
+                last_error = f"Status {response.status_code}, {response.text}"
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)
+
+        print(f"X Failed to update {field_name} for {issue_key}: {last_error}")
+        return False
+
     def get_multiple_assignees(self, issue_keys: List[str], batch_size: int = 50) -> Dict[str, Optional[str]]:
         """
         Get assignees for multiple issues efficiently using JQL batch search.
@@ -593,6 +639,11 @@ class MockJiraClient:
             mock_data: Dictionary mapping FI-ID to assignee username
         """
         self.mock_data = mock_data or {}
+        self.mock_named_fields = {}
+
+    def get_field_id_by_name(self, field_name: str) -> Optional[str]:
+        """Mock field lookup using the display name as the field identifier."""
+        return field_name if field_name else None
 
     def get_assignee(self, issue_key: str) -> Optional[str]:
         """Get mock assignee"""
@@ -635,6 +686,26 @@ class MockJiraClient:
         print(f"  [MOCK] Would update {issue_key} assignee to {assignee_name}")
         self.mock_data[issue_key] = assignee_name
         return True
+
+    def update_named_field(self, issue_key: str, field_name: str, field_value: Any) -> bool:
+        """Mock update for a Jira custom field."""
+        print(f"  [MOCK] Would update {issue_key} field '{field_name}' to {field_value}")
+        self.mock_named_fields.setdefault(issue_key, {})[field_name] = field_value
+        return True
+
+    def get_field_batch(self, issue_keys: List[str], field: str, batch_size: int = 50) -> Dict[str, Any]:
+        """Mock batch fetch for a Jira field ID/display name."""
+        return {
+            key: self.mock_named_fields.get(key, {}).get(field)
+            for key in issue_keys
+        }
+
+    def get_named_field_batch(self, issue_keys: List[str], field_name: str, batch_size: int = 50) -> Dict[str, Any]:
+        """Mock batch fetch for a Jira custom field."""
+        return {
+            key: self.mock_named_fields.get(key, {}).get(field_name)
+            for key in issue_keys
+        }
 
     def get_multiple_assignees(self, issue_keys: List[str], batch_size: int = 50) -> Dict[str, Optional[str]]:
         """Mock batch assignee fetch"""
