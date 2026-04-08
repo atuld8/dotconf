@@ -657,7 +657,11 @@ def _field_value_by_name(issue: Dict[str, Any], display_name: str) -> Any:
 def _resolve_profile_type(requested_type: str, issue_key: str) -> str:
     normalized = requested_type.strip().lower()
     if normalized == "auto":
-        return "fi" if re.match(r"^FI-\d+$", issue_key) else "generic"
+        if re.match(r"^FI-\d+$", issue_key):
+            return "fi"
+        if re.match(r"^PVM-\d+$", issue_key):
+            return "pvm"
+        return "generic"
     if normalized == "default":
         return "generic"
     return normalized
@@ -944,6 +948,13 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
     _append_if_present(rows, "Customer", fields.get("customfield_18901"))
     _append_if_present(rows, "Slack", fields.get("customfield_24004"))
 
+    if profile_type == "pvm":
+        _append_if_present(rows, "Security Issue Watchers", _field_value_by_name(issue, "Security Issue Watchers"))
+        _append_if_present(rows, "CVSS Score", _field_value_by_name(issue, "CVSS Score"))
+        _append_if_present(rows, "Impact", _field_value_by_name(issue, "Impact"))
+        _append_if_present(rows, "Source", _field_value_by_name(issue, "Source"))
+        _append_if_present(rows, "Security Level", _field_value_by_name(issue, "Security Level"))
+
     if profile_type == "fi":
         label_order = {
             "Solution": 1,
@@ -961,6 +972,20 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "Watchers": 13,
             "Watcher Groups": 14,
             "Slack": 15,
+        }
+        rows.sort(key=lambda row: label_order.get(row[0], 100))
+    elif profile_type == "pvm":
+        label_order = {
+            "Severity": 1,
+            "Security Level": 2,
+            "CVSS Score": 3,
+            "Impact": 4,
+            "Source": 5,
+            "Security Issue Watchers": 6,
+            "Watchers": 7,
+            "Watcher Groups": 8,
+            "Epic Link": 9,
+            "Sprint": 10,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
 
@@ -1018,6 +1043,11 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Watchers",
         "Watcher Groups",
         "Slack",
+        "Security Issue Watchers",
+        "CVSS Score",
+        "Impact",
+        "Source",
+        "Security Level",
     ]
 
     if output_format == "json":
@@ -1030,6 +1060,12 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
                 f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
                 f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Customer')} | "
                 f"{_summary_value(summary_rows, 'Etrack Ref')}"
+            )
+        elif profile_type == "pvm":
+            print(
+                f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
+                f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Security Level')} | "
+                f"{_summary_value(summary_rows, 'CVSS Score')}"
             )
         else:
             print(
@@ -1384,7 +1420,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Get Jira issue details (generic + FI profiles).",
         usage=(
-            "%(prog)s [-h] [-t|--type {auto,fi,generic,default}] [-s|--search] "
+            "%(prog)s [-h] [-t|--type {auto,fi,pvm,generic,default}] [-s|--search] "
             "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
             "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections SECTIONS] "
             "[-E|--show-empty] [-l|--long-text-style {paragraph,wrapped,raw}] "
@@ -1400,8 +1436,8 @@ def main() -> int:
         "-type",
         dest="issue_type",
         default="auto",
-        choices=["auto", "fi", "generic", "default"],
-        help="Profile type: auto (default), fi, generic, or default.",
+        choices=["auto", "fi", "pvm", "generic", "default"],
+        help="Profile type: auto (default), fi, pvm, generic, or default.",
     )
     parser.add_argument(
         "-s",
