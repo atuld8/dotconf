@@ -763,7 +763,7 @@ def _format_sfdc_case_links_for_display(links: List[Dict[str, str]]) -> str:
 
 
 def _print_sfdc_case_links_section(links: List[Dict[str, str]]) -> None:
-    print("\nSalesForce Case Links:")
+    print("\n* SalesForce Case Links:")
     rows: List[List[str]] = []
     for link in links:
         label = str(link.get("label", "-")).strip() or "-"
@@ -1057,20 +1057,20 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
     if output_format == "minimal":
         if profile_type == "fi":
             print(
-                f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
-                f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Customer')} | "
-                f"{_summary_value(summary_rows, 'Etrack Ref')}"
+                f"* Issue: {_summary_value(summary_rows, 'Issue')} | * Status: {_summary_value(summary_rows, 'Status')} | "
+                f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | * Customer: {_summary_value(summary_rows, 'Customer')} | "
+                f"* Etrack Ref: {_summary_value(summary_rows, 'Etrack Ref')}"
             )
         elif profile_type == "pvm":
             print(
-                f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
-                f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Security Level')} | "
-                f"{_summary_value(summary_rows, 'CVSS Score')}"
+                f"* Issue: {_summary_value(summary_rows, 'Issue')} | * Status: {_summary_value(summary_rows, 'Status')} | "
+                f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | * Security Level: {_summary_value(summary_rows, 'Security Level')} | "
+                f"* CVSS Score: {_summary_value(summary_rows, 'CVSS Score')}"
             )
         else:
             print(
-                f"{_summary_value(summary_rows, 'Issue')} | {_summary_value(summary_rows, 'Status')} | "
-                f"{_summary_value(summary_rows, 'Assignee')} | {_summary_value(summary_rows, 'Priority')}"
+                f"* Issue: {_summary_value(summary_rows, 'Issue')} | * Status: {_summary_value(summary_rows, 'Status')} | "
+                f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | * Priority: {_summary_value(summary_rows, 'Priority')}"
             )
         return
 
@@ -1081,76 +1081,112 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
 
     if output_format == "grouped":
         print()
-        print(f"Issue: {_summary_value(summary_rows, 'Issue')}")
-        print(f"Summary: {_summary_value(summary_rows, 'Summary')}")
-        print("\nState:")
-        print(f"  Project: {_summary_value(summary_rows, 'Project')}")
-        print(f"  Type: {_summary_value(summary_rows, 'Type')}")
-        print(f"  Priority: {_summary_value(summary_rows, 'Priority')}")
-        print(f"  Status: {_summary_value(summary_rows, 'Status')}")
-        print(f"  Resolution: {_summary_value(summary_rows, 'Resolution')}")
-        print("\nPeople:")
-        print(f"  Assignee: {_summary_value(summary_rows, 'Assignee')}")
-        print(f"  Reporter: {_summary_value(summary_rows, 'Reporter')}")
-        print(f"  Creator: {_summary_value(summary_rows, 'Creator')}")
-        print("\nMetadata:")
-        print(f"  Parent: {_summary_value(summary_rows, 'Parent')}")
-        print(f"  Components: {_summary_value(summary_rows, 'Components')}")
-        print(f"  Labels: {_summary_value(summary_rows, 'Labels')}")
-        print(f"  Fix Versions: {_summary_value(summary_rows, 'Fix Versions')}")
-        print(f"  Affects Versions: {_summary_value(summary_rows, 'Affects Versions')}")
+        print(f"* Issue: {_summary_value(summary_rows, 'Issue')}")
+        print(f"* Summary: {_summary_value(summary_rows, 'Summary')}")
+        print("\n* State:")
+        print(f"  * Project: {_summary_value(summary_rows, 'Project')}")
+        print(f"  * Type: {_summary_value(summary_rows, 'Type')}")
+        print(f"  * Priority: {_summary_value(summary_rows, 'Priority')}")
+        print(f"  * Status: {_summary_value(summary_rows, 'Status')}")
+        print(f"  * Resolution: {_summary_value(summary_rows, 'Resolution')}")
+        print("\n* People:")
+        print(f"  * Assignee: {_summary_value(summary_rows, 'Assignee')}")
+        print(f"  * Reporter: {_summary_value(summary_rows, 'Reporter')}")
+        print(f"  * Creator: {_summary_value(summary_rows, 'Creator')}")
+        print("\n* Metadata:")
+        print(f"  * Parent: {_summary_value(summary_rows, 'Parent')}")
+        print(f"  * Components: {_summary_value(summary_rows, 'Components')}")
+        print(f"  * Labels: {_summary_value(summary_rows, 'Labels')}")
+        print(f"  * Fix Versions: {_summary_value(summary_rows, 'Fix Versions')}")
+        print(f"  * Affects Versions: {_summary_value(summary_rows, 'Affects Versions')}")
         optional_present = [
             label
             for label in optional_labels
             if _summary_value(summary_rows, label) != "-" or (profile_type == "fi" and label == "Case Priority")
         ]
         if optional_present:
-            print("\nAdditional:")
+            print("\n* Additional:")
             for label in optional_present:
-                print(f"  {label}: {_summary_value(summary_rows, label)}")
-        print("\nActivity:")
-        print(f"  Comments: {_summary_value(summary_rows, 'Comments')}")
-        print(f"  Attachments: {_summary_value(summary_rows, 'Attachments')}")
-        print(f"  Watcher Count: {_summary_value(summary_rows, 'Watcher Count')}")
-        print(f"  Created: {_summary_value(summary_rows, 'Created')}")
-        print(f"  Updated: {_summary_value(summary_rows, 'Updated')}")
-        print(f"  Resolved: {_summary_value(summary_rows, 'Resolved')}")
+                print(f"  * {label}: {_summary_value(summary_rows, label)}")
+        print("\n* Activity:")
+        print(f"  * Comments: {_summary_value(summary_rows, 'Comments')}")
+        print(f"  * Attachments: {_summary_value(summary_rows, 'Attachments')}")
+        print(f"  * Watcher Count: {_summary_value(summary_rows, 'Watcher Count')}")
+        print(f"  * Created: {_summary_value(summary_rows, 'Created')}")
+        print(f"  * Updated: {_summary_value(summary_rows, 'Updated')}")
+        print(f"  * Resolved: {_summary_value(summary_rows, 'Resolved')}")
         return
 
     separator = "-" * 140
 
     print()
     print(
-        f"Issue: {_summary_value(summary_rows, 'Issue')} | "
-        f"Project: {_summary_value(summary_rows, 'Project')} | "
-        f"Type: {_summary_value(summary_rows, 'Type')} | "
-        f"Priority: {_summary_value(summary_rows, 'Priority')} | "
-        f"Status: {_summary_value(summary_rows, 'Status')} | "
-        f"Resolution: {_summary_value(summary_rows, 'Resolution')}"
+        f"* Issue: {_summary_value(summary_rows, 'Issue')} | "
+        f"* Project: {_summary_value(summary_rows, 'Project')} | "
+        f"* Type: {_summary_value(summary_rows, 'Type')} | "
+        f"* Priority: {_summary_value(summary_rows, 'Priority')} | "
+        f"* Status: {_summary_value(summary_rows, 'Status')} | "
+        f"* Resolution: {_summary_value(summary_rows, 'Resolution')}"
     )
     print(separator)
-    print(f"Summary: {_compact_text(_summary_value(summary_rows, 'Summary'), max_len=180)}")
+    print(f"* Summary: {_compact_text(_summary_value(summary_rows, 'Summary'), max_len=180)}")
     print(separator)
     print(
-        f"Assignee: {_summary_value(summary_rows, 'Assignee')} | "
-        f"Reporter: {_summary_value(summary_rows, 'Reporter')} | "
-        f"Components: {_summary_value(summary_rows, 'Components')} | "
-        f"Labels: {_summary_value(summary_rows, 'Labels')}"
+        f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | "
+        f"* Reporter: {_summary_value(summary_rows, 'Reporter')} | "
+        f"* Components: {_summary_value(summary_rows, 'Components')} | "
+        f"* Labels: {_summary_value(summary_rows, 'Labels')}"
     )
     print(separator)
-    optional_parts = [
-        f"{label}: {_compact_text(_summary_value(summary_rows, label), max_len=80)}"
-        for label in optional_labels
-        if _summary_value(summary_rows, label) != "-" or (profile_type == "fi" and label == "Case Priority")
-    ]
+    optional_parts = []
+    pvm_long_parts = []
+    for label in optional_labels:
+        value = _summary_value(summary_rows, label)
+        if value == "-" and not (profile_type == "fi" and label == "Case Priority"):
+            continue
+
+        if profile_type == "pvm" and label in {"Solution", "Progress Status"}:
+            formatted_value = value
+        else:
+            formatted_value = _compact_text(value, max_len=80)
+
+        field_prefix = "* "
+        part = f"{field_prefix}{label}: {formatted_value}"
+        if profile_type == "pvm" and label in {"Solution", "Progress Status"}:
+            pvm_long_parts.append(part)
+        else:
+            optional_parts.append(part)
     if optional_parts:
-        _print_compact_segments(optional_parts)
+        if pvm_long_parts:
+            print()
+            for part in pvm_long_parts:
+                print(part)
+                print()
+
+        if profile_type == "pvm":
+            cvss_index = next(
+                (index for index, part in enumerate(optional_parts) if part.startswith("* CVSS Score:")),
+                -1,
+            )
+            if cvss_index > 0:
+                _print_compact_segments(optional_parts[:cvss_index])
+                _print_compact_segments(optional_parts[cvss_index:])
+            else:
+                _print_compact_segments(optional_parts)
+        else:
+            _print_compact_segments(optional_parts)
+        print(separator)
+    elif pvm_long_parts:
+        print()
+        for part in pvm_long_parts:
+            print(part)
+            print()
         print(separator)
     print(
-        f"Updated: {_summary_value(summary_rows, 'Updated')} | "
-        f"Comments: {_summary_value(summary_rows, 'Comments')} | "
-        f"Attachments: {_summary_value(summary_rows, 'Attachments')} | "
-        f"Watcher Count: {_summary_value(summary_rows, 'Watcher Count')}"
+        f"* Updated: {_summary_value(summary_rows, 'Updated')} | "
+        f"* Comments: {_summary_value(summary_rows, 'Comments')} | "
+        f"* Attachments: {_summary_value(summary_rows, 'Attachments')} | "
+        f"* Watcher Count: {_summary_value(summary_rows, 'Watcher Count')}"
     )
 
 
@@ -1655,7 +1691,7 @@ def main() -> int:
     if "description" in enabled_sections:
         if args.desc != "none" and description and _is_meaningful_text(_clean_text(description)):
             print(section_separator)
-            print("\nDescription:")
+            print("\n* Description:")
             print(
                 _format_multiline_text(
                     description,
@@ -1668,15 +1704,15 @@ def main() -> int:
             print(section_separator)
         elif args.show_empty:
             print(section_separator)
-            print("\nDescription: None")
+            print("\n* Description: None")
             print(section_separator)
 
     if "status" in enabled_sections:
         if status_context:
             print(section_separator)
-            print("\nCurrent Status / Next Steps:")
+            print("\n* Current Status / Next Steps:")
             if "current_status" in status_context:
-                print("  Current Status:")
+                print("  * Current Status:")
                 print(
                     _format_multiline_text(
                         status_context["current_status"],
@@ -1688,7 +1724,7 @@ def main() -> int:
             if "next_steps" in status_context:
                 if "current_status" in status_context:
                     print()
-                print("  Next Steps:")
+                print("  * Next Steps:")
                 print(
                     _format_multiline_text(
                         status_context["next_steps"],
@@ -1700,13 +1736,13 @@ def main() -> int:
             print(section_separator)
         elif args.show_empty:
             print(section_separator)
-            print("\nCurrent Status / Next Steps: None")
+            print("\n* Current Status / Next Steps: None")
             print(section_separator)
 
     if "linked-fis" in enabled_sections:
         if linked_fis:
             print(section_separator)
-            print("\nLinked FIs:")
+            print("\n* Linked FIs:")
             rows = []
             for linked_key in linked_fis:
                 data = (linked_status or {}).get(linked_key, {})
@@ -1721,15 +1757,15 @@ def main() -> int:
             print(section_separator)
         elif args.show_empty:
             print(section_separator)
-            print("\nLinked FIs: None")
+            print("\n* Linked FIs: None")
             print(section_separator)
 
     if "etrack" in enabled_sections:
         if show_etrack_requested:
             print(section_separator)
-            print("\nEtrack details:")
+            print("\n* Etrack details:")
             if not etrack_ids:
-                print("  No etrack incident linked in Jira fields.")
+                print("  * No etrack incident linked in Jira fields.")
             else:
                 rows = []
                 for et in etrack_ids:
@@ -1748,22 +1784,22 @@ def main() -> int:
                 if sfdc_case_links:
                     _print_sfdc_case_links_section(sfdc_case_links)
                 elif args.show_empty:
-                    print("\nSalesForce Case Links: None")
+                    print("\n* SalesForce Case Links: None")
             print(section_separator)
         elif args.show_empty:
             print(section_separator)
-            print("\nEtrack details: disabled (use --show-etrack-details or mode investigate/ops)")
+            print("\n* Etrack details: disabled (use --show-etrack-details or mode investigate/ops)")
             print(section_separator)
 
     if "comments" in enabled_sections:
         if args.show_comments > 0 and comments:
             print(section_separator)
-            print(f"\nLatest {min(args.show_comments, len(comments))} comment(s):")
+            print(f"\n* Latest {min(args.show_comments, len(comments))} comment(s):")
             latest = comments[-args.show_comments:]
             for index, comment in enumerate(latest, 1):
                 author = (comment.get("author") or {}).get("displayName", "-")
                 created = _normalize_timestamp(comment.get("created"))
-                print(f"  {index}. {author} @ {created}")
+                print(f"  * {index}. {author} @ {created}")
                 print(
                     _format_multiline_text(
                         comment.get("body"),
@@ -1778,23 +1814,23 @@ def main() -> int:
             print(section_separator)
         elif args.show_empty:
             print(section_separator)
-            print("\nComments: None")
+            print("\n* Comments: None")
             print(section_separator)
 
     if "fields" in enabled_sections:
         if requested_fields:
             print(section_separator)
-            print("\nSelected Fields:")
+            print("\n* Selected Fields:")
             _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"])
             print(section_separator)
         elif args.show_empty:
             print(section_separator)
-            print("\nSelected Fields: None (use --show-field)")
+            print("\n* Selected Fields: None (use --show-field)")
             print(section_separator)
 
     if "verbose" in enabled_sections and args.verbose:
         print(section_separator)
-        print("\nVerbose Output:")
+        print("\n* Verbose Output:")
         verbose_issue = _filtered_issue_for_verbose(issue, args.include_empty_customfields)
         verbose_issue = _replace_customfield_keys_with_names(verbose_issue)
         verbose_issue = _prune_verbose_noise(verbose_issue)
@@ -1802,7 +1838,7 @@ def main() -> int:
         print(section_separator)
     elif "verbose" in enabled_sections and args.show_empty:
         print(section_separator)
-        print("\nVerbose Output: disabled (use --verbose)")
+        print("\n* Verbose Output: disabled (use --verbose)")
         print(section_separator)
 
     return 0
