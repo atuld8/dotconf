@@ -93,8 +93,9 @@ class EsqlExecutor:
                 result = subprocess.run(
                     cmd,
                     shell=True,
-                    capture_output=True,
-                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
                     timeout=timeout,
                     check=True
                 )
@@ -103,8 +104,9 @@ class EsqlExecutor:
                 cmd = [self.esql_command, '-r', query_name]
                 result = subprocess.run(
                     cmd,
-                    capture_output=True,
-                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
                     timeout=timeout,
                     check=True
                 )
@@ -236,8 +238,9 @@ class EsqlExecutor:
             result = subprocess.run(
                 cmd,
                 shell=True,
-                capture_output=True,
-                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
                 timeout=timeout,
                 input=sql,
                 check=True
