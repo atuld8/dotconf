@@ -81,8 +81,9 @@ class EtrackExecutor:
                     result = subprocess.run(
                         ssh_cmd,
                         shell=True,
-                        capture_output=True,
-                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True,
                         timeout=timeout,
                         input=stdin_input
                     )
@@ -91,8 +92,9 @@ class EtrackExecutor:
                     result = subprocess.run(
                         ssh_cmd,
                         shell=True,
-                        capture_output=True,
-                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True,
                         timeout=timeout
                     )
             else:
@@ -101,8 +103,9 @@ class EtrackExecutor:
                     result = subprocess.run(
                         cmd,
                         shell=use_shell,
-                        capture_output=True,
-                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True,
                         timeout=timeout,
                         input=stdin_input
                     )
@@ -110,8 +113,9 @@ class EtrackExecutor:
                     result = subprocess.run(
                         cmd,
                         shell=use_shell,
-                        capture_output=True,
-                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True,
                         timeout=timeout
                     )
 

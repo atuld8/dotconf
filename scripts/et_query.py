@@ -168,8 +168,9 @@ def _run_esql(sql: str, timeout: int) -> str:
         result = subprocess.run(
             cmd,
             input=sql,
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
             timeout=timeout,
             check=False,
         )

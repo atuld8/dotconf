@@ -209,8 +209,9 @@ def run_equery(query_name: str, ssh_target: Optional[str] = None,
                     # Check if command exists
                     which_result = subprocess.run(
                         ['which', equery_path],
-                        capture_output=True,
-                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True,
                         check=False
                     )
                     if which_result.returncode == 0 or equery_path in ['equery', 'eq']:
@@ -230,8 +231,9 @@ def run_equery(query_name: str, ssh_target: Optional[str] = None,
         # Execute command
         result = subprocess.run(
             cmd,
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
             check=True
         )
 

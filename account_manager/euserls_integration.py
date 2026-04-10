@@ -88,16 +88,18 @@ class EuserlsExecutor:
                 result = subprocess.run(
                     ssh_cmd,
                     shell=True,
-                    capture_output=True,
-                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
                     timeout=30
                 )
             else:
                 # Execute locally (use list for local command)
                 result = subprocess.run(
                     [self.euserls_path, etrack_user_id],
-                    capture_output=True,
-                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
                     timeout=30
                 )
 

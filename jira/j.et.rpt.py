@@ -597,8 +597,9 @@ class EtrackClient:
         result = subprocess.run(
             cmd,
             shell=True,
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
             timeout=timeout,
             input=query
         )

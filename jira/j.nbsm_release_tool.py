@@ -513,7 +513,12 @@ class GitExtractor:
     def _run_git(self, *args) -> str:
         """Run a git command and return output."""
         cmd = ['git', '-C', self.repo_path] + list(args)
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
         if result.returncode != 0:
             raise RuntimeError(f"Git command failed: {result.stderr}")
         return result.stdout.strip()
