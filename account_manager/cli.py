@@ -112,12 +112,15 @@ Display accounts in various formats.
 
 Usage:
     python3 -m account_manager.cli list                  # All accounts (brief)
+    python3 -m account_manager.cli list --format=table   # Table output (default)
+    python3 -m account_manager.cli list --format=csv     # CSV output
     python3 -m account_manager.cli list-incomplete       # Only incomplete accounts
     python3 -m account_manager.cli list-pending-verify   # Complete but pending verification
                                                          # (shows 'no' and 'pending' status only)
 
 Examples:
     python3 -m account_manager.cli list
+    python3 -m account_manager.cli list --format=csv
     python3 -m account_manager.cli list-incomplete
     python3 -m account_manager.cli list-pending-verify
 """)
@@ -1271,13 +1274,49 @@ def main():
                 print(f"X Account not found: {etrack_user_id}")
 
         elif command == 'list':
+            output_format = 'table'
+            for arg in sys.argv[2:]:
+                if arg.startswith('--format='):
+                    output_format = arg.split('=', 1)[1].lower()
+
+            if output_format not in ['table', 'csv']:
+                print(f"X Invalid format: {output_format}")
+                print("  Use 'table' or 'csv'")
+                return
+
             accounts = db.get_all_accounts()
             if accounts:
-                print(f"\nTotal Accounts: {len(accounts)}\n")
-                for acc in accounts:
-                    jira = acc['jira_account'] or 'N/A'
-                    email = acc['cohesity_email'] or acc['veritas_email'] or 'N/A'
-                    print(f"{acc['etrack_user_id']:15} {jira:20} {email}")
+                if output_format == 'csv':
+                    print("etrack_user_id,jira_account,email")
+                    for acc in accounts:
+                        jira = (acc.get('jira_account') or '').replace(',', ' ')
+                        email = (acc.get('cohesity_email') or acc.get('veritas_email') or '').replace(',', ' ')
+                        print(f"{acc.get('etrack_user_id', '')},{jira},{email}")
+                else:
+                    print(f"\nTotal Accounts: {len(accounts)}\n")
+                    headers = ("Etrack User ID", "Jira Account", "Email")
+                    rows = []
+                    for acc in accounts:
+                        rows.append((
+                            acc.get('etrack_user_id') or 'N/A',
+                            acc.get('jira_account') or 'N/A',
+                            acc.get('cohesity_email') or acc.get('veritas_email') or 'N/A'
+                        ))
+
+                    col_widths = [len(h) for h in headers]
+                    for row in rows:
+                        for i, value in enumerate(row):
+                            col_widths[i] = max(col_widths[i], len(str(value)))
+
+                    separator = "+-" + "-+-".join("-" * w for w in col_widths) + "-+"
+                    header_row = "| " + " | ".join(f"{headers[i]:<{col_widths[i]}}" for i in range(len(headers))) + " |"
+
+                    print(separator)
+                    print(header_row)
+                    print(separator)
+                    for row in rows:
+                        print("| " + " | ".join(f"{str(row[i]):<{col_widths[i]}}" for i in range(len(row))) + " |")
+                    print(separator)
             else:
                 print("No accounts found")
 
