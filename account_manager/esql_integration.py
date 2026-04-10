@@ -95,7 +95,6 @@ class EsqlExecutor:
                     shell=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    universal_newlines=True,
                     timeout=timeout,
                     check=True
                 )
@@ -106,16 +105,15 @@ class EsqlExecutor:
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    universal_newlines=True,
                     timeout=timeout,
                     check=True
                 )
-            return result.stdout
+            return result.stdout.decode('utf-8', errors='replace')
 
         except subprocess.TimeoutExpired:
             raise TimeoutError(f"esql query '{query_name}' timed out after {timeout} seconds")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"esql query '{query_name}' failed: {e.stderr}")
+            raise RuntimeError(f"esql query '{query_name}' failed: {e.stderr.decode('utf-8', errors='replace') if e.stderr else ''}")
         except FileNotFoundError:
             raise FileNotFoundError(f"esql command not found: {self.esql_command}")
 
@@ -240,17 +238,16 @@ class EsqlExecutor:
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True,
                 timeout=timeout,
-                input=sql,
+                input=sql.encode('utf-8'),
                 check=True
             )
-            return result.stdout
+            return result.stdout.decode('utf-8', errors='replace')
 
         except subprocess.TimeoutExpired:
             raise TimeoutError(f"esql raw query timed out after {timeout} seconds")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"esql raw query failed: {e.stderr}")
+            raise RuntimeError(f"esql raw query failed: {e.stderr.decode('utf-8', errors='replace') if e.stderr else ''}")
         except FileNotFoundError:
             raise FileNotFoundError(f"esql command not found: {self.esql_command}")
 

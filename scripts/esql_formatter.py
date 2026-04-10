@@ -319,12 +319,11 @@ def run_command(command: str, ssh_target: Optional[str] = None) -> List[str]:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            universal_newlines=True,
             check=True
         )
 
         # Return all non-empty lines
-        lines = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+        lines = [line.strip() for line in result.stdout.decode('utf-8', errors='replace').split('\n') if line.strip()]
 
         if not lines:
             print("Warning: No data lines found in command output", file=sys.stderr)
@@ -336,7 +335,7 @@ def run_command(command: str, ssh_target: Optional[str] = None) -> List[str]:
     except subprocess.CalledProcessError as e:
         print(f"Error executing command: {command}", file=sys.stderr)
         if e.stderr:
-            print(f"Error output: {e.stderr}", file=sys.stderr)
+            print(f"Error output: {e.stderr.decode('utf-8', errors='replace')}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)

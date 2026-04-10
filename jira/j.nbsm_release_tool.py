@@ -516,12 +516,11 @@ class GitExtractor:
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
+            stderr=subprocess.PIPE
         )
         if result.returncode != 0:
-            raise RuntimeError(f"Git command failed: {result.stderr}")
-        return result.stdout.strip()
+            raise RuntimeError(f"Git command failed: {result.stderr.decode('utf-8', errors='replace')}")
+        return result.stdout.decode('utf-8', errors='replace').strip()
 
     def fetch_branch(self) -> None:
         """Fetch the configured branch from remote before any operations.

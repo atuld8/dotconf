@@ -599,15 +599,14 @@ class EtrackClient:
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            universal_newlines=True,
             timeout=timeout,
-            input=query
+            input=query.encode('utf-8')
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"esql failed: {result.stderr[:200]}")
+            raise RuntimeError(f"esql failed: {result.stderr.decode('utf-8', errors='replace')[:200]}")
 
-        return result.stdout
+        return result.stdout.decode('utf-8', errors='replace')
 
     def _parse_esql_output(self, output: str, fields: List[str]) -> Dict[str, Dict[str, str]]:
         """

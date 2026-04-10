@@ -167,10 +167,9 @@ def _run_esql(sql: str, timeout: int) -> str:
     try:
         result = subprocess.run(
             cmd,
-            input=sql,
+            input=sql.encode('utf-8'),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            universal_newlines=True,
             timeout=timeout,
             check=False,
         )
@@ -180,12 +179,12 @@ def _run_esql(sql: str, timeout: int) -> str:
         raise EtQueryError(f"Unable to execute esql: {exc}") from exc
 
     if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr.decode('utf-8', errors='replace') if result.stderr else "").strip()
+        stdout = (result.stdout.decode('utf-8', errors='replace') if result.stdout else "").strip()
         message = stderr or stdout or f"esql failed with exit code {result.returncode}"
         raise EtQueryError(message)
 
-    return result.stdout
+    return result.stdout.decode('utf-8', errors='replace')
 
 
 def _should_skip_line(line: str) -> bool:

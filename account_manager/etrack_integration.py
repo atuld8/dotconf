@@ -83,9 +83,8 @@ class EtrackExecutor:
                         shell=True,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        universal_newlines=True,
                         timeout=timeout,
-                        input=stdin_input
+                        input=stdin_input.encode('utf-8')
                     )
                 else:
                     ssh_cmd = f"ssh {self.ssh_target} '{cmd}'"
@@ -94,7 +93,6 @@ class EtrackExecutor:
                         shell=True,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        universal_newlines=True,
                         timeout=timeout
                     )
             else:
@@ -105,9 +103,8 @@ class EtrackExecutor:
                         shell=use_shell,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        universal_newlines=True,
                         timeout=timeout,
-                        input=stdin_input
+                        input=stdin_input.encode('utf-8')
                     )
                 else:
                     result = subprocess.run(
@@ -115,16 +112,15 @@ class EtrackExecutor:
                         shell=use_shell,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        universal_newlines=True,
                         timeout=timeout
                     )
 
             if result.returncode != 0:
                 print(f"Warning: Command failed: {cmd}")
-                print(f"Error: {result.stderr}")
+                print(f"Error: {result.stderr.decode('utf-8', errors='replace')}")
                 return None
 
-            return result.stdout
+            return result.stdout.decode('utf-8', errors='replace')
 
         except subprocess.TimeoutExpired:
             print(f"Error: Command timed out: {cmd}")

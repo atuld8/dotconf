@@ -90,7 +90,6 @@ class EuserlsExecutor:
                     shell=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    universal_newlines=True,
                     timeout=30
                 )
             else:
@@ -99,16 +98,15 @@ class EuserlsExecutor:
                     [self.euserls_path, etrack_user_id],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    universal_newlines=True,
                     timeout=30
                 )
 
             if result.returncode != 0:
                 print(f"Warning: euserls command failed for {etrack_user_id}")
-                print(f"Error: {result.stderr}")
+                print(f"Error: {result.stderr.decode('utf-8', errors='replace')}")
                 return None
 
-            return result.stdout
+            return result.stdout.decode('utf-8', errors='replace')
 
         except subprocess.TimeoutExpired:
             print(f"Error: euserls command timed out for {etrack_user_id}")

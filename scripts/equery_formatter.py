@@ -233,13 +233,12 @@ def run_equery(query_name: str, ssh_target: Optional[str] = None,
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            universal_newlines=True,
             check=True
         )
 
         # Filter output: only lines starting with INCIDENT or digits (matching egrep "^INCIDENT|^[0-9]")
         lines = []
-        for line in result.stdout.split('\n'):
+        for line in result.stdout.decode('utf-8', errors='replace').split('\n'):
             line = line.strip()
             if line and (line.startswith('INCIDENT') or (line and line[0].isdigit())):
                 lines.append(line)
@@ -254,7 +253,7 @@ def run_equery(query_name: str, ssh_target: Optional[str] = None,
     except subprocess.CalledProcessError as e:
         print(f"Error executing command: {' '.join(cmd)}", file=sys.stderr)
         if e.stderr:
-            print(f"Error output: {e.stderr}", file=sys.stderr)
+            print(f"Error output: {e.stderr.decode('utf-8', errors='replace')}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)
