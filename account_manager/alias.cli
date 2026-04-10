@@ -5,3 +5,4 @@ alias am.cli.rpt='am.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report -
 alias am.cli.lspv='am.cli list-pending-verify'
 alias am.cli.lsic='am.cli list-incomplete'
 alias am.cli.au='am.cli auto-update'
+alias am.cli.etusr2emails='am.cli lookup-etrack-emails --input=user --email=cohesity --include-missing'
