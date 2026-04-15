@@ -94,12 +94,12 @@
     coMstr = !git fetch origin -p && git checkout master && git pull
     crbr = "!f_coeeb() { git checkout -b $1 ${2:-origin/master}; }; f_coeeb"
 
-    confLs = config --list
-    confG = config --global
-    confGLs = config --global --list
-    confS = config --system
-    confL = config --local
-    confLoc = config --list --show-origin
+    cfgLs = config --list
+    cfgG = config --global
+    cfgLsg = config --global --list
+    cfgS = config --system
+    cfgL = config --local
+    cfgLsorg = config --list --show-origin
 
 
     dg = difftool --gui --no-prompt
