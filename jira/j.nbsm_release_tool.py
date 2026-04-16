@@ -368,69 +368,111 @@ class JiraClient:
 
         result = {}
 
+        def _normalize_to_list(value):
+            """Normalize Jira field values so None/scalars do not break iteration."""
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return value
+            return [value]
+
         try:
             issue = self.get_issue(issue_key)
             fields = issue.get('fields', {})
 
             for prop in properties:
-                if prop.lower() == 'labels':
-                    labels = fields.get('labels', [])
-                    result['labels'] = {
-                        'value': labels,
-                        'count': len(labels),
-                        'is_set': len(labels) > 0
-                    }
+                prop_name = prop.lower()
 
-                elif prop.lower() == 'component':
-                    components = fields.get('components', [])
-                    comp_names = [c.get('name') for c in components]
-                    result['component'] = {
-                        'value': comp_names,
-                        'count': len(comp_names),
-                        'is_set': len(comp_names) > 0
-                    }
+                try:
+                    if prop_name == 'labels':
+                        labels = _normalize_to_list(fields.get('labels'))
+                        result['labels'] = {
+                            'value': labels,
+                            'count': len(labels),
+                            'is_set': len(labels) > 0
+                        }
 
-                elif prop.lower() == 'assignee':
-                    assignee = fields.get('assignee')
-                    assignee_name = assignee.get('displayName') if assignee else None
-                    result['assignee'] = {
-                        'value': assignee_name,
-                        'is_set': assignee_name is not None
-                    }
+                    elif prop_name == 'component':
+                        components = _normalize_to_list(fields.get('components'))
+                        comp_names = []
+                        for comp in components:
+                            if isinstance(comp, dict):
+                                comp_names.append(comp.get('name') or str(comp.get('id') or ''))
+                            elif comp is not None:
+                                comp_names.append(str(comp))
 
-                elif prop.lower() == 'epic_link':
-                    # Try Epic Link field (customfield_10008 by default)
-                    epic_field_id = self.get_field_id('Epic Link')
-                    if not epic_field_id:
-                        epic_field_id = 'customfield_10008'
-                    epic_link = fields.get(epic_field_id)
-                    result['epic_link'] = {
-                        'value': epic_link,
-                        'is_set': epic_link is not None
-                    }
+                        # Remove empty placeholders
+                        comp_names = [name for name in comp_names if name]
+                        result['component'] = {
+                            'value': comp_names,
+                            'count': len(comp_names),
+                            'is_set': len(comp_names) > 0
+                        }
 
-                elif prop.lower() == 'watcher_group':
-                    # Try Watcher Group field (customfield_33462 by default)
-                    wg_field_id = self.get_field_id('Watcher Group')
-                    if not wg_field_id:
-                        wg_field_id = 'customfield_33462'
-                    watcher_groups = fields.get(wg_field_id, [])
-                    wg_names = [w.get('name') if isinstance(w, dict) else w for w in watcher_groups]
-                    result['watcher_group'] = {
-                        'value': wg_names,
-                        'count': len(wg_names),
-                        'is_set': len(wg_names) > 0
-                    }
+                    elif prop_name == 'assignee':
+                        assignee = fields.get('assignee')
+                        assignee_name = assignee.get('displayName') if isinstance(assignee, dict) else None
+                        result['assignee'] = {
+                            'value': assignee_name,
+                            'is_set': assignee_name is not None
+                        }
 
-                elif prop.lower() == 'solution':
-                    # Try Solution field
-                    solution_field_id = self.get_field_id('Solution')
-                    if not solution_field_id:
-                        solution_field_id = 'customfield_20303'
-                    solution = fields.get(solution_field_id)
-                    result['solution'] = {
-                        'value': solution,
-                        'is_set': solution is not None
+                    elif prop_name == 'epic_link':
+                        # Try Epic Link field (customfield_10008 by default)
+                        epic_field_id = self.get_field_id('Epic Link')
+                        if not epic_field_id:
+                            epic_field_id = 'customfield_10008'
+                        epic_link = fields.get(epic_field_id)
+                        result['epic_link'] = {
+                            'value': epic_link,
+                            'is_set': epic_link is not None
+                        }
+
+                    elif prop_name == 'watcher_group':
+                        # Try Watcher Group field (customfield_33462 by default)
+                        wg_field_id = self.get_field_id('Watcher Group')
+                        if not wg_field_id:
+                            wg_field_id = 'customfield_33462'
+                        watcher_groups = _normalize_to_list(fields.get(wg_field_id))
+                        wg_names = []
+                        for watcher in watcher_groups:
+                            if isinstance(watcher, dict):
+                                name = watcher.get('name') or watcher.get('value')
+                                if name:
+                                    wg_names.append(str(name))
+                            elif watcher is not None:
+                                wg_names.append(str(watcher))
+
+                        result['watcher_group'] = {
+                            'value': wg_names,
+                            'count': len(wg_names),
+                            'is_set': len(wg_names) > 0
+                        }
+
+                    elif prop_name == 'solution':
+                        # Try Solution field
+                        solution_field_id = self.get_field_id('Solution')
+                        if not solution_field_id:
+                            solution_field_id = 'customfield_20303'
+                        solution = fields.get(solution_field_id)
+                        result['solution'] = {
+                            'value': solution,
+                            'is_set': solution is not None
+                        }
+
+                    else:
+                        result[prop_name] = {
+                            'value': None,
+                            'is_set': False,
+                            'error': f"Unknown property: {prop}"
+                        }
+
+                except Exception as prop_error:
+                    # Keep validating other properties even if one property is malformed.
+                    result[prop_name] = {
+                        'value': None,
+                        'is_set': False,
+                        'error': str(prop_error)
                     }
 
             return {'issue_key': issue_key, 'properties': result, 'success': True}
@@ -1949,6 +1991,9 @@ def main():
                         props = result['properties']
                         print(f"{key}:")
                         for prop_name, prop_info in props.items():
+                            if prop_info.get('error'):
+                                print(f"  [!] {prop_name}: ERROR - {prop_info.get('error')}")
+                                continue
                             status = "[+]" if prop_info.get('is_set') else "[-]"
                             print(f"  {status} {prop_name}: {'SET' if prop_info.get('is_set') else 'NOT SET'}")
                     else:
@@ -1966,6 +2011,11 @@ def main():
                         print(f"{'='*60}")
 
                         for prop_name, prop_info in props.items():
+                            if prop_info.get('error'):
+                                print(f"\n{prop_name.upper()} [!] ERROR")
+                                print(f"  {prop_info.get('error')}")
+                                continue
+
                             status = "[+] SET" if prop_info.get('is_set') else "[-] NOT SET"
 
                             if prop_name in ['labels', 'component', 'watcher_group']:
@@ -2006,6 +2056,10 @@ def main():
                         row_map = {'Issue': key}
                         for prop_name in property_order:
                             prop_info = props.get(prop_name, {})
+                            if prop_info.get('error'):
+                                row_map[prop_name] = f"ERROR: {prop_info.get('error')}"
+                                continue
+
                             is_set = bool(prop_info.get('is_set'))
                             value = prop_info.get('value')
 
