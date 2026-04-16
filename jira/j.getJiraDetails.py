@@ -25,6 +25,16 @@ import textwrap
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
+
+# Ensure console output remains safe even when the shell locale is ASCII.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+else:  # pragma: no cover
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 import requests
 from dotenv import load_dotenv
 
