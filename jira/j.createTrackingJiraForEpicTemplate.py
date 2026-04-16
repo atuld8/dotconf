@@ -171,6 +171,11 @@ generate_stories = [
         'description': 'This task is to track the demo recording progress.',
         'epic_link': JIRA_EPIC_LINK
     },
+    {
+        'summary': f"[Tracking] PRQ Approval for {JIRA_TOOL_NAME}",
+        'description': 'This task is to track the PRQ form submission and obtain approval.',
+        'epic_link': JIRA_EPIC_LINK
+    },
     # Add more stories as needed
 ]
 
