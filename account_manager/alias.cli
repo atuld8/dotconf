@@ -8,3 +8,5 @@ alias am.cli.lspv='am.cli list-pending-verify'
 alias am.cli.lsic='am.cli list-incomplete'
 alias am.cli.au='am.cli auto-update'
 alias am.cli.etusr2emails='am.cli lookup-etrack-emails --input=user --email=cohesity --include-missing'
+alias am.crontab="awk '/START /{start=\$0} /Successfully fixed/{p=1; print start} p && /Skipped:/{p=0; next} p{print}'  $op/crontab.log"
+alias am.crontaberr="awk '/START /{start=\$0} /Failed to fix/{p=1; print start} p && /^$/{ p=0; next} p{print}'  $op/crontab.log"
