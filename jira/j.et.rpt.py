@@ -439,32 +439,41 @@ class JiraReportClient:
         Returns:
             List of issue data dictionaries
         """
-        start_time = time.time()
+        keys_str = ', '.join(issue_keys)
+        jql = f'key in ({keys_str})'
+        url = f'{self.jira_url}/rest/api/2/search'
+        params = {
+            'jql': jql,
+            'maxResults': len(issue_keys),
+            'fields': ','.join(fields)
+        }
 
-        try:
-            keys_str = ', '.join(issue_keys)
-            jql = f'key in ({keys_str})'
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            start_time = time.time()
+            try:
+                response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+                self.api_calls += 1
+                self.total_time += time.time() - start_time
 
-            url = f'{self.jira_url}/rest/api/2/search'
-            params = {
-                'jql': jql,
-                'maxResults': len(issue_keys),
-                'fields': ','.join(fields)
-            }
+                if response.status_code == 200:
+                    return response.json().get('issues', [])
+                else:
+                    print(f"\nWarning: Batch fetch failed: {response.status_code} - {response.text[:200]}", file=sys.stderr)
+                    return []
 
-            response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
-            self.api_calls += 1
-            self.total_time += time.time() - start_time
+            except Exception as e:
+                self.total_time += time.time() - start_time
+                if attempt < max_retries:
+                    wait = 2 ** attempt
+                    print(f"\nError fetching batch (attempt {attempt}/{max_retries}): {e}", file=sys.stderr)
+                    print(f"Retrying in {wait}s...", file=sys.stderr)
+                    time.sleep(wait)
+                else:
+                    print(f"\nError fetching batch: {e}", file=sys.stderr)
+                    return []
 
-            if response.status_code == 200:
-                return response.json().get('issues', [])
-            else:
-                print(f"\nWarning: Batch fetch failed: {response.status_code} - {response.text[:200]}", file=sys.stderr)
-                return []
-
-        except Exception as e:
-            print(f"\nError fetching batch: {e}", file=sys.stderr)
-            return []
+        return []  # unreachable but satisfies linter
 
     def fetch_issues_by_jql(self, jql: str, fields: List[str] = None,
                             max_results: int = DEFAULT_MAX_RESULTS) -> List[Dict[str, Any]]:
@@ -507,9 +516,27 @@ class JiraReportClient:
                     'fields': ','.join(resolved_fields)
                 }
 
-                response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
-                self.api_calls += 1
-                self.total_time += time.time() - start_time
+                max_retries = 3
+                response = None
+                for attempt in range(1, max_retries + 1):
+                    req_start = time.time()
+                    try:
+                        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+                        self.api_calls += 1
+                        self.total_time += time.time() - req_start
+                        break
+                    except Exception as req_e:
+                        self.total_time += time.time() - req_start
+                        if attempt < max_retries:
+                            wait = 2 ** attempt
+                            print(f"\nError in JQL search (attempt {attempt}/{max_retries}): {req_e}", file=sys.stderr)
+                            print(f"Retrying in {wait}s...", file=sys.stderr)
+                            time.sleep(wait)
+                        else:
+                            raise
+
+                if response is None:
+                    break
 
                 if response.status_code == 200:
                     data = response.json()
@@ -1392,7 +1419,11 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         jr_resolution = find_column(row, ['resolution', 'jr_resolution']).lower().strip()
         jr_assignee = find_column(row, ['assignee', 'jrassignee'], exclude_patterns=['et'])
         jr_priority = find_column(row, ['priority', 'jrpriority'], exclude_patterns=['et', 'case'])
+        jr_open_date = fmt_date(find_column(row, ['jrsupportcaseopendate', 'jropendate', 'jrcreated', 'supportcaseopendate', 'created'], exclude_patterns=['et']))
         et_state = find_column(row, ['etstate', 'state'], exclude_patterns=['case', 'jr']).lower().strip()
+        et_open_date = fmt_date(find_column(row, ['etdateopened', 'etopendate']))
+        if not et_open_date:
+            et_open_date = fmt_date(find_column(row, ['dateopened'], exclude_patterns=['jr', 'case']))
         et_incident_raw = find_column(row, ['etrack', 'incident', 'etincident', 'jretrack'])
         et_assigned = find_column(row, ['etassign', 'etassignedto'])
 
@@ -1422,7 +1453,9 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
             'jr_resolution': jr_resolution,
             'jr_assignee': jr_assignee,
             'jr_priority': jr_priority,
+            'jr_open_date': jr_open_date,
             'et_state': et_state,
+            'et_open_date': et_open_date,
             'et_incident': et_incident,
             'et_all_incidents': et_incidents_list,  # Store all Etracks
             'et_assigned': et_assigned,
@@ -1430,8 +1463,10 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         }
 
         normalized_issues.append(issue_info)
-        if et_incident:
-            etrack_to_normalized_issues.setdefault(et_incident, []).append(issue_info)
+        # Index by ALL linked etracks so FIs are grouped regardless of order
+        for eid in et_incidents_list:
+            if eid:
+                etrack_to_normalized_issues.setdefault(eid, []).append(issue_info)
 
     shared_etrack_conflicts = {}
     for et_incident, issues in etrack_to_normalized_issues.items():
@@ -1465,7 +1500,7 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
 
         if not has_etrack:
             categories['NO_ETRACK']['issues'].append(issue_info)
-        elif et_incident in shared_etrack_conflicts:
+        elif any(et in shared_etrack_conflicts for et in issue_info.get('et_all_incidents', [et_incident])):
             categories['SHARED_ETRACK_CONFLICT']['issues'].append(issue_info)
         # BOTH_CLOSED now requires ALL THREE to be done/closed
         elif issue_info['et_state'] in ET_CLOSED_STATES and issue_info['jr_case_status'] in CASE_CLOSED_STATUSES and issue_info['jr_status'] in JIRA_DONE_STATUSES:
@@ -1514,6 +1549,24 @@ def get_unique_etracks(issues: List[Dict]) -> set:
         if et and str(et).strip():
             etracks.add(str(et).strip())
     return etracks
+
+
+def get_external_fi_map_for_etracks(etrack_ids: set) -> Dict[str, List[str]]:
+    """Fetch Etrack external_reference FI links for given incident IDs."""
+    if not etrack_ids:
+        return {}
+
+    normalized_ids = sorted({normalize_incident_id(eid) for eid in etrack_ids if normalize_incident_id(eid)})
+    if not normalized_ids:
+        return {}
+
+    try:
+        et_client = EtrackClient()
+        _, incident_to_fis = et_client.fetch_fis_from_incidents(normalized_ids, verbose=False)
+        return incident_to_fis
+    except Exception as exc:
+        print(f"Warning: failed to fetch external FI links for Etracks: {exc}", file=sys.stderr)
+        return {}
 
 
 _ACCOUNT_DB_CACHE = {
@@ -1589,6 +1642,20 @@ def get_notify_cohesity_emails(issues: List[Dict]) -> List[str]:
     return sorted(emails)
 
 
+def fmt_date(value: str) -> str:
+    """Format an ISO/Etrack date string to 'DD-Mon-YYYY' (e.g. 07-Nov-2025)."""
+    if not value:
+        return ''
+    for fmt in ('%Y-%m-%dT%H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S%z',
+                '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(value[:26], fmt).strftime('%d-%b-%Y')
+        except ValueError:
+            continue
+    # Fallback: return date portion only
+    return value[:10]
+
+
 def fi_sort_key(issue: Dict) -> tuple:
     """Extract sort key from FI key for natural sorting (e.g., FI-9 < FI-123)."""
     import re
@@ -1624,21 +1691,26 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
     etrack_to_issues = {}  # etrack -> list of {key, jr_status, jr_case_status, category}
     for cat_id, cat_data in sorted_cats:
         for issue in cat_data.get('issues', []):
-            et = issue.get('et_incident', '')
-            if et and str(et).strip():
+            et_ids = issue.get('et_all_incidents', []) or [issue.get('et_incident', '')]
+            for et in et_ids:
                 et = str(et).strip()
+                if not et:
+                    continue
                 if et not in etrack_to_issues:
                     etrack_to_issues[et] = []
-                etrack_to_issues[et].append({
+                fi_entry = {
                     'key': issue['key'],
                     'jr_status': issue.get('jr_status', ''),
                     'jr_case_status': issue.get('jr_case_status', ''),
                     'jr_resolution': issue.get('jr_resolution', ''),
                     'category': cat_id
-                })
+                }
+                if fi_entry not in etrack_to_issues[et]:
+                    etrack_to_issues[et].append(fi_entry)
 
     # Find Etracks with multiple FIs or appearing in multiple categories
     dup_etracks = {et: fis for et, fis in etrack_to_issues.items() if len(fis) > 1}
+    external_fi_map = get_external_fi_map_for_etracks(set(dup_etracks.keys())) if dup_etracks else {}
     # Find Etracks where FIs have different statuses
     diff_status_etracks = {}
     for et, fis in dup_etracks.items():
@@ -1702,7 +1774,11 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
                         status_info += f" / {f['jr_resolution']}"
                     status_info += ")"
                     fi_details.append(status_info)
-                print(f"  {et}: {', '.join(fi_details)}")
+                ext_only = [fi for fi in external_fi_map.get(et, []) if fi not in [x['key'] for x in fis]]
+                if ext_only:
+                    print(f"  {et}: {', '.join(fi_details)} [external refs also: {', '.join(ext_only)}]")
+                else:
+                    print(f"  {et}: {', '.join(fi_details)}")
 
         # Etracks with SAME statuses (multiple FIs, but consistent status)
         same_status_etracks = {et: fis for et, fis in dup_etracks.items() if et not in diff_status_etracks}
@@ -1719,7 +1795,11 @@ def print_analyzer_summary(categories: Dict[str, Any], total_count: int):
                     status_str += f" / {common_case}"
                 if common_resolution:
                     status_str += f" / {common_resolution}"
-                print(f"  {et}: {', '.join(fi_keys)} (all: {status_str})")
+                ext_only = [fi for fi in external_fi_map.get(et, []) if fi not in fi_keys]
+                if ext_only:
+                    print(f"  {et}: {', '.join(fi_keys + ext_only)} (all fetched: {status_str})")
+                else:
+                    print(f"  {et}: {', '.join(fi_keys)} (all: {status_str})")
 
     # Warning about FIs with multiple Etracks
     if multi_etrack_fis:
@@ -1749,7 +1829,8 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             for col_name in sample_row.keys():
                 col_lower = col_name.lower()
                 # Include ET columns that are not already in the base set
-                if col_lower.startswith('et ') and col_lower not in ['et state', 'et incident', 'et assigned to']:
+                _et_base = {'et state', 'et incident', 'et assigned to', 'et date opened', 'et open date'}
+                if col_lower.startswith('et ') and col_lower not in _et_base:
                     extra_et_cols.append(col_name)
             break
 
@@ -1786,12 +1867,18 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             ('Jr Status', 'jr_status'),
             ('Case Status', 'jr_case_status'),
             ('Jr Resolution', 'jr_resolution'),
+            ('Jr Open Date', 'jr_open_date'),
             ('ET State', 'et_state'),
+            ('ET Open Date', 'et_open_date'),
             ('ET Incident', 'et_incident')
         ]
 
+        force_fields = set()
+        if cat_id == 'CASE_CLOSED_ET_NOT_CLOSED':
+            force_fields.update({'Jr Open Date', 'ET Open Date'})
+
         for display_name, field_key in optional_fields:
-            if has_column_data(issues, field_key):
+            if display_name in force_fields or has_column_data(issues, field_key):
                 active_base_fields.append(display_name)
 
         # Build table for this category
@@ -1817,8 +1904,12 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                     base_row.append(issue['jr_case_status'][:25] if issue['jr_case_status'] else '')
                 if 'Jr Resolution' in active_base_fields:
                     base_row.append(issue['jr_resolution'][:40] if issue['jr_resolution'] else '')
+                if 'Jr Open Date' in active_base_fields:
+                    base_row.append(issue['jr_open_date'][:19] if issue['jr_open_date'] else '')
                 if 'ET State' in active_base_fields:
                     base_row.append(issue['et_state'].upper() if issue['et_state'] else '')
+                if 'ET Open Date' in active_base_fields:
+                    base_row.append(issue['et_open_date'][:19] if issue['et_open_date'] else '')
                 if 'ET Incident' in active_base_fields:
                     base_row.append(issue['et_incident'])
 
@@ -1851,8 +1942,12 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                 header_parts.append(f"{'Case Status':<25}")
             if 'Jr Resolution' in active_base_fields:
                 header_parts.append(f"{'Jr Resolution':<40}")
+            if 'Jr Open Date' in active_base_fields:
+                header_parts.append(f"{'Jr Open Date':<19}")
             if 'ET State' in active_base_fields:
                 header_parts.append(f"{'ET State':<10}")
+            if 'ET Open Date' in active_base_fields:
+                header_parts.append(f"{'ET Open Date':<19}")
             if 'ET Incident' in active_base_fields:
                 header_parts.append(f"{'ET Incident':<15}")
 
@@ -1876,8 +1971,12 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                     row_parts.append(f"{issue['jr_case_status'][:23]:<25}")
                 if 'Jr Resolution' in active_base_fields:
                     row_parts.append(f"{issue['jr_resolution'][:40]:<40}")
+                if 'Jr Open Date' in active_base_fields:
+                    row_parts.append(f"{issue['jr_open_date'][:19]:<19}")
                 if 'ET State' in active_base_fields:
                     row_parts.append(f"{issue['et_state'].upper():<10}")
+                if 'ET Open Date' in active_base_fields:
+                    row_parts.append(f"{issue['et_open_date'][:19]:<19}")
                 if 'ET Incident' in active_base_fields:
                     row_parts.append(f"{issue['et_incident']:<15}")
                 print(' '.join(row_parts))
@@ -1909,22 +2008,28 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                 # Check for duplicates (same etrack linked to multiple FIs in this category)
                 et_to_fis = {}
                 for issue in issues:
-                    et = issue.get('et_incident', '')
-                    if et:
-                        if et not in et_to_fis:
-                            et_to_fis[et] = []
-                        et_to_fis[et].append({
-                            'key': issue['key'],
-                            'jr_status': issue.get('jr_status', ''),
-                            'jr_case_status': issue.get('jr_case_status', ''),
-                            'jr_resolution': issue.get('jr_resolution', '')
-                        })
+                    for eid in issue.get('et_all_incidents', []):
+                        if eid:
+                            if eid not in et_to_fis:
+                                et_to_fis[eid] = []
+                            fi_entry = {
+                                'key': issue['key'],
+                                'jr_status': issue.get('jr_status', ''),
+                                'jr_case_status': issue.get('jr_case_status', ''),
+                                'jr_resolution': issue.get('jr_resolution', '')
+                            }
+                            if fi_entry not in et_to_fis[eid]:
+                                et_to_fis[eid].append(fi_entry)
+
+                external_fi_map = get_external_fi_map_for_etracks(set(unique_et))
 
                 multi_fi_etracks = {et: fis for et, fis in et_to_fis.items() if len(fis) > 1}
                 if multi_fi_etracks:
                     print(Colors.warning(f"  [!] {len(multi_fi_etracks)} Etrack(s) linked to multiple FIs:"))
                     for et, fis in multi_fi_etracks.items():
                         fi_keys = [f['key'] for f in fis]
+                        ext_only = [fi for fi in external_fi_map.get(et, []) if fi not in fi_keys]
+                        display_fis = fi_keys + ext_only
                         # Check if FIs have different statuses
                         jr_statuses = set(f['jr_status'] for f in fis if f['jr_status'])
                         case_statuses = set(f['jr_case_status'] for f in fis if f['jr_case_status'])
@@ -1937,11 +2042,13 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
                             status_note += f" [Case Status differs: {', '.join(sorted(case_statuses))}]"
                         if len(resolutions) > 1:
                             status_note += f" [Resolution differs: {', '.join(sorted(resolutions))}]"
+                        if ext_only:
+                            status_note += " [includes external-reference FI links]"
 
                         if status_note:
-                            print(Colors.error(f"      {et} -> {', '.join(fi_keys)}{status_note}"))
+                            print(Colors.error(f"      {et} -> {', '.join(display_fis)}{status_note}"))
                         else:
-                            print(f"      {et} -> {', '.join(fi_keys)}")
+                            print(f"      {et} -> {', '.join(display_fis)}")
 
         # Check for FIs with multiple Etracks in this category
         multi_et_fis = [i for i in issues if len(i.get('et_all_incidents', [])) > 1]
