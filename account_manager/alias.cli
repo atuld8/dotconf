@@ -1,6 +1,7 @@
 alias am.cli='PYTHONPATH=$MVP python3 -m account_manager.cli'
 alias am.cli.uget='am.cli get'
 alias am.cli.vyes='function f() { am.cli update-verified $1 yes; }; f'
+alias am.cli.vno='function f() { am.cli update-verified $1 no; am.cli update-notes $1 "Support Engineering Group"; }; f'
 alias am.cli.vfi='am.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --auto-add --skip-details'
 alias am.cli.rpt='am.cli validate-fi RptTerm_Open_SRs_With_Ext_Ref_FI --report --skip-details'
 alias am.cli.sev='am.cli.vfi --report-severity  --format=table --exclude-severity=MATCHED'
