@@ -50,6 +50,8 @@ alias g.istrkd='function f() { git ls-files --error-unmatch $1 >/dev/null 2>/dev
 
 alias x.esrch.unSr='esrch '"'"'-j NetBackup type=SERVICE_REQUEST -U -k ESC_BL -k ESC_TRIAGE -f "%{incident:-7} s:%{severity:2} p:%{priority:2} cust:%{customer:*30.30} : %abstract"'"'"''
 alias x.esrch.sr='esrch '"'"'-j NetBackup type=SERVICE_REQUEST -k ESC_BL -k ESC_TRIAGE -f "%{incident:-7} s:%{severity:2} p:%{priority:2} cust:%{customer:*30.30} : %abstract"'"'"''
+alias x.esrch.fuser='esrch '"'"'-j NetBackup -f "%{incident:-7} s:%{severity:2}  %{assigned_to:*20} %{category:*-15} comp:%{component:-20} %abstract"'"'"''
+alias x.esrch.fstate='esrch '"'"'-j NetBackup -f "%{incident:-7} s:%{severity:2}  %{assigned_to:*20} %{category:*-15} comp:%{component:-20} %type %state %abstract"'"'"''
 
 # change dir quickly
 alias cd.nbdt='af.cd ~/nbdata'
