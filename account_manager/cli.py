@@ -1436,7 +1436,11 @@ def main():
                 if '=' in arg:
                     field, value = arg.split('=', 1)
                     search_params[field] = value
-            results = db.search_accounts(**search_params)
+            try:
+                results = db.search_accounts(**search_params)
+            except ValueError as e:
+                print(f"X Error: {e}")
+                return
             print(f"Found {len(results)} matching accounts:")
             for acc in results:
                 print(f"  {acc['etrack_user_id']}: {acc['jira_account']}")

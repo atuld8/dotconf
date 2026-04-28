@@ -341,10 +341,35 @@ class AccountManager:
             self.cursor.execute("SELECT * FROM accounts ORDER BY etrack_user_id")
             return [dict(row) for row in self.cursor.fetchall()]
 
+        allowed_fields = {
+            'id',
+            'etrack_user_id',
+            'first_name',
+            'last_name',
+            'veritas_email',
+            'cohesity_email',
+            'community_account',
+            'jira_account',
+            'manual_verified',
+            'notes',
+        }
+
         conditions = []
         values = []
 
         for field, value in kwargs.items():
+            if field == 'name':
+                conditions.append("(first_name LIKE ? OR last_name LIKE ?)")
+                values.extend([f"%{value}%", f"%{value}%"])
+                continue
+
+            if field not in allowed_fields:
+                allowed_with_alias = sorted(list(allowed_fields) + ['name'])
+                raise ValueError(
+                    f"Invalid search field: {field}. "
+                    f"Allowed fields: {', '.join(allowed_with_alias)}"
+                )
+
             conditions.append(f"{field} LIKE ?")
             values.append(f"%{value}%")
 
