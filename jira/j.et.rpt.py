@@ -1881,14 +1881,22 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             if display_name in force_fields or has_column_data(issues, field_key):
                 active_base_fields.append(display_name)
 
+        def issue_sort_key(issue: Dict) -> tuple:
+            """Sort CASE_CLOSED_ET_NOT_CLOSED with 'incomplete' resolutions first."""
+            if cat_id == 'CASE_CLOSED_ET_NOT_CLOSED':
+                jr_resolution = str(issue.get('jr_resolution', '')).strip().lower()
+                incomplete_rank = 0 if 'incomplete' in jr_resolution else 1
+                return (incomplete_rank, fi_sort_key(issue))
+            return (0, fi_sort_key(issue))
+
+        sorted_issues = sorted(issues, key=issue_sort_key)
+
         # Build table for this category
         if PrettyTable:
             table = PrettyTable()
             table.field_names = active_base_fields + extra_et_cols
             table.align = 'l'
 
-            # Sort issues by FI key
-            sorted_issues = sorted(issues, key=fi_sort_key)
             display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
                 # Build row based on active fields
@@ -1956,8 +1964,6 @@ def print_analyzer_detailed(categories: Dict[str, Any]):
             total_width = sum(int(part.split('<')[1].split('}')[0]) for part in header_parts if '<' in part)
             print("-" * max(130, total_width))
 
-            # Sort issues by FI key
-            sorted_issues = sorted(issues, key=fi_sort_key)
             display_issues = sorted_issues if Colors.notruncate else sorted_issues[:50]
             for idx, issue in enumerate(display_issues, 1):
                 row_parts = [f"{idx:<4}", f"{issue['key']:<10}"]
