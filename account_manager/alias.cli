@@ -12,3 +12,4 @@ alias am.cli.au='am.cli auto-update'
 alias am.cli.etusr2emails='am.cli lookup-etrack-emails --input=user --email=cohesity --include-missing'
 alias am.crontab="awk '/START /{start=\$0} /Successfully fixed/{p=1; print start} p && /Skipped:/{p=0; next} p{print}'  $op/crontab.log"
 alias am.crontaberr="awk '/START /{start=\$0} /Failed to fix/{p=1; print start} p && /^$/{ p=0; next} p{print}'  $op/crontab.log"
+alias am.log.clean='am.crontab >> $op/crontab.log.passed; am.crontaberr >> $op/crontab.log.error; mv  -f $op/crontab.log $op/crontab.log.old'
