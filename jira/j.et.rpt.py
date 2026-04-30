@@ -3222,34 +3222,26 @@ def main():
         print(f"Total unique FIs:         {len(fi_ids_from_incidents)}", file=sys.stderr)
 
         if incidents_without_fis:
-            print(f"\n--- Incidents Without FIs ({len(incidents_without_fis)}) ---", file=sys.stderr)
+            if args.verbose:
+                print(f"\n--- Incidents Without FIs ({len(incidents_without_fis)}) ---", file=sys.stderr)
 
             # Fetch etrack details for incidents without FIs
             no_fi_fields = ['incident', 'priority', 'severity', 'state', 'assigned_to', 'customer', 'component', 'reporter', 'date_opened', 'abstract']
-            print(f"Fetching etrack details for {len(incidents_without_fis)} incidents...", file=sys.stderr)
+            if args.verbose:
+                print(f"Fetching etrack details for {len(incidents_without_fis)} incidents...", file=sys.stderr)
             no_fi_etrack_data = etrack_client_for_fis.fetch_etrack_data(incidents_without_fis, etrack_fields=no_fi_fields, verbose=args.verbose)
-            print(f"Received etrack data for {len(no_fi_etrack_data)} incidents", file=sys.stderr)
-
-            # Debug: Check key matching
-            if args.verbose and no_fi_etrack_data:
-                sample_key = list(no_fi_etrack_data.keys())[0]
-                sample_input = incidents_without_fis[0] if incidents_without_fis else None
-                print(f"  DEBUG: Sample etrack key: '{sample_key}' (type: {type(sample_key).__name__})", file=sys.stderr)
-                print(f"  DEBUG: Sample input key: '{sample_input}' (type: {type(sample_input).__name__})", file=sys.stderr)
-                if sample_key != sample_input:
-                    print(f"  DEBUG: Key mismatch! etrack keys: {list(no_fi_etrack_data.keys())[:5]}", file=sys.stderr)
+            if args.verbose:
+                print(f"Received etrack data for {len(no_fi_etrack_data)} incidents", file=sys.stderr)
 
             if no_fi_etrack_data:
-                # Debug: show sample data
-                print(f"no_fi_etrack_data keys: {list(no_fi_etrack_data.keys())[:3]}", file=sys.stderr)
-                if no_fi_etrack_data:
-                    sample_key = list(no_fi_etrack_data.keys())[0]
-                    print(f"Sample data for {sample_key}: {no_fi_etrack_data[sample_key]}", file=sys.stderr)
-
                 # Build table data with etrack details - use fetched data directly
                 table_data = []
                 # Use keys from no_fi_etrack_data since those are valid
+                # Filter out known dummy/placeholder incident IDs
+                DUMMY_INCIDENT_IDS = {'297'}
                 for inc_id in no_fi_etrack_data.keys():
+                    if inc_id in DUMMY_INCIDENT_IDS:
+                        continue
                     row = no_fi_etrack_data[inc_id]
                     # Truncate abstract to 80 chars
                     abstract = row.get('abstract', '')
@@ -3269,13 +3261,11 @@ def main():
                     })
             else:
                 # Build table data with just IDs (etrack fetch failed)
-                print("(etrack data fetch failed, showing IDs only)", file=sys.stderr)
+                if args.verbose:
+                    print("(etrack data fetch failed, showing IDs only)", file=sys.stderr)
                 table_data = [{'incident': inc_id, 'priority': '', 'severity': '', 'state': '',
                                'assigned_to': '', 'customer': '', 'component': '', 'reporter': '',
                                'date_opened': '', 'abstract': ''} for inc_id in incidents_without_fis]
-
-            # Debug: show how many table rows were built
-            print(f"Built {len(table_data)} table rows", file=sys.stderr)
 
             # Print table to stderr (skip if saving to files)
             if table_data and not args.save_no_fi:
