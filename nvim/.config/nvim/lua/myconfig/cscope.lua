@@ -1,14 +1,9 @@
 -- Cscope + Ctags integration
 
-local ok, cscope_maps = pcall(require, "cscope_maps")
+local ok, _ = pcall(require, "cscope_maps")
 if not ok then
     return
 end
-
-require("cscope_maps").setup({
-    disable_maps = false, -- keep default keymaps
-    skip_input_prompt = true, -- auto-use cscope.out if found
-})
 
 -- Tags configuration
 vim.opt.tags = { "./tags", "tags", "tags;/" }
@@ -21,41 +16,20 @@ local function add_cscope_if_found()
   end
 end
 
-vim.api.nvim_create_autocmd({ "VimEnter", "DirChanged" }, {
-  callback = add_cscope_if_found,
-})
-
--- Function to add cscope and ctags (relative to current script path)
-local function F_ctag_cscope_add()
-  local path = vim.fn.fnamemodify(vim.fn.resolve(vim.fn.expand("<sfile>:p")), ":h")
-  local srcpath = string.gsub(path, "/src/.*$", "/src/")
-  local cscope_out = string.gsub(srcpath, "/src/.*$", "/src/cscope.out")
-  local ctags_file = string.gsub(srcpath, "/src/.*$", "/src/vtags")
-
-  if vim.fn.filereadable(cscope_out) == 1 then
-    cscope_maps.cscope.add(cscope_out)  -- ✅ instead of :cscope add
-  end
-
-  if vim.fn.filereadable(ctags_file) == 1 then
-    vim.opt.tags:append(ctags_file)
-  end
-end
-
--- Function to add cscope/ctags relative to git root
 local function F_ctag_cscope_add_wrt_git()
-  local ok, rootpath = pcall(function()
+  local ok2, rootpath = pcall(function()
     return vim.fn.system("git rev-parse --show-toplevel 2>/dev/null"):gsub("\n$", "")
   end)
-  
-  if not ok or rootpath == "" or vim.v.shell_error ~= 0 then
-    return -- Not in a git repository
+
+  if not ok2 or rootpath == "" or vim.v.shell_error ~= 0 then
+    return
   end
-  
+
   local cscope_out = rootpath .. "/cscope.out"
   local ctags_file = rootpath .. "/tags"
 
   if vim.fn.filereadable(cscope_out) == 1 then
-    pcall(cscope_maps.cscope.add, cscope_out)
+    vim.cmd("silent! cscope add " .. vim.fn.fnameescape(cscope_out))
   end
 
   if vim.fn.filereadable(ctags_file) == 1 then
@@ -63,7 +37,10 @@ local function F_ctag_cscope_add_wrt_git()
   end
 end
 
--- Run them at startup
-F_ctag_cscope_add()
-F_ctag_cscope_add_wrt_git()
+vim.api.nvim_create_autocmd({ "VimEnter", "DirChanged" }, {
+  callback = function()
+    add_cscope_if_found()
+    F_ctag_cscope_add_wrt_git()
+  end,
+})
 

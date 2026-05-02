@@ -25,7 +25,7 @@ end
 vim.opt.rtp:prepend(lazypath)
 
 vim.opt.timeout = true
-vim.opt.timeoutlen = 200  -- Faster response for leader key combinations
+vim.opt.timeoutlen = 500  -- enough time to complete leader key sequences
 vim.opt.ttimeoutlen = 10  -- Faster escape key response
 
 
@@ -41,6 +41,9 @@ if v.major > 0 or (v.major == 0 and v.minor >= 10) then
 -- Setup lazy.nvim with all plugin sources
 require("lazy").setup({
   { import = "plugins" },
+  { import = "plugins.ai.copilot" },
+  { import = "plugins.ai.copilot_cmp" },
+  { import = "plugins.ai.copilot_chat" },
 })
 
 -- Load basic configs

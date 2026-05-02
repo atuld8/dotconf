@@ -32,8 +32,8 @@ return {
   { "haya14busa/incsearch-fuzzy.vim" },
 
   -- Completion and Linting
-  { "ervandew/supertab" },
-  { "Shougo/neocomplcache.vim" },
+ --  { "ervandew/supertab" },
+ -- { "Shougo/neocomplcache.vim" },
   {
     "dense-analysis/ale",
     config = function()
@@ -125,15 +125,15 @@ return {
   {
       "dhananjaylatkar/cscope_maps.nvim",
       dependencies = { "nvim-telescope/telescope.nvim" },
-      config = function()
-        require("cscope_maps").setup({
-          cscope = {
-            db_file = "./cscope.out",
-            exec = "cscope",
-            picker = "telescope",
-          },
-        })
-      end,
+      opts = {
+        disable_maps = false,
+        skip_input_prompt = true,
+        cscope = {
+          db_file = "./cscope.out",
+          exec = "cscope",
+          picker = "telescope",
+        },
+      },
   },
 
     -- Autocompletion
@@ -145,7 +145,7 @@ return {
   { "saadparwaiz1/cmp_luasnip" },
 
   -- AI Assistants
-  { "github/copilot.vim", event = "VeryLazy" },
+  --{ "github/copilot.vim", event = "VeryLazy" },
   {
       "David-Kunz/gen.nvim",
       cmd = { "Gen" },
