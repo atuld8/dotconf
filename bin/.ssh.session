@@ -21,26 +21,26 @@ if [ "$OPTION" == "dup" ]; then
     if [ "$STYPE" == "screen" ]; then
         COMMAND="screen -xS $SESSION"
     else
-        COMMAND="tmux attach -t $SESSION"
+        COMMAND="tmux -u attach -t $SESSION"
     fi
 elif [ "$OPTION" == "new" ]; then
     if [ "$STYPE" == "screen" ]; then
         COMMAND="screen -S $SESSION"
     else
-        COMMAND="tmux new -s $SESSION"
+        COMMAND="tmux -u new -s $SESSION"
     fi
 else
     if [ "$STYPE" == "screen" ]; then
         COMMAND="screen -d -r -S $SESSION"
     else
-        COMMAND="tmux attach -d -t $SESSION"
+        COMMAND="tmux -u attach -d -t $SESSION"
     fi
 fi
 
 ssh -X -Y -o TCPKeepAlive=yes -o ServerAliveInterval=90 -o ServerAliveCountMax=10 -o ForwardX11=yes $HOSTNAME -t $COMMAND
 
 if [ ! -z "$TMUX" ]; then
-    tmux rename-window "${TMUX_HOSTNAME}";
+    tmux -u rename-window "${TMUX_HOSTNAME}";
 fi;
 if [ ! -z "$WINDOW" ]; then
     screen -X title "${HOSTNAME}";
