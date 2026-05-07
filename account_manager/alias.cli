@@ -1,5 +1,6 @@
 alias am.cli='PYTHONPATH=$MVP python3 -m account_manager.cli'
 alias am.cli.uget='am.cli get'
+alias am.cli.newuser='function f() { am.cli add $1; am.cli fetch-email $1; am.cli fetch-jira-id $1; am.cli get $1; }; f'
 alias am.cli.vyes='function f() { am.cli update-verified $1 yes; }; f'
 alias am.cli.vno='function f() { am.cli update-verified $1 no; am.cli update-notes $1 "Support Engineering Group"; }; f'
 alias am.cli.vinvalid='function f() { am.cli update-verified $1 Invalid; am.cli update-notes $1 "Support Engineering Group"; }; f'
