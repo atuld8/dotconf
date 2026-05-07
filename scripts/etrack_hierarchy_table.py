@@ -118,6 +118,7 @@ class EtrackHierarchyFetcher:
         self.debug = debug
         self.command_timeout = command_timeout
         self._details_cache: Dict[str, str] = {}
+        self._parsed_details_cache: Dict[str, Dict[str, str]] = {}
         self._query_count = 0
 
     def _resolve_esql_command(self) -> List[str]:
@@ -426,6 +427,8 @@ class EtrackHierarchyFetcher:
                 if incident in parsed:
                     details_lines: List[str] = []
                     row = parsed[incident]
+                    # Also cache the parsed row for hierarchy tree display
+                    self._parsed_details_cache[incident] = row
                     for key, value in row.items():
                         if key == "INCIDENT":
                             details_lines.append(f"incident: {value}")
@@ -871,7 +874,7 @@ class EtrackHierarchyFetcher:
         depth: int = 0,
         visited: Optional[Set[str]] = None,
     ) -> None:
-        """Print hierarchy tree in nested format."""
+        """Print hierarchy tree in nested format with incident details."""
         if visited is None:
             visited = set()
 
@@ -882,7 +885,19 @@ class EtrackHierarchyFetcher:
             print(f"{indent}{prefix}{root} (cycle)", flush=True)
             return
 
-        print(f"{indent}{prefix}{root}", flush=True)
+        # Extract incident details for display
+        details = self._parsed_details_cache.get(root, {})
+        incident_type = details.get("TYPE", "")
+        version = details.get("VERSION", "")
+        target_version = details.get("TARGET_VERSION", "")
+        state = details.get("STATE", "")
+
+        # Format: incident (T:type V:version TV:target_version S:state)
+        details_str = ""
+        if incident_type or version or target_version or state:
+            details_str = f" (T:{incident_type} V:{version} TV:{target_version} S:{state})"
+
+        print(f"{indent}{prefix}{root}{details_str}", flush=True)
         visited.add(root)
 
         if root in tree:
