@@ -956,6 +956,15 @@ class EtrackHierarchyFetcher:
             }
             result.append(record)
 
+            # Cache parsed details for hierarchy tree display
+            if incident in by_incident:
+                self._parsed_details_cache[incident] = {
+                    "TYPE": str(by_incident[incident].get("TYPE", "")),
+                    "VERSION": str(by_incident[incident].get("VERSION", "")),
+                    "TARGET_VERSION": str(by_incident[incident].get("TARGET_VERSION", "")),
+                    "STATE": str(by_incident[incident].get("STATE", "")),
+                }
+
         return result
 
 
