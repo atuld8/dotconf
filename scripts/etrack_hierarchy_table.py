@@ -408,7 +408,7 @@ class EtrackHierarchyFetcher:
 
     def _bulk_prefetch_details_vdk(self, incidents: List[str], chunk_size: int = 100) -> Dict[str, str]:
         """Prefetch bulk eprint -vdK details and extract parent_incident mappings.
-        
+
         Returns dict mapping incident -> parent_incident for immediate parent relationships.
         """
         if not incidents:
@@ -796,7 +796,7 @@ class EtrackHierarchyFetcher:
 
     def fetch_parent_incidents_esql(self, incidents: List[str]) -> Tuple[Dict[str, str], Dict[str, str]]:
         """Fetch parent_incident and superincident from INC_BOTTOM_UP table.
-        
+
         Returns tuple of (parent_map, superincident_map):
         - parent_map[incident] = TO_NUMBER (immediate parent)
         - superincident_map[incident] = TOP (superincident)
@@ -809,36 +809,36 @@ class EtrackHierarchyFetcher:
             "SELECT INCIDENT, TO_NUMBER, TOP FROM INC_BOTTOM_UP "
             f"WHERE TO_NUMBER IN ({sql_incidents})"
         )
-        
+
         import time
         if self.debug:
             print(f"\n[ESQL] Fetching parent/superincident from INC_BOTTOM_UP", file=sys.stderr)
         start_time = time.time()
-        
+
         rows = self._parse_esql_output(self._run_esql(sql), ["INCIDENT", "TO_NUMBER", "TOP"])
-        
+
         elapsed = time.time() - start_time
         if self.debug:
             print(f"[ESQL] Completed in {elapsed:.2f}s", file=sys.stderr)
 
         parent_map: Dict[str, str] = {}
         superincident_map: Dict[str, str] = {}
-        
+
         for row in rows:
             incident = str(row.get("INCIDENT", "")).strip()
             to_number = str(row.get("TO_NUMBER", "")).strip()
             top = str(row.get("TOP", "")).strip()
-            
+
             if incident.isdigit() and to_number.isdigit():
                 parent_map[incident] = to_number
             if incident.isdigit() and top.isdigit():
                 superincident_map[incident] = top
-        
+
         return parent_map, superincident_map
-    
+
     def build_hierarchy_tree(self, incidents: List[str], parent_map: Dict[str, str], root_incident: str) -> Dict[str, List[str]]:
         """Build incident hierarchy tree from parent relationships.
-        
+
         Returns dict mapping parent -> list of children.
         """
         tree: Dict[str, List[str]] = {}
@@ -861,9 +861,9 @@ class EtrackHierarchyFetcher:
 
         for parent in list(tree.keys()):
             tree[parent] = sorted(set(tree[parent]), key=lambda value: int(value))
-        
+
         return tree
-    
+
     def print_hierarchy_tree(
         self,
         root: str,
@@ -876,15 +876,15 @@ class EtrackHierarchyFetcher:
             visited = set()
 
         indent = "  " * depth
-        prefix = "├─ " if depth > 0 else ""
+        prefix = "+-- " if depth > 0 else ""
 
         if root in visited:
-            print(f"{indent}{prefix}{root} (cycle)")
+            print(f"{indent}{prefix}{root} (cycle)", flush=True)
             return
 
-        print(f"{indent}{prefix}{root}")
+        print(f"{indent}{prefix}{root}", flush=True)
         visited.add(root)
-        
+
         if root in tree:
             children = tree[root]
             for child in children:
@@ -1137,7 +1137,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(renderer.render(rows))
         print(f"\nTotal rows: {len(rows)}")
         print(f"\nNote: '*' in PARENT_FLAG column indicates incident is a parent to other incidents in hierarchy")
-        
+
         if args.htree:
             print(f"\n{'='*80}")
             print("HIERARCHY TREE:")
@@ -1148,7 +1148,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 root_incident,
             )
             fetcher.print_hierarchy_tree(root_incident, tree)
-        
+
         if args.use_esql and args.debug:
             print(f"[DEBUG] Total esql queries executed: {fetcher._query_count}", file=sys.stderr)
 
