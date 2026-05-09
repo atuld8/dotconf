@@ -16,7 +16,7 @@ return {
 
   -- Git
   { "tpope/vim-fugitive" },
-  { "airblade/vim-gitgutter" },
+  -- { "airblade/vim-gitgutter" },  -- disabled: redundant with vim-signify
   { "junegunn/gv.vim" },
   { "mhinz/vim-signify" },
 
