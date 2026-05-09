@@ -42,7 +42,7 @@ return {
   "vim-utils/vim-man",
   "christoomey/vim-tmux-navigator",
   "vim-scripts/a.vim",
-  "airblade/vim-gitgutter",
+  -- "airblade/vim-gitgutter",  -- disabled: redundant with vim-signify
   "elzr/vim-json",
   "othree/html5.vim",
   "godlygeek/tabular",

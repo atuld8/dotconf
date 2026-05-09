@@ -13,6 +13,7 @@ return {
       suggestion = {
         enabled = true,
         auto_trigger = true,    -- suggest as you type
+        debounce = 75,          -- ms delay before triggering, reduces keystroke-level requests
         keymap = {
           accept = "<Tab>",     -- accept full suggestion
           accept_word = "<C-l>", -- accept one word

@@ -33,6 +33,9 @@ vim.opt.ttimeoutlen = 10  -- Faster escape key response
 vim.g.mapleader = " "      -- Space as leader
 vim.g.maplocalleader = " " -- Optional, for local mappings
 
+-- Disable vim-simple-todo insert mode <Space> mappings to prevent 500ms delay
+vim.g.simple_todo_map_insert_mode_keys = 0
+
 -- Get current Neovim version
 local v = vim.version()
 
@@ -800,6 +803,11 @@ require("myconfig.commands")
 F_include_project_specific_vimrc()
 
 -- debug
+-- Remove a.vim insert mode <Space> mappings that cause 500ms delay
+pcall(vim.keymap.del, "i", "<Leader>ih")
+pcall(vim.keymap.del, "i", "<Leader>is")
+pcall(vim.keymap.del, "i", "<Leader>ihn")
+
 vim.g.copilot_no_tab_map = true
 vim.keymap.set("i", "<C-J>", 'copilot#Accept("")', {
   expr = true,

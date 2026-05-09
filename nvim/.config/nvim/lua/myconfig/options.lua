@@ -15,4 +15,5 @@ opt.cursorline = true
 opt.wrap = false
 opt.scrolloff = 5
 opt.signcolumn = "yes"
+opt.updatetime = 300   -- faster CursorHold; keeps git signs responsive without hammering disk
 
