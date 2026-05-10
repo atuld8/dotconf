@@ -635,6 +635,33 @@ def _summary_value(summary_rows: List[List[str]], label: str) -> str:
     return "-"
 
 
+def _extract_subtasks(fields: Dict[str, Any]) -> List[Dict[str, str]]:
+    raw_subtasks = fields.get("subtasks")
+    if not isinstance(raw_subtasks, list):
+        return []
+
+    items: List[Dict[str, str]] = []
+    for task in raw_subtasks:
+        if not isinstance(task, dict):
+            continue
+
+        task_fields = task.get("fields") or {}
+        if not isinstance(task_fields, dict):
+            task_fields = {}
+
+        items.append(
+            {
+                "key": str(task.get("key") or "-"),
+                "summary": _compact_text(task_fields.get("summary"), max_len=120),
+                "status": _opt_value(task_fields.get("status")),
+                "assignee": _opt_value(task_fields.get("assignee")),
+                "type": _opt_value(task_fields.get("issuetype")),
+            }
+        )
+
+    return items
+
+
 def _print_compact_segments(segments: List[str], max_width: int = 140) -> None:
     if not segments:
         return
@@ -1024,7 +1051,7 @@ def _build_summary_rows(
         ["Parent", _opt_value(fields.get("parent"))],
         ["Components", _opt_value(fields.get("components"))],
         ["Labels", _opt_value(fields.get("labels"))],
-        ["Fix Versions", _opt_value(fields.get("fixVersions"))],
+        ["Fixed Version/s", _opt_value(fields.get("fixVersions"))],
         ["Affects Versions", _opt_value(fields.get("versions"))],
         *default_optional_rows,
         ["Comments", str(len(comments))],
@@ -1053,6 +1080,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Watchers",
         "Watcher Groups",
         "Slack",
+        "Fixed Version/s",
+        "Resolved",
         "Security Issue Watchers",
         "CVSS Score",
         "Impact",
@@ -1075,7 +1104,9 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
             print(
                 f"* Issue: {_summary_value(summary_rows, 'Issue')} | * Status: {_summary_value(summary_rows, 'Status')} | "
                 f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | * Security Level: {_summary_value(summary_rows, 'Security Level')} | "
-                f"* CVSS Score: {_summary_value(summary_rows, 'CVSS Score')}"
+                f"* CVSS Score: {_summary_value(summary_rows, 'CVSS Score')} | "
+                f"* Fixed Version/s: {_summary_value(summary_rows, 'Fixed Version/s')} | "
+                f"* Resolved: {_summary_value(summary_rows, 'Resolved')}"
             )
         else:
             print(
@@ -1107,7 +1138,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         print(f"  * Parent: {_summary_value(summary_rows, 'Parent')}")
         print(f"  * Components: {_summary_value(summary_rows, 'Components')}")
         print(f"  * Labels: {_summary_value(summary_rows, 'Labels')}")
-        print(f"  * Fix Versions: {_summary_value(summary_rows, 'Fix Versions')}")
+        print(f"  * Fixed Version/s: {_summary_value(summary_rows, 'Fixed Version/s')}")
         print(f"  * Affects Versions: {_summary_value(summary_rows, 'Affects Versions')}")
         optional_present = [
             label
@@ -1151,6 +1182,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
     optional_parts = []
     pvm_long_parts = []
     for label in optional_labels:
+        if profile_type != "pvm" and label in {"Fixed Version/s", "Resolved"}:
+            continue
         value = _summary_value(summary_rows, label)
         if value == "-" and not (profile_type == "fi" and label == "Case Priority"):
             continue
@@ -1372,6 +1405,7 @@ def _build_json_output(
     comments: List[Dict[str, Any]],
     requested_fields: List[str],
     selected_field_rows: List[List[str]],
+    subtasks: List[Dict[str, str]],
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "profile": profile_type,
@@ -1427,6 +1461,9 @@ def _build_json_output(
             for requested, field_name, value in selected_field_rows
         ]
 
+    if subtasks:
+        payload["subtasks"] = subtasks
+
     return payload
 
 
@@ -1435,6 +1472,7 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
         "summary",
         "description",
         "status",
+        "subtasks",
         "linked-fis",
         "etrack",
         "comments",
@@ -1443,10 +1481,10 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
     }
 
     mode_defaults: Dict[str, Set[str]] = {
-        "standard": {"summary", "description", "status", "linked-fis", "etrack", "comments", "fields", "verbose"},
+        "standard": {"summary", "description", "status", "subtasks", "linked-fis", "etrack", "comments", "fields", "verbose"},
         "summary": {"summary", "description"},
-        "investigate": {"summary", "description", "status", "linked-fis", "etrack", "comments", "fields", "verbose"},
-        "ops": {"summary", "status", "linked-fis", "etrack", "comments"},
+        "investigate": {"summary", "description", "status", "subtasks", "linked-fis", "etrack", "comments", "fields", "verbose"},
+        "ops": {"summary", "status", "subtasks", "linked-fis", "etrack", "comments"},
     }
 
     if raw_sections.strip():
@@ -1526,7 +1564,7 @@ def main() -> int:
         default="",
         help=(
             "Comma-separated sections to display (overrides --mode). "
-            "Allowed: summary,description,status,linked-fis,etrack,comments,fields,verbose"
+            "Allowed: summary,description,status,subtasks,linked-fis,etrack,comments,fields,verbose"
         ),
     )
     parser.add_argument(
@@ -1631,6 +1669,7 @@ def main() -> int:
     etrack_ids = _extract_etrack_ids(fields)
     sfdc_case_links = _extract_sfdc_case_links(issue)
     etrack_info: Optional[Dict[str, Dict[str, str]]] = None
+    subtasks = _extract_subtasks(fields)
     sections_override_active = bool(args.sections.strip())
     show_etrack_requested = (
         args.show_etrack_details
@@ -1681,6 +1720,7 @@ def main() -> int:
             comments,
             requested_fields,
             selected_field_rows,
+            subtasks,
         )
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
@@ -1747,6 +1787,26 @@ def main() -> int:
         elif args.show_empty:
             print(section_separator)
             print("\n* Current Status / Next Steps: None")
+            print(section_separator)
+
+    if "subtasks" in enabled_sections:
+        if subtasks:
+            print(section_separator)
+            print("\n* Sub-tasks:")
+            rows = []
+            for item in subtasks:
+                rows.append([
+                    item.get("key", "-"),
+                    item.get("type", "-"),
+                    item.get("status", "-"),
+                    item.get("assignee", "-"),
+                    item.get("summary", "-"),
+                ])
+            _print_table(rows, ["Key", "Type", "Status", "Assignee", "Summary"])
+            print(section_separator)
+        elif args.show_empty:
+            print(section_separator)
+            print("\n* Sub-tasks: None")
             print(section_separator)
 
     if "linked-fis" in enabled_sections:
