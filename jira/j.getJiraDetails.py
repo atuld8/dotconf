@@ -662,6 +662,36 @@ def _extract_subtasks(fields: Dict[str, Any]) -> List[Dict[str, str]]:
     return items
 
 
+def _extract_subtasks_from_issues(issues: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+
+        key = str(issue.get("key") or "-")
+        if key in seen:
+            continue
+        seen.add(key)
+
+        task_fields = issue.get("fields") or {}
+        if not isinstance(task_fields, dict):
+            task_fields = {}
+
+        items.append(
+            {
+                "key": key,
+                "summary": _compact_text(task_fields.get("summary"), max_len=120),
+                "status": _opt_value(task_fields.get("status")),
+                "assignee": _opt_value(task_fields.get("assignee")),
+                "type": _opt_value(task_fields.get("issuetype")),
+            }
+        )
+
+    return items
+
+
 def _print_compact_segments(segments: List[str], max_width: int = 140) -> None:
     if not segments:
         return
@@ -1506,6 +1536,7 @@ def main() -> int:
         usage=(
             "%(prog)s [-h] [-t|--type {auto,fi,pvm,generic,default}] [-s|--search] "
             "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
+            "[--sub-task|--sub-tasks] "
             "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections SECTIONS] "
             "[-E|--show-empty] [-l|--long-text-style {paragraph,wrapped,raw}] "
             "[-w|--wrap-width WRAP_WIDTH] [-d|--desc {none,short,mid,full}] "
@@ -1542,7 +1573,10 @@ def main() -> int:
         "-e",
         "--show-etrack-details",
         action="store_true",
-        help="If etrack incident IDs are present, fetch and show etrack summary details.",
+        help=(
+            "If etrack incident IDs are present, fetch and show etrack summary details "
+            "(hard override: enables etrack section)."
+        ),
     )
     parser.add_argument(
         "-c",
@@ -1550,6 +1584,16 @@ def main() -> int:
         type=int,
         default=2,
         help="Number of latest comments to show (default: 2). Use 0 to disable comments.",
+    )
+    parser.add_argument(
+        "--sub-task",
+        "--sub-tasks",
+        dest="sub_tasks",
+        action="store_true",
+        help=(
+            "Include sub-task related information even in modes that do not show it by default. "
+            "For Epic issues, this also includes Epic child issues."
+        ),
     )
     parser.add_argument(
         "-m",
@@ -1598,7 +1642,7 @@ def main() -> int:
         "-v",
         "--verbose",
         action="store_true",
-        help="Show verbose output section with full raw Jira response JSON.",
+        help="Show verbose output section with full raw Jira response JSON (hard override: enables verbose section).",
     )
     parser.add_argument(
         "-i",
@@ -1611,7 +1655,10 @@ def main() -> int:
         "--show-field",
         action="append",
         default=[],
-        help="Show specific Jira fields by field key or display name. Can be repeated or comma-separated.",
+        help=(
+            "Show specific Jira fields by field key or display name. "
+            "Can be repeated or comma-separated (hard override: enables fields section)."
+        ),
     )
     parser.add_argument(
         "-F",
@@ -1639,6 +1686,14 @@ def main() -> int:
     profile_type = "fi" if args.search else _resolve_profile_type(args.issue_type, issue_key)
     try:
         enabled_sections = _resolve_enabled_sections(args.mode, args.sections)
+        if args.sub_tasks:
+            enabled_sections.add("subtasks")
+        if args.show_etrack_details:
+            enabled_sections.add("etrack")
+        if args.verbose:
+            enabled_sections.add("verbose")
+        if args.show_field:
+            enabled_sections.add("fields")
     except ValueError as exc:
         print(f"Error: {exc}")
         return 2
@@ -1670,6 +1725,26 @@ def main() -> int:
     sfdc_case_links = _extract_sfdc_case_links(issue)
     etrack_info: Optional[Dict[str, Dict[str, str]]] = None
     subtasks = _extract_subtasks(fields)
+
+    # Jira Epics often have no native subtasks[]; when explicitly requested,
+    # fall back to listing Epic child issues.
+    issue_type_name = str((fields.get("issuetype") or {}).get("name", "")).strip().lower()
+    if args.sub_tasks and not subtasks and issue_type_name == "epic":
+        epic_children: List[Dict[str, Any]] = []
+        epic_key_escaped = _jql_escape(issue.get("key", issue_key))
+        for epic_jql in [
+            f'"Epic Link" = "{epic_key_escaped}" ORDER BY key ASC',
+            f'parent = "{epic_key_escaped}" ORDER BY key ASC',
+        ]:
+            try:
+                epic_children = jira.search_issues(epic_jql, max_results=500)
+            except RuntimeError:
+                continue
+            if epic_children:
+                break
+        if epic_children:
+            subtasks = _extract_subtasks_from_issues(epic_children)
+
     sections_override_active = bool(args.sections.strip())
     show_etrack_requested = (
         args.show_etrack_details
@@ -1706,6 +1781,7 @@ def main() -> int:
         selected_field_rows = _get_selected_field_rows(issue, requested_fields)
 
     if args.format == "json":
+        subtasks_for_output = subtasks if "subtasks" in enabled_sections else []
         json_payload = _build_json_output(
             profile_type,
             summary_rows,
@@ -1720,7 +1796,7 @@ def main() -> int:
             comments,
             requested_fields,
             selected_field_rows,
-            subtasks,
+            subtasks_for_output,
         )
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
