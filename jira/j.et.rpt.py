@@ -167,6 +167,8 @@ class Colors:
             'ET_CLOSED_CASE_NOT_CLOSED': cls.YELLOW,
             'SHARED_ETRACK_CONFLICT': cls.YELLOW,
             'JIRA_DONE_ET_ACTIVE': cls.YELLOW,
+            'FI_STATUS_ASYNC_UPDATE_REQUIRED': cls.YELLOW,
+            'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED': cls.YELLOW,
             'ET_WAITING_CASE_CLOSED': cls.YELLOW,
             'CASE_CLOSED_ET_NOT_CLOSED': cls.YELLOW,
             'READY_TO_CLOSE': cls.GREEN,
@@ -1301,6 +1303,7 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
 
     JIRA_DONE_STATUSES = {'solution provided', 'pre closing', 'closed', 'resolved'}
     JIRA_ACTIVE_STATUSES = {'in progress', 'waiting on support', 'open', 'new'}
+    ASYNC_SCENARIO1_FI_STATUSES = {'solution provided', 'pre closing', 'closed', 'resolved', 'waiting on support'}
 
     CASE_CLOSED_STATUSES = {'closed', 'duplicate'}
     CASE_ENG_DONE_STATUSES = {'eng solution provided', 'eng responded', 'solution provided/monitoring'}
@@ -1385,9 +1388,15 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
             'issues': [],
             'priority': 5
         },
-        'FI_ETRACK_ASYNC_STATUS': {
-            'title': 'FI-ETRACK STATUS OUT OF SYNC',
-            'description': 'FI and eTrack have conflicting status states indicating one may not have been updated',
+        'FI_STATUS_ASYNC_UPDATE_REQUIRED': {
+            'title': 'FI STATUS OUT OF SYNC (FI ACTION)',
+            'description': 'FI status likely needs update to align with eTrack progression',
+            'issues': [],
+            'priority': 2
+        },
+        'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED': {
+            'title': 'ETRACK STATUS OUT OF SYNC (ETRACK ACTION)',
+            'description': 'eTrack status likely needs update to align with FI/case progression',
             'issues': [],
             'priority': 2
         },
@@ -1508,6 +1517,19 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
             categories['NO_ETRACK']['issues'].append(issue_info)
         elif any(et in shared_etrack_conflicts for et in issue_info.get('et_all_incidents', [et_incident])):
             categories['SHARED_ETRACK_CONFLICT']['issues'].append(issue_info)
+        # FI/eTrack ASYNC STATUS: Detect out-of-sync combinations first (higher precedence)
+        # Scenario 1: FI resolved/customer-waiting, but eTrack still active
+        elif issue_info['jr_status'] in ASYNC_SCENARIO1_FI_STATUSES and issue_info['et_state'] in {'open', 'working', 'reopen'}:
+            categories['ETRACK_STATUS_ASYNC_UPDATE_REQUIRED']['issues'].append(issue_info)
+        # Scenario 2: eTrack resolved/verified/closed, but FI still engineering-active
+        elif issue_info['et_state'] in {'fixed', 'verifying', 'closed'} and issue_info['jr_status'] in {'in progress', 'open', 'new'}:
+            categories['FI_STATUS_ASYNC_UPDATE_REQUIRED']['issues'].append(issue_info)
+        # Scenario 3: eTrack waiting, but FI still engineering-active
+        elif issue_info['et_state'] in {'waiting'} and issue_info['jr_status'] in {'in progress', 'open', 'new'}:
+            categories['FI_STATUS_ASYNC_UPDATE_REQUIRED']['issues'].append(issue_info)
+        # Scenario 4: Case closed/duplicate, but eTrack still has unresolved work
+        elif issue_info['jr_case_status'] in CASE_CLOSED_STATUSES and issue_info['et_state'] in {'open', 'working', 'reopen', 'verifying'}:
+            categories['ETRACK_STATUS_ASYNC_UPDATE_REQUIRED']['issues'].append(issue_info)
         # BOTH_CLOSED now requires ALL THREE to be done/closed
         elif issue_info['et_state'] in ET_CLOSED_STATES and issue_info['jr_case_status'] in CASE_CLOSED_STATUSES and issue_info['jr_status'] in JIRA_DONE_STATUSES:
             categories['BOTH_CLOSED']['issues'].append(issue_info)
@@ -1530,19 +1552,6 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         # Case Closed but Jira still active (any Etrack state)
         elif issue_info['jr_case_status'] in CASE_CLOSED_STATUSES and issue_info['jr_status'] in JIRA_ACTIVE_STATUSES:
             categories['CASE_CLOSED_JIRA_ACTIVE']['issues'].append(issue_info)
-        # FI-ETRACK ASYNC STATUS: Detect out-of-sync combinations
-        # Scenario 1: FI Resolved, eTrack Still Active (open/working/reopen)
-        elif issue_info['jr_status'] in JIRA_DONE_STATUSES and issue_info['et_state'] in {'open', 'working', 'reopen'}:
-            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
-        # Scenario 2: eTrack Resolved/Verified, FI Still Active (in progress/open/new, excluding 'waiting on support')
-        elif issue_info['et_state'] in {'fixed', 'verifying', 'closed'} and issue_info['jr_status'] in {'in progress', 'open', 'new'}:
-            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
-        # Scenario 3: eTrack Waiting, FI Still Being Actively Worked (in progress/open/new)
-        elif issue_info['et_state'] in ET_WAITING_STATES and issue_info['jr_status'] in {'in progress', 'open', 'new'}:
-            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
-        # Scenario 4: Case Closed, eTrack Has Unresolved Work (open/working/reopen/verifying)
-        elif issue_info['jr_case_status'] in CASE_CLOSED_STATUSES and issue_info['et_state'] in {'open', 'working', 'reopen', 'verifying'}:
-            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
         elif issue_info['jr_case_status'] in CASE_CUSTOMER_STATUSES:
             categories['CUSTOMER_WAITING']['issues'].append(issue_info)
         elif issue_info['et_state'] in ET_ACTIVE_STATES and issue_info['jr_status'] in JIRA_ACTIVE_STATUSES:
@@ -2130,7 +2139,7 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
     print("=" * 80)
 
     actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'ET_CLOSED_CASE_NOT_CLOSED', 'SHARED_ETRACK_CONFLICT',
-                       'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED', 'READY_TO_CLOSE']
+                       'JIRA_DONE_ET_ACTIVE', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'ET_WAITING_CASE_CLOSED', 'READY_TO_CLOSE']
 
     priority_counts = {}
     for cat_id in actionable_cats:
@@ -2152,7 +2161,7 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
     if PrettyTable:
         table = PrettyTable()
         table.field_names = ['Jr Priority', 'Total', 'No Etrack', 'ET Closed/Jira Active',
-                             'ET Closed/Case Open', 'Shared ET Conflict', 'Jira Done/ET Active', 'Ready to Close']
+                     'ET Closed/Case Open', 'Shared ET Conflict', 'Jira Done/ET Active', 'FI Async', 'ET Async', 'Ready to Close']
         table.align = 'r'
         table.align['Jr Priority'] = 'l'
 
@@ -2165,18 +2174,22 @@ def print_analyzer_priority_breakdown(categories: Dict[str, Any]):
                 counts.get('ET_CLOSED_CASE_NOT_CLOSED', 0),
                 counts.get('SHARED_ETRACK_CONFLICT', 0),
                 counts.get('JIRA_DONE_ET_ACTIVE', 0),
+                counts.get('FI_STATUS_ASYNC_UPDATE_REQUIRED', 0),
+                counts.get('ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 0),
                 counts.get('READY_TO_CLOSE', 0)
             ])
 
         Colors.print_table(table)
     else:
-        print(f"{'Jr Priority':<12} {'Total':>6} {'No ET':>8} {'ET Closed':>10} {'ET/Case Open':>12} {'Shared ET':>10} {'Jr Done':>8} {'Ready':>6}")
-        print("-" * 88)
+        print(f"{'Jr Priority':<12} {'Total':>6} {'No ET':>8} {'ET Closed':>10} {'ET/Case Open':>12} {'Shared ET':>10} {'Jr Done':>8} {'FI Async':>8} {'ET Async':>8} {'Ready':>6}")
+        print("-" * 106)
         for priority, counts in sorted_priorities:
             print(f"{priority:<12} {counts['total']:>6} {counts.get('NO_ETRACK', 0):>8} "
                   f"{counts.get('ET_CLOSED_JIRA_ACTIVE', 0):>10} {counts.get('ET_CLOSED_CASE_NOT_CLOSED', 0):>12} "
                   f"{counts.get('SHARED_ETRACK_CONFLICT', 0):>10} "
                   f"{counts.get('JIRA_DONE_ET_ACTIVE', 0):>8} "
+                  f"{counts.get('FI_STATUS_ASYNC_UPDATE_REQUIRED', 0):>8} "
+                  f"{counts.get('ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 0):>8} "
                   f"{counts.get('READY_TO_CLOSE', 0):>6}")
     print()  # Extra blank line after section
 
@@ -2188,7 +2201,7 @@ def print_analyzer_assignee_breakdown(categories: Dict[str, Any]):
     print("=" * 80)
 
     actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'ET_CLOSED_CASE_NOT_CLOSED', 'SHARED_ETRACK_CONFLICT',
-                       'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED', 'READY_TO_CLOSE']
+                       'JIRA_DONE_ET_ACTIVE', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'ET_WAITING_CASE_CLOSED', 'READY_TO_CLOSE']
 
     assignee_counts = {}
     for cat_id in actionable_cats:
@@ -2241,7 +2254,7 @@ def print_executive_report(categories: Dict[str, Any], total_count: int):
 
     # Calculate key metrics
     actionable = sum(len(categories[c]['issues']) for c in
-                     ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED'])
+                     ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'ET_WAITING_CASE_CLOSED'])
     ready_to_close = len(categories.get('READY_TO_CLOSE', {}).get('issues', []))
     both_closed = len(categories.get('BOTH_CLOSED', {}).get('issues', []))
     in_progress = len(categories.get('BOTH_ACTIVE', {}).get('issues', []))
@@ -2250,7 +2263,7 @@ def print_executive_report(categories: Dict[str, Any], total_count: int):
 
     # Priority breakdown for actionable items
     priority_counts = {'Blocker': 0, 'Critical': 0, 'P1': 0, 'Major': 0, 'Minor': 0}
-    for cat_id in ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED']:
+    for cat_id in ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'ET_WAITING_CASE_CLOSED']:
         for issue in categories.get(cat_id, {}).get('issues', []):
             p = issue['jr_priority']
             if p in priority_counts:
@@ -2347,6 +2360,10 @@ def print_action_report(categories: Dict[str, Any]):
     action_order = [
         ('CRITICAL', 'NO_ETRACK', 'IMMEDIATE: Link Etrack Incidents',
          'These FIs have no associated Etrack incident - needs immediate triage'),
+        ('HIGH', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'HIGH: Update FI Status',
+         'FI status is out of sync with eTrack progression - update FI side workflow state'),
+        ('HIGH', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'HIGH: Update eTrack Status',
+         'eTrack status is out of sync with FI/case progression - update eTrack side state'),
         ('HIGH', 'ET_CLOSED_JIRA_ACTIVE', 'HIGH: Update Jira Status',
          'Etrack is CLOSED but Jira still shows In Progress - update Jira'),
         ('HIGH', 'SHARED_ETRACK_CONFLICT', 'HIGH: Review Shared Etrack',
@@ -2404,7 +2421,7 @@ def print_action_report(categories: Dict[str, Any]):
         priority_order = ['Blocker', 'Critical', 'P1', 'Major', 'Minor', 'Trivial', 'Unknown']
 
         # Determine if this category needs Etrack info (action is on Etrack side)
-        show_etrack = cat_id in ['SHARED_ETRACK_CONFLICT', 'ET_WAITING_CASE_CLOSED', 'CASE_CLOSED_ET_NOT_CLOSED', 'JIRA_DONE_ET_ACTIVE', 'READY_TO_CLOSE']
+        show_etrack = cat_id in ['SHARED_ETRACK_CONFLICT', 'ET_WAITING_CASE_CLOSED', 'CASE_CLOSED_ET_NOT_CLOSED', 'JIRA_DONE_ET_ACTIVE', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'READY_TO_CLOSE']
 
         for priority in priority_order:
             if priority not in by_priority:
@@ -2480,6 +2497,8 @@ def print_team_report(categories: Dict[str, Any]):
     cat_names = {
         'NO_ETRACK': 'NoET',
         'ET_CLOSED_JIRA_ACTIVE': 'ETClosed',
+        'FI_STATUS_ASYNC_UPDATE_REQUIRED': 'FIAsync',
+        'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED': 'ETAsync',
         'SHARED_ETRACK_CONFLICT': 'SharedET',
         'JIRA_DONE_ET_ACTIVE': 'JrDone',
         'ET_WAITING_CASE_CLOSED': 'ETWait',
@@ -2512,7 +2531,7 @@ def print_team_report(categories: Dict[str, Any]):
                 assignee_data[assignee]['categories'][cat_id] = 0
             assignee_data[assignee]['categories'][cat_id] += 1
 
-            if cat_id in ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED']:
+            if cat_id in ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'ET_WAITING_CASE_CLOSED']:
                 assignee_data[assignee]['actionable'] += 1
                 if issue['jr_priority'] in ['Blocker', 'Critical', 'P1']:
                     assignee_data[assignee]['high_priority'] += 1
@@ -2528,7 +2547,7 @@ def print_team_report(categories: Dict[str, Any]):
     for assignee, data in sorted_assignees:
         # Build status breakdown string
         status_parts = []
-        for cat_id in ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED', 'CASE_CLOSED_ET_NOT_CLOSED', 'READY_TO_CLOSE']:
+        for cat_id in ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED', 'CASE_CLOSED_ET_NOT_CLOSED', 'READY_TO_CLOSE']:
             count = data['categories'].get(cat_id, 0)
             if count > 0:
                 short_name = cat_names[cat_id]
@@ -2567,6 +2586,8 @@ def print_team_report(categories: Dict[str, Any]):
     print(Colors.header("Legend:"))
     print(f"  {Colors.error('[!]')}      = Has high-priority (Blocker/Critical/P1) actionable items")
     print(f"  {Colors.error('NoET')}     = No Etrack linked (needs triage)")
+    print(f"  {Colors.warning('FIAsync')}  = FI side status update needed")
+    print(f"  {Colors.warning('ETAsync')}  = eTrack side status update needed")
     print(f"  {Colors.warning('ETClosed')} = Etrack closed but Jira still active (update Jira)")
     print(f"  {Colors.warning('SharedET')} = Shared Etrack has mixed FI states (review all linked FIs)")
     print(f"  {Colors.warning('JrDone')}   = Jira done but Etrack still active (follow up on Etrack)")
@@ -2590,7 +2611,7 @@ def print_risk_report(categories: Dict[str, Any]):
 
     # Collect high priority issues across actionable categories
     high_priority_issues = []
-    actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'ET_WAITING_CASE_CLOSED']
+    actionable_cats = ['NO_ETRACK', 'ET_CLOSED_JIRA_ACTIVE', 'SHARED_ETRACK_CONFLICT', 'JIRA_DONE_ET_ACTIVE', 'FI_STATUS_ASYNC_UPDATE_REQUIRED', 'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED', 'ET_WAITING_CASE_CLOSED']
 
     for cat_id in actionable_cats:
         for issue in categories.get(cat_id, {}).get('issues', []):
@@ -2614,6 +2635,8 @@ def print_risk_report(categories: Dict[str, Any]):
         'ET_CLOSED_JIRA_ACTIVE': 'Jira not updated',
         'SHARED_ETRACK_CONFLICT': 'Shared etrack conflict',
         'JIRA_DONE_ET_ACTIVE': 'Etrack not closed',
+        'FI_STATUS_ASYNC_UPDATE_REQUIRED': 'FI status update needed',
+        'ETRACK_STATUS_ASYNC_UPDATE_REQUIRED': 'eTrack status update needed',
         'ET_WAITING_CASE_CLOSED': 'Etrack waiting'
     }
 
