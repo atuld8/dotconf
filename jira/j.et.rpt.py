@@ -1385,6 +1385,12 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
             'issues': [],
             'priority': 5
         },
+        'FI_ETRACK_ASYNC_STATUS': {
+            'title': 'FI-ETRACK STATUS OUT OF SYNC',
+            'description': 'FI and eTrack have conflicting status states indicating one may not have been updated',
+            'issues': [],
+            'priority': 2
+        },
         'OTHER': {
             'title': 'OTHER/REVIEW NEEDED',
             'description': 'State combinations that need manual review',
@@ -1524,6 +1530,19 @@ def analyze_status_combinations(processed_data: List[Dict]) -> Dict[str, Any]:
         # Case Closed but Jira still active (any Etrack state)
         elif issue_info['jr_case_status'] in CASE_CLOSED_STATUSES and issue_info['jr_status'] in JIRA_ACTIVE_STATUSES:
             categories['CASE_CLOSED_JIRA_ACTIVE']['issues'].append(issue_info)
+        # FI-ETRACK ASYNC STATUS: Detect out-of-sync combinations
+        # Scenario 1: FI Resolved, eTrack Still Active (open/working/reopen)
+        elif issue_info['jr_status'] in JIRA_DONE_STATUSES and issue_info['et_state'] in {'open', 'working', 'reopen'}:
+            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
+        # Scenario 2: eTrack Resolved/Verified, FI Still Active (in progress/open/new, excluding 'waiting on support')
+        elif issue_info['et_state'] in {'fixed', 'verifying', 'closed'} and issue_info['jr_status'] in {'in progress', 'open', 'new'}:
+            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
+        # Scenario 3: eTrack Waiting, FI Still Being Actively Worked (in progress/open/new)
+        elif issue_info['et_state'] in ET_WAITING_STATES and issue_info['jr_status'] in {'in progress', 'open', 'new'}:
+            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
+        # Scenario 4: Case Closed, eTrack Has Unresolved Work (open/working/reopen/verifying)
+        elif issue_info['jr_case_status'] in CASE_CLOSED_STATUSES and issue_info['et_state'] in {'open', 'working', 'reopen', 'verifying'}:
+            categories['FI_ETRACK_ASYNC_STATUS']['issues'].append(issue_info)
         elif issue_info['jr_case_status'] in CASE_CUSTOMER_STATUSES:
             categories['CUSTOMER_WAITING']['issues'].append(issue_info)
         elif issue_info['et_state'] in ET_ACTIVE_STATES and issue_info['jr_status'] in JIRA_ACTIVE_STATUSES:
