@@ -1845,6 +1845,7 @@ def main() -> int:
         help="Number of latest comments to show (default: 2). Use 0 to disable comments.",
     )
     parser.add_argument(
+        "-st",
         "--sub-task",
         "--sub-tasks",
         dest="sub_tasks",
@@ -1871,6 +1872,7 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "-tl",
         "--timeline",
         action="store_true",
         help="Include timeline history section (Component History, Aged Reason History, and Timeline field).",
