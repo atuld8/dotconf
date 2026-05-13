@@ -646,6 +646,13 @@ def _summary_value(summary_rows: List[List[str]], label: str) -> str:
     return "-"
 
 
+def _is_cap_fi_profile(summary_rows: List[List[str]], profile_type: str) -> bool:
+    if profile_type != "fi":
+        return False
+    cap_value = _summary_value(summary_rows, "CAP Involvement")
+    return cap_value.strip().casefold() == "cap"
+
+
 def _extract_subtasks(fields: Dict[str, Any]) -> List[Dict[str, str]]:
     raw_subtasks = fields.get("subtasks")
     if not isinstance(raw_subtasks, list):
@@ -1215,6 +1222,7 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
     _append_if_present(rows, "Watcher Groups", _field_value_by_name(issue, "Watcher Groups"))
 
     _append_if_present(rows, "Case Status", fields.get("customfield_16200"))
+    _append_if_present(rows, "CAP Involvement", _field_value_by_name(issue, "CAP Involvement"))
     _append_if_present(rows, "Etrack-Resolution", _field_value_by_any_name(issue, ["Etrack-Resolution", "Etrack Resolution"]))
     _append_if_present(rows, "FI RCA Category", _field_value_by_name(issue, "FI RCA Category"))
     _append_if_present(rows, "Action Taken", _field_value_by_name(issue, "Action Taken"))
@@ -1247,20 +1255,21 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "Progress Status": 2,
             "Severity": 3,
             "Case Status": 4,
-            "Etrack-Resolution": 5,
-            "FI RCA Category": 6,
-            "Action Taken": 7,
-            "Etrack Incident": 8,
-            "Etrack Ref": 9,
-            "Case#": 10,
-            "SalesForce Case Link": 11,
-            "Case Priority": 12,
-            "Customer": 13,
-            "Epic Link": 14,
-            "Sprint": 15,
-            "Watchers": 16,
-            "Watcher Groups": 17,
-            "Slack": 18,
+            "CAP Involvement": 5,
+            "Etrack-Resolution": 6,
+            "FI RCA Category": 7,
+            "Action Taken": 8,
+            "Etrack Incident": 9,
+            "Etrack Ref": 10,
+            "Case#": 11,
+            "SalesForce Case Link": 12,
+            "Case Priority": 13,
+            "Customer": 14,
+            "Epic Link": 15,
+            "Sprint": 16,
+            "Watchers": 17,
+            "Watcher Groups": 18,
+            "Slack": 19,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
     elif profile_type == "pvm":
@@ -1316,11 +1325,14 @@ def _build_summary_rows(
 
 
 def _print_summary(summary_rows: List[List[str]], output_format: str, profile_type: str):
+    is_cap_fi = _is_cap_fi_profile(summary_rows, profile_type)
+
     optional_labels = [
         "Solution",
         "Progress Status",
         "Severity",
         "Case Status",
+        "CAP Involvement",
         "Etrack-Resolution",
         "FI RCA Category",
         "Action Taken",
@@ -1350,6 +1362,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
 
     if output_format == "minimal":
         if profile_type == "fi":
+            if is_cap_fi:
+                print("* CAP-FI PROFILE")
             print(
                 f"* Issue: {_summary_value(summary_rows, 'Issue')} | * Status: {_summary_value(summary_rows, 'Status')} | "
                 f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | * Customer: {_summary_value(summary_rows, 'Customer')} | "
@@ -1372,11 +1386,15 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
 
     if output_format == "table":
         print()
+        if is_cap_fi:
+            print("* CAP-FI PROFILE")
         _print_table(summary_rows, ["Field", "Value"])
         return
 
     if output_format == "grouped":
         print()
+        if is_cap_fi:
+            print("* CAP-FI PROFILE")
         print(f"* Issue: {_summary_value(summary_rows, 'Issue')}")
         print(f"* Summary: {_summary_value(summary_rows, 'Summary')}")
         print("\n* State:")
@@ -1416,6 +1434,9 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
     separator = "-" * 140
 
     print()
+    if is_cap_fi:
+        print("* CAP-FI PROFILE")
+        print(separator)
     print(
         f"* Issue: {_summary_value(summary_rows, 'Issue')} | "
         f"* Project: {_summary_value(summary_rows, 'Project')} | "
