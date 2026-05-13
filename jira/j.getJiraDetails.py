@@ -521,10 +521,21 @@ class JiraClient:
             "Content-Type": "application/json",
         }
 
+    def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
+        try:
+            return requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+        except requests.exceptions.SSLError as exc:
+            raise RuntimeError(
+                f"TLS/SSL error while connecting to Jira ({self.server}). "
+                f"Please check VPN/proxy/certificate setup. Details: {exc}"
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(f"Network error while calling Jira ({self.server}): {exc}") from exc
+
     def get_issue(self, issue_key: str) -> Dict[str, Any]:
         url = f"{self.base_url}/rest/api/2/issue/{issue_key}"
         params = {"expand": "names"}
-        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+        response = self._get(url, params=params)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to fetch {issue_key}: {response.status_code} {response.text[:400]}")
         return response.json()
@@ -537,7 +548,7 @@ class JiraClient:
             "fields": "*all",   # return all fields including custom fields
             "expand": "names",  # include field-id→display-name mapping per issue
         }
-        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+        response = self._get(url, params=params)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to search issues: {response.status_code} {response.text[:400]}")
         return response.json().get("issues", [])
@@ -545,7 +556,7 @@ class JiraClient:
     def get_field_key_by_name(self, display_name: str) -> Optional[str]:
         if self._fields_by_name is None:
             url = f"{self.base_url}/rest/api/2/field"
-            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+            response = self._get(url)
             if response.status_code != 200:
                 raise RuntimeError(
                     f"Failed to fetch Jira fields: {response.status_code} {response.text[:400]}"
@@ -574,7 +585,7 @@ class JiraClient:
             "fields": "status,resolution,assignee,priority,updated",
         }
 
-        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+        response = self._get(url, params=params)
         if response.status_code != 200:
             raise RuntimeError(
                 f"Failed to fetch linked issue statuses: {response.status_code} {response.text[:400]}"
@@ -719,6 +730,211 @@ def _field_value_by_name(issue: Dict[str, Any], display_name: str) -> Any:
             if _normalize_field_selector(mapped_name) == normalized_name:
                 return fields.get(key)
     return None
+
+
+def _field_value_by_any_name(issue: Dict[str, Any], display_names: List[str]) -> Any:
+    for display_name in display_names:
+        value = _field_value_by_name(issue, display_name)
+        if value is not None and not _is_empty_value(value):
+            return value
+    return None
+
+
+def _format_history_value(value: Any) -> str:
+    if _is_empty_value(value):
+        return "-"
+
+    items: List[str] = []
+
+    def _normalize_history_item(raw: str) -> str:
+        text = raw.strip()
+        if not text:
+            return ""
+
+        # Normalize wiki-style bracket wrappers to avoid double-bracketing in output.
+        while True:
+            if text.startswith("[[") and text.endswith("]]") and len(text) > 4:
+                text = text[1:-1].strip()
+                continue
+            if text.startswith("[") and text.endswith("]") and len(text) > 2:
+                text = text[1:-1].strip()
+                continue
+            break
+
+        return text
+
+    if isinstance(value, list):
+        for item in value:
+            text = _normalize_history_item(_opt_value(item))
+            if text and text != "-":
+                items.append(text)
+    else:
+        text = _normalize_history_item(_opt_value(value))
+        if text and text != "-":
+            if "," in text:
+                items.extend([_normalize_history_item(part) for part in text.split(",") if _normalize_history_item(part)])
+            else:
+                items.append(text)
+
+    if not items:
+        return "-"
+    return "[" + ", ".join(items) + "]"
+
+
+def _extract_timeline_context(issue: Dict[str, Any]) -> Dict[str, str]:
+    component_history = _field_value_by_any_name(issue, ["Component History"])
+    aged_reason_history = _field_value_by_any_name(issue, ["Aged Reason History"])
+    timeline_value = _field_value_by_any_name(issue, ["Timeline"])
+
+    context: Dict[str, str] = {}
+
+    component_history_text = _format_history_value(component_history)
+    if component_history_text != "-":
+        context["component_history"] = component_history_text
+
+    aged_reason_history_text = _format_history_value(aged_reason_history)
+    if aged_reason_history_text != "-":
+        context["aged_reason_history"] = aged_reason_history_text
+
+    timeline_text = _clean_timeline_text(timeline_value)
+    if _is_meaningful_text(timeline_text):
+        context["timeline"] = timeline_text
+
+    return context
+
+
+def _extract_rca_ca_context(issue: Dict[str, Any]) -> Dict[str, str]:
+    fields = issue.get("fields")
+    if not isinstance(fields, dict):
+        return {}
+
+    result: Dict[str, str] = {}
+
+    values: List[tuple[str, Any]] = [
+        ("FI RCA Category", _field_value_by_name(issue, "FI RCA Category")),
+        ("Action Taken", _field_value_by_name(issue, "Action Taken")),
+        ("RCA Notes", _field_value_by_name(issue, "RCA Notes")),
+        ("Bug Signature", _field_value_by_name(issue, "Bug Signature")),
+        ("Etrack-Resolution", _field_value_by_any_name(issue, ["Etrack-Resolution", "Etrack Resolution"])),
+    ]
+
+    for label, value in values:
+        formatted = _format_selected_field_value(value)
+        if formatted and formatted != "-":
+            result[label] = formatted
+
+    return result
+
+
+def _clean_timeline_text(value: Any) -> str:
+    if value is None:
+        return ""
+
+    text = html.unescape(str(value))
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Preserve timeline markers such as "<22 Apr 2026 : 12:29 PM>" while stripping HTML tags.
+    protected: Dict[str, str] = {}
+
+    def _protect_marker(match: re.Match[str]) -> str:
+        key = f"__TL_MARKER_{len(protected)}__"
+        protected[key] = match.group(1)
+        return key
+
+    text = re.sub(
+        r"(<\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s*:\s*\d{1,2}:\d{2}\s*(?:AM|PM)>)",
+        _protect_marker,
+        text,
+    )
+
+    replacements = [
+        (r"<br\s*/?>", "\n"),
+        (r"</p>", "\n\n"),
+        (r"<p[^>]*>", ""),
+        (r"</div>", "\n"),
+        (r"<div[^>]*>", ""),
+        (r"<li[^>]*>", "\n- "),
+        (r"</li>", ""),
+        (r"</tr>", "\n"),
+        (r"<tr[^>]*>", ""),
+        (r"</td>", " | "),
+        (r"<td[^>]*>", ""),
+        (r"</th>", " | "),
+        (r"<th[^>]*>", ""),
+        (r"</h[1-6]>", "\n"),
+        (r"<h[1-6][^>]*>", "\n"),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    text = re.sub(r"<[^>]+>", " ", text)
+
+    for key, marker in protected.items():
+        text = text.replace(key, marker)
+
+    # Enforce a portal-like block structure so timeline remains readable.
+    marker_pattern = r"(<\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s*:\s*\d{1,2}:\d{2}\s*(?:AM|PM)>)"
+    text = re.sub(rf"\s*{marker_pattern}\s*", r"\n\1\n", text)
+    text = re.sub(r"\s*(Next Steps|Current Status)\s*", r"\n\1\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    normalized_lines: List[str] = []
+    for raw_line in text.split("\n"):
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            if normalized_lines and normalized_lines[-1] != "":
+                normalized_lines.append("")
+            continue
+
+        # Drop table delimiter artifacts like '|', '||', '| |', etc.
+        if re.fullmatch(r"[|\s]+", line):
+            continue
+
+        parts = [part.strip() for part in re.split(r"\s*\|\s*", line) if part.strip()]
+        if parts:
+            for part in parts:
+                if part != "|" and not re.fullmatch(r"[|\s]+", part):
+                    normalized_lines.append(part)
+        elif not re.fullmatch(r"[|\s]+", line):
+            normalized_lines.append(line)
+
+    final_lines: List[str] = []
+    for line in normalized_lines:
+        if line == "":
+            if final_lines and final_lines[-1] != "":
+                final_lines.append("")
+            continue
+
+        if re.match(r"^<\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s*:\s*\d{1,2}:\d{2}\s*(?:AM|PM)>$", line):
+            if final_lines and final_lines[-1] != "":
+                final_lines.append("")
+            final_lines.append(line)
+            continue
+
+        final_lines.append(line)
+
+    # Final pass: keep timeline headers on separate lines if any were collapsed.
+    structured_lines: List[str] = []
+    for line in final_lines:
+        if line == "":
+            if structured_lines and structured_lines[-1] != "":
+                structured_lines.append("")
+            continue
+
+        parts = re.split(r"\b(Next Steps|Current Status)\b", line)
+        if len(parts) == 1:
+            structured_lines.append(line)
+            continue
+
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            if part.casefold() == "next steps":
+                part = "--- Next Steps"
+            structured_lines.append(part)
+
+    return "\n".join(structured_lines).strip()
 
 
 def _resolve_profile_type(requested_type: str, issue_key: str) -> str:
@@ -999,6 +1215,9 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
     _append_if_present(rows, "Watcher Groups", _field_value_by_name(issue, "Watcher Groups"))
 
     _append_if_present(rows, "Case Status", fields.get("customfield_16200"))
+    _append_if_present(rows, "Etrack-Resolution", _field_value_by_any_name(issue, ["Etrack-Resolution", "Etrack Resolution"]))
+    _append_if_present(rows, "FI RCA Category", _field_value_by_name(issue, "FI RCA Category"))
+    _append_if_present(rows, "Action Taken", _field_value_by_name(issue, "Action Taken"))
     if etrack_ids:
         rows.append(["Etrack Incident", ", ".join(etrack_ids)])
     _append_if_present(rows, "Etrack Ref", fields.get("customfield_36508"))
@@ -1028,17 +1247,20 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "Progress Status": 2,
             "Severity": 3,
             "Case Status": 4,
-            "Etrack Incident": 5,
-            "Etrack Ref": 6,
-            "Case#": 7,
-            "SalesForce Case Link": 8,
-            "Case Priority": 9,
-            "Customer": 10,
-            "Epic Link": 11,
-            "Sprint": 12,
-            "Watchers": 13,
-            "Watcher Groups": 14,
-            "Slack": 15,
+            "Etrack-Resolution": 5,
+            "FI RCA Category": 6,
+            "Action Taken": 7,
+            "Etrack Incident": 8,
+            "Etrack Ref": 9,
+            "Case#": 10,
+            "SalesForce Case Link": 11,
+            "Case Priority": 12,
+            "Customer": 13,
+            "Epic Link": 14,
+            "Sprint": 15,
+            "Watchers": 16,
+            "Watcher Groups": 17,
+            "Slack": 18,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
     elif profile_type == "pvm":
@@ -1099,6 +1321,9 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Progress Status",
         "Severity",
         "Case Status",
+        "Etrack-Resolution",
+        "FI RCA Category",
+        "Action Taken",
         "Etrack Incident",
         "Etrack Ref",
         "Case#",
@@ -1436,6 +1661,10 @@ def _build_json_output(
     requested_fields: List[str],
     selected_field_rows: List[List[str]],
     subtasks: List[Dict[str, str]],
+    timeline_context: Dict[str, str],
+    include_timeline_section: bool,
+    rca_ca_context: Dict[str, str],
+    include_rca_ca_section: bool,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "profile": profile_type,
@@ -1494,6 +1723,12 @@ def _build_json_output(
     if subtasks:
         payload["subtasks"] = subtasks
 
+    if include_timeline_section and timeline_context:
+        payload["timeline_context"] = timeline_context
+
+    if include_rca_ca_section and rca_ca_context:
+        payload["rca_ca_context"] = rca_ca_context
+
     return payload
 
 
@@ -1502,19 +1737,21 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
         "summary",
         "description",
         "status",
+        "rca-ca",
         "subtasks",
         "linked-fis",
         "etrack",
         "comments",
         "fields",
+        "timeline",
         "verbose",
     }
 
     mode_defaults: Dict[str, Set[str]] = {
-        "standard": {"summary", "description", "status", "subtasks", "linked-fis", "etrack", "comments", "fields", "verbose"},
+        "standard": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "comments", "fields", "verbose"},
         "summary": {"summary", "description"},
-        "investigate": {"summary", "description", "status", "subtasks", "linked-fis", "etrack", "comments", "fields", "verbose"},
-        "ops": {"summary", "status", "subtasks", "linked-fis", "etrack", "comments"},
+        "investigate": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "comments", "fields", "timeline", "verbose"},
+        "ops": {"summary", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "comments"},
     }
 
     if raw_sections.strip():
@@ -1538,6 +1775,7 @@ def main() -> int:
             "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
             "[--sub-task|--sub-tasks] "
             "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections SECTIONS] "
+            "[--timeline] "
             "[-E|--show-empty] [-l|--long-text-style {paragraph,wrapped,raw}] "
             "[-w|--wrap-width WRAP_WIDTH] [-d|--desc {none,short,mid,full}] "
             "[-v|--verbose] [-i|--include-empty-customfields] [-f|--show-field SHOW_FIELD] "
@@ -1608,8 +1846,13 @@ def main() -> int:
         default="",
         help=(
             "Comma-separated sections to display (overrides --mode). "
-            "Allowed: summary,description,status,subtasks,linked-fis,etrack,comments,fields,verbose"
+            "Allowed: summary,description,status,rca-ca,subtasks,linked-fis,etrack,comments,fields,timeline,verbose"
         ),
+    )
+    parser.add_argument(
+        "--timeline",
+        action="store_true",
+        help="Include timeline history section (Component History, Aged Reason History, and Timeline field).",
     )
     parser.add_argument(
         "-E",
@@ -1694,6 +1937,8 @@ def main() -> int:
             enabled_sections.add("verbose")
         if args.show_field:
             enabled_sections.add("fields")
+        if args.timeline:
+            enabled_sections.add("timeline")
     except ValueError as exc:
         print(f"Error: {exc}")
         return 2
@@ -1723,6 +1968,8 @@ def main() -> int:
     linked_status: Optional[Dict[str, Dict[str, str]]] = None
     etrack_ids = _extract_etrack_ids(fields)
     sfdc_case_links = _extract_sfdc_case_links(issue)
+    timeline_context = _extract_timeline_context(issue)
+    rca_ca_context = _extract_rca_ca_context(issue)
     etrack_info: Optional[Dict[str, Dict[str, str]]] = None
     subtasks = _extract_subtasks(fields)
 
@@ -1797,6 +2044,10 @@ def main() -> int:
             requested_fields,
             selected_field_rows,
             subtasks_for_output,
+            timeline_context,
+            "timeline" in enabled_sections,
+            rca_ca_context,
+            "rca-ca" in enabled_sections,
         )
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
@@ -1834,8 +2085,11 @@ def main() -> int:
             print(section_separator)
 
     if "status" in enabled_sections:
+        aged_reason_value = _format_selected_field_value(_field_value_by_name(issue, "Aged Reason"))
         if status_context:
             print(section_separator)
+            if aged_reason_value != "-":
+                print(f"\n* Aged Reason: {aged_reason_value}")
             print("\n* Current Status / Next Steps:")
             if "current_status" in status_context:
                 print("  * Current Status:")
@@ -1862,7 +2116,33 @@ def main() -> int:
             print(section_separator)
         elif args.show_empty:
             print(section_separator)
+            if aged_reason_value != "-":
+                print(f"\n* Aged Reason: {aged_reason_value}")
             print("\n* Current Status / Next Steps: None")
+            print(section_separator)
+
+    if "rca-ca" in enabled_sections:
+        if rca_ca_context:
+            print(section_separator)
+            print("\n* RCA-CA:")
+            for label in ["FI RCA Category", "Action Taken", "RCA Notes", "Bug Signature", "Etrack-Resolution"]:
+                value = rca_ca_context.get(label)
+                if not value:
+                    continue
+                print(f"  * {label}:")
+                print(
+                    _format_multiline_text(
+                        value,
+                        max_len=0,
+                        width=args.wrap_width,
+                        indent="    ",
+                        style=args.long_text_style,
+                    )
+                )
+            print(section_separator)
+        elif args.show_empty:
+            print(section_separator)
+            print("\n* RCA-CA: None")
             print(section_separator)
 
     if "subtasks" in enabled_sections:
@@ -1972,6 +2252,34 @@ def main() -> int:
         elif args.show_empty:
             print(section_separator)
             print("\n* Selected Fields: None (use --show-field)")
+            print(section_separator)
+
+    if "timeline" in enabled_sections:
+        if timeline_context:
+            print(section_separator)
+            print("\n* Timeline:")
+
+            if "component_history" in timeline_context:
+                print(f"  * Component History: {timeline_context['component_history']}")
+
+            if "aged_reason_history" in timeline_context:
+                print(f"  * Aged Reason History: {timeline_context['aged_reason_history']}")
+
+            if "timeline" in timeline_context:
+                print("  * Timeline:")
+                print(
+                    _format_multiline_text(
+                        timeline_context["timeline"],
+                        max_len=0,
+                        width=args.wrap_width,
+                        indent="    ",
+                        style="raw",
+                    )
+                )
+            print(section_separator)
+        elif args.show_empty:
+            print(section_separator)
+            print("\n* Timeline: None")
             print(section_separator)
 
     if "verbose" in enabled_sections and args.verbose:
