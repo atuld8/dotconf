@@ -938,7 +938,7 @@ def _clean_timeline_text(value: Any) -> str:
             if not part:
                 continue
             if part.casefold() == "next steps":
-                part = "--- Next Steps"
+                part = "----- Next Steps -----"
             structured_lines.append(part)
 
     return "\n".join(structured_lines).strip()
