@@ -843,7 +843,7 @@ def _clean_timeline_text(value: Any) -> str:
     # Preserve timeline markers such as "<22 Apr 2026 : 12:29 PM>" while stripping HTML tags.
     protected: Dict[str, str] = {}
 
-    def _protect_marker(match: re.Match[str]) -> str:
+    def _protect_marker(match: Any) -> str:
         key = f"__TL_MARKER_{len(protected)}__"
         protected[key] = match.group(1)
         return key
