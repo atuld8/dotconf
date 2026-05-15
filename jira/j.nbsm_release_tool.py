@@ -47,6 +47,7 @@ import os
 import re
 import sys
 import json
+import time
 import argparse
 import subprocess
 from urllib.parse import urlparse
@@ -161,14 +162,85 @@ class JiraClient:
             raise RuntimeError("requests library not installed. Run: pip install requests")
 
         url = f"{self.url}/rest/api/2/{endpoint}"
-        try:
-            response = requests.request(
-                method, url, headers=self.headers,
-                json=data, timeout=timeout
+        max_retries = 5
+        retryable_http = {429, 500, 502, 503, 504}
+
+        def _is_transient_ssl_error(exc: Exception) -> bool:
+            details = str(exc)
+            return (
+                "UNEXPECTED_EOF_WHILE_READING" in details
+                or "EOF occurred in violation of protocol" in details
+                or "SSLEOFError" in details
+                or "ConnectionResetError" in details
+                or "bad record mac" in details.lower()
             )
-            return response
-        except requests.exceptions.RequestException as exc:
-            raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
+
+        headers = dict(self.headers)
+        # Avoid stale keep-alive sockets when the network edge is unstable.
+        headers['Connection'] = 'close'
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, max_retries + 1):
+            session = requests.Session()
+            try:
+                response = session.request(
+                    method, url, headers=headers,
+                    json=data, timeout=timeout
+                )
+
+                if response.status_code in retryable_http and attempt < max_retries:
+                    wait = min(2 ** attempt, 30)
+                    print(
+                        f"Transient Jira HTTP {response.status_code} for {method.upper()} {endpoint} "
+                        f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(wait)
+                    continue
+
+                return response
+
+            except requests.exceptions.SSLError as exc:
+                last_exc = exc
+                if _is_transient_ssl_error(exc) and attempt < max_retries:
+                    wait = min(2 ** attempt, 30)
+                    print(
+                        f"Transient SSL error for {method.upper()} {endpoint} "
+                        f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(wait)
+                    continue
+                raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
+
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ConnectTimeout,
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.Timeout,
+                requests.exceptions.ChunkedEncodingError,
+            ) as exc:
+                last_exc = exc
+                if attempt < max_retries:
+                    wait = min(2 ** attempt, 30)
+                    print(
+                        f"Transient network error for {method.upper()} {endpoint} "
+                        f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(wait)
+                    continue
+                raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
+
+            except requests.exceptions.RequestException as exc:
+                raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
+
+            finally:
+                session.close()
+
+        if last_exc:
+            raise RuntimeError(self._format_request_error(method, url, timeout, last_exc)) from last_exc
+        raise RuntimeError(f"Jira request failed for {method.upper()} {url} after retries")
 
     def get_all_fields(self) -> Dict[str, Dict]:
         """Fetch all Jira fields and cache the mapping."""
