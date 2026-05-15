@@ -23,7 +23,7 @@ import re
 import sys
 import textwrap
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 # Ensure console output remains safe even when the shell locale is ASCII.
@@ -442,6 +442,146 @@ def _extract_current_status_and_next_steps(fields: Dict[str, Any], comments: Lis
     if _is_meaningful_text(next_steps):
         result["next_steps"] = next_steps
     return result
+
+
+def _extract_html_table_rows(table_html: str) -> List[List[str]]:
+    rows: List[List[str]] = []
+    if not table_html:
+        return rows
+
+    for tr_html in re.findall(r"<tr\b[^>]*>(.*?)</tr>", table_html, flags=re.IGNORECASE | re.DOTALL):
+        cells = re.findall(r"<t[hd]\b[^>]*>(.*?)</t[hd]>", tr_html, flags=re.IGNORECASE | re.DOTALL)
+        if not cells:
+            continue
+        cleaned = [
+            re.sub(r"\s+", " ", _clean_text_for_long_output(cell)).strip()
+            for cell in cells
+        ]
+        cleaned = [cell for cell in cleaned if cell]
+        if cleaned:
+            rows.append(cleaned)
+
+    return rows
+
+
+def _extract_field_issues_for_customer_table(fields: Dict[str, Any]) -> List[List[str]]:
+    raw_html = str(fields.get("customfield_27600") or "")
+    if not raw_html:
+        return []
+
+    heading_pattern = re.compile(
+        r"Field(?:\s|&nbsp;|<[^>]+>)*Issues(?:\s|&nbsp;|<[^>]+>)*For(?:\s|&nbsp;|<[^>]+>)*This(?:\s|&nbsp;|<[^>]+>)*Customer",
+        re.IGNORECASE,
+    )
+    heading_match = heading_pattern.search(raw_html)
+    if not heading_match:
+        return []
+
+    table_matches = list(re.finditer(r"<table\b[^>]*>.*?</table>", raw_html, flags=re.IGNORECASE | re.DOTALL))
+    if not table_matches:
+        return []
+
+    selected_table_html: Optional[str] = None
+    for match in table_matches:
+        if match.start() > heading_match.end():
+            selected_table_html = match.group(0)
+            break
+
+    if selected_table_html is None:
+        for match in table_matches:
+            if match.start() <= heading_match.start() <= match.end():
+                selected_table_html = match.group(0)
+                break
+
+    if not selected_table_html:
+        return []
+
+    rows = _extract_html_table_rows(selected_table_html)
+    if not rows:
+        return []
+
+    filtered_rows: List[List[str]] = []
+    for row in rows:
+        normalized_row = " ".join(row).casefold()
+        if "field issues for this customer" in normalized_row:
+            continue
+        filtered_rows.append(row)
+
+    return filtered_rows
+
+
+def _prepare_field_issues_table(rows: List[List[str]]) -> Tuple[List[str], List[List[str]]]:
+    if not rows:
+        return ([], [])
+
+    max_cols = max(len(row) for row in rows)
+    normalized_rows = [row + [""] * (max_cols - len(row)) for row in rows]
+
+    header_candidate = normalized_rows[0]
+    header_tokens = {
+        "key", "issue", "summary", "status", "priority", "severity", "assignee", "customer", "case"
+    }
+    header_like = any(
+        any(token in cell.casefold() for token in header_tokens)
+        for cell in header_candidate
+        if cell
+    )
+
+    if header_like and len(normalized_rows) > 1:
+        headers = [cell if cell else f"Column {index + 1}" for index, cell in enumerate(header_candidate)]
+        return (headers, normalized_rows[1:])
+
+    headers = [f"Column {index + 1}" for index in range(max_cols)]
+    return (headers, normalized_rows)
+
+
+def _extract_case_account_name(issue: Dict[str, Any], fields: Dict[str, Any]) -> str:
+    """Resolve the customer's 'Case Account Name' from the issue."""
+    value = _field_value_by_any_name(
+        issue,
+        ["Case Account Name", "Account Name", "Customer Name"],
+    )
+    if _is_empty_value(value):
+        # Fall back to scanning customfields whose names match.
+        names = issue.get("names") if isinstance(issue.get("names"), dict) else {}
+        for key, mapped_name in names.items():
+            if not isinstance(mapped_name, str):
+                continue
+            normalized = mapped_name.strip().casefold()
+            if normalized in {"case account name", "account name", "customer name"}:
+                value = fields.get(key)
+                if not _is_empty_value(value):
+                    break
+
+    text = _opt_value(value).strip()
+    if not text or text == "-":
+        return ""
+    return text
+
+
+def _fetch_customer_field_issue_rows(
+    jira: "JiraClient", customer_name: str, active_only: bool = False
+) -> List[List[str]]:
+    """Fetch one-liner rows for FI issues matching the customer via JQL."""
+    escaped = _jql_escape(customer_name)
+    jql = f'project = FI AND "Case Account Name" ~ "{escaped}"'
+    if active_only:
+        jql += " AND statusCategory != Done"
+    jql += " ORDER BY updated DESC"
+
+    issues = jira.search_issues(jql, max_results=200)
+    rows: List[List[str]] = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {}) or {}
+        rows.append([
+            issue.get("key", "-"),
+            _opt_value(issue_fields.get("status")),
+            _opt_value(issue_fields.get("priority")),
+            _opt_value(issue_fields.get("assignee")),
+            _normalize_timestamp(issue_fields.get("updated")),
+            _compact_text(issue_fields.get("summary"), max_len=120),
+        ])
+    return rows
 
 
 def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
@@ -1244,6 +1384,7 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
     elif case_priority_value != "-":
         rows.append(["Case Priority", case_priority_value])
     _append_if_present(rows, "Customer", fields.get("customfield_18901"))
+    _append_if_present(rows, "Business Unit", _field_value_by_name(issue, "Business Unit"))
     _append_if_present(rows, "Slack", fields.get("customfield_24004"))
 
     if profile_type == "pvm":
@@ -1274,12 +1415,13 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "SalesForce Case Link": 12,
             "Case Priority": 13,
             "Customer": 14,
-            "Epic Link": 15,
-            "Sprint": 16,
-            "Watchers": 17,
-            "Watcher Groups": 18,
-            "Slack": 19,
-            "Affects Version/s": 20,
+            "Business Unit": 15,
+            "Epic Link": 16,
+            "Sprint": 17,
+            "Watchers": 18,
+            "Watcher Groups": 19,
+            "Slack": 20,
+            "Affects Version/s": 21,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
     elif profile_type == "pvm":
@@ -1353,6 +1495,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "SalesForce Case Link",
         "Case Priority",
         "Customer",
+        "Business Unit",
         "Epic Link",
         "Sprint",
         "Watchers",
@@ -1684,6 +1827,10 @@ def _build_json_output(
     include_timeline_section: bool,
     rca_ca_context: Dict[str, str],
     include_rca_ca_section: bool,
+    field_issues_for_customer_rows: List[List[str]],
+    include_field_issues_for_customer_section: bool,
+    customer_field_issues_headers: Optional[List[str]] = None,
+    customer_field_issues_meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "profile": profile_type,
@@ -1748,6 +1895,20 @@ def _build_json_output(
     if include_rca_ca_section and rca_ca_context:
         payload["rca_ca_context"] = rca_ca_context
 
+    if include_field_issues_for_customer_section:
+        meta = customer_field_issues_meta or {}
+        headers = customer_field_issues_headers or [
+            "Key", "Status", "Priority", "Assignee", "Updated", "Summary"
+        ]
+        payload["customer_field_issues"] = {
+            "customer_name": meta.get("customer_name", "-"),
+            "active_only": bool(meta.get("active_only", False)),
+            "headers": headers,
+            "rows": field_issues_for_customer_rows,
+        }
+        if meta.get("error"):
+            payload["customer_field_issues"]["error"] = meta["error"]
+
     return payload
 
 
@@ -1756,6 +1917,7 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
         "summary",
         "description",
         "status",
+        "customer-field-issues",
         "rca-ca",
         "subtasks",
         "linked-fis",
@@ -1794,7 +1956,7 @@ def main() -> int:
             "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
             "[--sub-task|--sub-tasks] "
             "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections sections] "
-            "[--timeline] "
+            "[--timeline] [--list-customer-field-issues] [--list-active-customer-field-issues] "
             "[-E|--show-empty] [-l|--long-text-style {paragraph,wrapped,raw}] "
             "[-w|--wrap-width WRAP_WIDTH] [-d|--desc {none,short,mid,full}] "
             "[-v|--verbose] [-i|--include-empty-customfields] [-f|--show-field SHOW_FIELD] "
@@ -1866,7 +2028,7 @@ def main() -> int:
         default="",
         help=(
             "Comma-separated sections to display (overrides --mode). "
-            "Allowed: summary,description,status,rca-ca,subtasks,linked-fis,etrack,comments,fields,timeline,verbose"
+            "Allowed: summary,description,status,customer-field-issues,rca-ca,subtasks,linked-fis,etrack,comments,fields,timeline,verbose"
         ),
     )
     parser.add_argument(
@@ -1874,6 +2036,25 @@ def main() -> int:
         "--timeline",
         action="store_true",
         help="Include timeline history section (Component History, Aged Reason History, and Timeline field).",
+    )
+    parser.add_argument(
+        "-cfi",
+        "--list-customer-field-issues",
+        dest="list_customer_field_issues",
+        action="store_true",
+        help=(
+            "List FI issues for the same customer via JQL "
+            "(`project = FI AND \"Case Account Name\" ~ \"<customer>\" ORDER BY updated DESC`)."
+        ),
+    )
+    parser.add_argument(
+        "-acfi",
+        "--list-active-customer-field-issues",
+        dest="list_active_customer_field_issues",
+        action="store_true",
+        help=(
+            "Same as --list-customer-field-issues but restricted to active (non-Done) FI issues."
+        ),
     )
     parser.add_argument(
         "-E",
@@ -1960,6 +2141,8 @@ def main() -> int:
             enabled_sections.add("fields")
         if args.timeline:
             enabled_sections.add("timeline")
+        if args.list_customer_field_issues or args.list_active_customer_field_issues:
+            enabled_sections.add("customer-field-issues")
     except ValueError as exc:
         print(f"Error: {exc}")
         return 2
@@ -1990,6 +2173,28 @@ def main() -> int:
     etrack_ids = _extract_etrack_ids(fields)
     sfdc_case_links = _extract_sfdc_case_links(issue)
     timeline_context = _extract_timeline_context(issue)
+
+    customer_field_issues_active_only = bool(args.list_active_customer_field_issues)
+    customer_field_issues_requested = bool(
+        args.list_customer_field_issues or args.list_active_customer_field_issues
+    )
+    customer_field_issues_rows: List[List[str]] = []
+    customer_field_issues_headers: List[str] = [
+        "Key", "Status", "Priority", "Assignee", "Updated", "Summary"
+    ]
+    customer_field_issues_meta: Dict[str, Any] = {}
+    if customer_field_issues_requested:
+        customer_name = _extract_case_account_name(issue, fields)
+        customer_field_issues_meta["customer_name"] = customer_name or "-"
+        customer_field_issues_meta["active_only"] = customer_field_issues_active_only
+        if customer_name:
+            try:
+                customer_field_issues_rows = _fetch_customer_field_issue_rows(
+                    jira, customer_name, active_only=customer_field_issues_active_only
+                )
+            except RuntimeError as exc:
+                customer_field_issues_meta["error"] = str(exc)
+
     rca_ca_context = _extract_rca_ca_context(issue)
     etrack_info: Optional[Dict[str, Dict[str, str]]] = None
     subtasks = _extract_subtasks(fields)
@@ -2069,6 +2274,10 @@ def main() -> int:
             "timeline" in enabled_sections,
             rca_ca_context,
             "rca-ca" in enabled_sections,
+            field_issues_for_customer_rows=customer_field_issues_rows,
+            include_field_issues_for_customer_section="customer-field-issues" in enabled_sections,
+            customer_field_issues_headers=customer_field_issues_headers,
+            customer_field_issues_meta=customer_field_issues_meta,
         )
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
@@ -2140,6 +2349,26 @@ def main() -> int:
             if aged_reason_value != "-":
                 print(f"\n* Aged Reason: {aged_reason_value}")
             print("\n* Current Status / Next Steps: None")
+            print(section_separator)
+
+    if "customer-field-issues" in enabled_sections:
+        if customer_field_issues_requested:
+            customer_name = customer_field_issues_meta.get("customer_name", "-")
+            label_suffix = " (active only)" if customer_field_issues_active_only else ""
+            print(section_separator)
+            print(f"\n* Customer Field Issues{label_suffix} (customer: {customer_name}):")
+            if customer_field_issues_meta.get("error"):
+                print(f"  Unable to fetch customer field issues: {customer_field_issues_meta['error']}")
+            elif not customer_name or customer_name == "-":
+                print("  Customer (Case Account Name) is not set on this issue.")
+            elif customer_field_issues_rows:
+                _print_table(customer_field_issues_rows, customer_field_issues_headers)
+            else:
+                print("  No matching FI issues found.")
+            print(section_separator)
+        elif args.show_empty:
+            print(section_separator)
+            print("\n* Customer Field Issues: None")
             print(section_separator)
 
     if "rca-ca" in enabled_sections:
