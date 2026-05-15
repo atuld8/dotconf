@@ -1459,6 +1459,8 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
         rows.append(["Case Priority", case_priority_value])
     _append_if_present(rows, "Customer", fields.get("customfield_18901"))
     _append_if_present(rows, "Business Unit", _field_value_by_name(issue, "Business Unit"))
+    if profile_type == "fi":
+        _append_if_present(rows, "Assignee Manager", _field_value_by_name(issue, "Assignee Manager"))
     _append_if_present(rows, "Slack", fields.get("customfield_24004"))
 
     if profile_type == "pvm":
@@ -1490,12 +1492,13 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "Case Priority": 13,
             "Customer": 14,
             "Business Unit": 15,
-            "Epic Link": 16,
-            "Sprint": 17,
-            "Watchers": 18,
-            "Watcher Groups": 19,
-            "Slack": 20,
-            "Affects Version/s": 21,
+            "Assignee Manager": 16,
+            "Epic Link": 17,
+            "Sprint": 18,
+            "Watchers": 19,
+            "Watcher Groups": 20,
+            "Slack": 21,
+            "Affects Version/s": 22,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
     elif profile_type == "pvm":
@@ -1570,6 +1573,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Case Priority",
         "Customer",
         "Business Unit",
+        "Assignee Manager",
         "Epic Link",
         "Sprint",
         "Watchers",
