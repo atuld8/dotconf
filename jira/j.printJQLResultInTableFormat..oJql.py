@@ -79,6 +79,13 @@ parser.add_argument(
          "When profile is default, auto-switches to fi if all keys are FI-* and to pvm if all keys are PVM-*"
 )
 
+parser.add_argument(
+    "-m", "--max",
+    type=int,
+    default=MAX_RESULTS,
+    help="Maximum number of rows to fetch. Use 0 to fetch all matching results (default: 150)."
+)
+
 # Add debug flag
 parser.add_argument(
     "-d", "--debug",
@@ -399,7 +406,7 @@ def _format_updated_timestamp(raw_value):
 
 
 # Function to get issues by JQL
-def get_issues_by_jql(jql, extra_field_ids=None):
+def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
     """Fetches issues from Jira based on the provided JQL query.
 
     Args:
@@ -436,17 +443,50 @@ def get_issues_by_jql(jql, extra_field_ids=None):
         if extra_field_ids:
             base_fields.extend(extra_field_ids)
 
-        params = {
-            'jql': jql,
-            'maxResults': MAX_RESULTS,
-            'fields': base_fields
-        }
+        if max_results < 0:
+            print("Error: --max must be 0 or a positive integer.")
+            return None
 
-        response = requests.get(url, headers=headers, params=params, timeout=timeout)
+        all_issues = []
+        start_at = 0
+        page_size = 100
+        remaining = None if max_results == 0 else max_results
 
-        response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
+        while True:
+            batch_size = page_size if remaining is None else min(page_size, remaining)
+            if batch_size <= 0:
+                break
 
-        return response.json().get('issues', [])
+            params = {
+                'jql': jql,
+                'startAt': start_at,
+                'maxResults': batch_size,
+                'fields': base_fields
+            }
+
+            response = requests.get(url, headers=headers, params=params, timeout=timeout)
+            response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
+
+            payload = response.json()
+            issues = payload.get('issues', [])
+            total = payload.get('total', 0)
+
+            if not issues:
+                break
+
+            all_issues.extend(issues)
+            fetched = len(issues)
+            start_at += fetched
+
+            if remaining is not None:
+                remaining -= fetched
+                if remaining <= 0:
+                    break
+
+            if fetched < batch_size or start_at >= total:
+                break
+
+        return all_issues
 
     except requests.exceptions.RequestException as e:
         print(format_jira_request_error('Issue search', url, timeout, e))
@@ -606,7 +646,7 @@ def main():
 
     requested_extra_ids = list(dict.fromkeys(extra_field_ids + fi_extra_field_ids))
 
-    issues = get_issues_by_jql(args.jql, requested_extra_ids)
+    issues = get_issues_by_jql(args.jql, requested_extra_ids, max_results=args.max)
 
     if issues is None:
         print("Aborting due to Jira request failure.")
