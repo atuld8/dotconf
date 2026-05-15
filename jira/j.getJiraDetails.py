@@ -1795,7 +1795,7 @@ def main() -> int:
             "%(prog)s [-h] [-t|--type {auto,fi,pvm,generic,default}] [-s|--search] "
             "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
             "[--sub-task|--sub-tasks] "
-            "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections SECTIONS] "
+            "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections sections] "
             "[--timeline] "
             "[-E|--show-empty] [-l|--long-text-style {paragraph,wrapped,raw}] "
             "[-w|--wrap-width WRAP_WIDTH] [-d|--desc {none,short,mid,full}] "

@@ -12,6 +12,8 @@ import pandas as pd
 from dotenv import load_dotenv
 from prettytable import PrettyTable
 from datetime import datetime
+from collections import OrderedDict
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -44,34 +46,107 @@ parser.add_argument(
 
 # Add optional argument to accept a comma-separated list
 parser.add_argument(
-    "--excludeCols",
+    "-x", "--excludeCols",
     type=lambda s: s.split(','),
     help="Comma-separated list of Headers to exclude",
     default=[]
 )
 
 parser.add_argument(
-    "--extraCols",
+    "-i", "--extraCols",
     type=lambda s: s.split(','),
     help="Comma-separated list of extra field names to include (e.g., 'Solution,Root Cause')",
     default=[]
 )
 
 parser.add_argument(
-    "--preset",
+    "-p", "--profile",
     type=str,
-    choices=['default', 'sp'],
+    choices=['default', 'pvm', 'fi'],
     default='default',
-    help="Column preset: 'default' (all columns), 'sp' (security/patch focused - hides Runtime, Reporter, IssueType, Labels, Epic)"
+    help="Output profile: 'default' (existing columns), 'pvm' (security/patch focused), 'fi' (FI-focused columns). "
+         "When profile is default, auto-switches to fi if all keys are FI-* and to pvm if all keys are PVM-*"
 )
 
 args = parser.parse_args()
 
-# Preset configurations: columns to exclude for each preset
-PRESET_EXCLUDES = {
+# Profile configurations: columns to exclude for each profile
+PROFILE_EXCLUDES = {
     'default': ['CVSS', 'FixVers'],
-    'sp': ['Runtime', 'Reporter', 'IssueType', 'Labels', 'Epic']
+    'pvm': ['Runtime', 'Reporter', 'IssueType', 'Labels', 'Epic'],
+    'fi': []
 }
+
+FI_COLUMN_ORDER = [
+    'Key',
+    'Case Priority',
+    'Priority',
+    'Components',
+    'Customer Name',
+    'Assignee',
+    'Affected Version/s',
+    'Summary',
+    'Status',
+    'Case Status',
+    'Updated',
+    'Etrack Incident',
+    'Squad Name',
+    'Cap Involvement',
+    'Customer Sentiment'
+]
+
+FI_DYNAMIC_FIELD_CANDIDATES = OrderedDict([
+    ('Case Priority', ['Case Priority']),  # Removed incorrect alternative name
+    ('Customer Name', ['Customer Name', 'Customer']),
+    ('Case Status', ['Case Status']),
+    ('Etrack Incident', ['Etrack Incident']),
+    ('Squad Name', ['Squad Name']),
+    ('Cap Involvement', ['CAP Involvement', 'Cap Involvement']),
+    ('Customer Sentiment', ['Customer Sentiment'])
+])
+
+
+def format_jira_request_error(operation, url, timeout, exc):
+    """Build actionable diagnostics for Jira SSL/network failures."""
+    host = urlparse(url).hostname or 'unknown-host'
+    details = str(exc)
+
+    lines = [
+        f"{operation} failed.",
+        f"Endpoint: {url}",
+        f"Host: {host} | Timeout: {timeout}s",
+    ]
+
+    if isinstance(exc, requests.exceptions.SSLError):
+        lines.append("Cause: TLS/SSL handshake failure while connecting to Jira.")
+        if 'UNEXPECTED_EOF_WHILE_READING' in details:
+            lines.append(
+                "Likely reason: VPN/proxy/network edge closed TLS handshake unexpectedly."
+            )
+        elif 'CERTIFICATE_VERIFY_FAILED' in details:
+            lines.append(
+                "Likely reason: certificate trust validation failed (CA chain/interception issue)."
+            )
+    elif isinstance(exc, requests.exceptions.ConnectTimeout):
+        lines.append("Cause: connection timeout while trying to reach Jira.")
+    elif isinstance(exc, requests.exceptions.ReadTimeout):
+        lines.append("Cause: Jira did not respond before timeout.")
+    elif isinstance(exc, requests.exceptions.ConnectionError):
+        lines.append("Cause: network connection to Jira could not be established.")
+    else:
+        lines.append("Cause: HTTP request error while communicating with Jira.")
+
+    lines.extend([
+        f"Technical details: {details}",
+        "Possible fixes:",
+        "  1) Verify VPN/corporate network connectivity.",
+        f"  2) Test TLS reachability: curl -Iv https://{host}/rest/api/2/myself",
+        "  3) Check proxy/TLS interception settings and bypass Jira host if required.",
+        "  4) Verify local certificate trust (system keychain/certifi) is up to date.",
+        "  5) Retry in a few minutes to rule out transient edge/Jira issues.",
+    ])
+
+    return "\n".join(lines)
 
 
 def get_all_fields():
@@ -84,9 +159,11 @@ def get_all_fields():
     if _field_cache is not None:
         return _field_cache
 
+    timeout = 20
+    url = f'{JIRA_URL}/rest/api/2/field'
+
     try:
-        url = f'{JIRA_URL}/rest/api/2/field'
-        response = requests.get(url, headers=headers, timeout=20)
+        response = requests.get(url, headers=headers, timeout=timeout)
         response.raise_for_status()
 
         fields = response.json()
@@ -101,7 +178,7 @@ def get_all_fields():
             }
         return _field_cache
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching fields: {e}")
+        print(format_jira_request_error('Field discovery', url, timeout, e))
         return {}
 
 
@@ -119,6 +196,51 @@ def get_field_id_by_name(field_name):
     if field_info:
         return field_info['id'], field_info['name']
     return None, None
+
+
+def get_field_id_by_any_name(field_names):
+    """Resolve first matching Jira field ID from a list of display-name candidates."""
+    for name in field_names:
+        field_id, actual_name = get_field_id_by_name(name)
+        if field_id:
+            return field_id, actual_name
+    return None, None
+
+
+def resolve_fi_profile_fields():
+    """Resolve FI profile dynamic columns to Jira field IDs."""
+    mapping = {}
+    extra_field_ids = []
+
+    for column_name, candidates in FI_DYNAMIC_FIELD_CANDIDATES.items():
+        field_id, actual_name = get_field_id_by_any_name(candidates)
+        if field_id:
+            mapping[column_name] = field_id
+            extra_field_ids.append(field_id)
+            print(f"Resolved FI column '{column_name}' -> {field_id} ({actual_name})")
+        else:
+            mapping[column_name] = None
+            print(f"Warning: FI column '{column_name}' field not found. Will show '-' values.")
+
+    return mapping, extra_field_ids
+
+
+def resolve_effective_profile(requested_profile, issues):
+    """Auto-detect FI/PVM profile when requested profile is default."""
+    if requested_profile != 'default' or not issues:
+        return requested_profile
+
+    keys = [issue.get('key', '') for issue in issues if issue.get('key')]
+    if not keys:
+        return requested_profile
+
+    if all(key.startswith('FI-') for key in keys):
+        return 'fi'
+
+    if all(key.startswith('PVM-') for key in keys):
+        return 'pvm'
+
+    return requested_profile
 
 
 def format_runtime(days):
@@ -223,6 +345,23 @@ def extract_field_value(issue, field_id):
         return str(value)
 
 
+def _extract_field_or_dash(issue, field_id):
+    if not field_id:
+        return '-'
+    return extract_field_value(issue, field_id)
+
+
+def _format_updated_timestamp(raw_value):
+    if not raw_value:
+        return '-'
+    text = str(raw_value)
+    if 'T' in text:
+        text = text.replace('T', ' ')
+    if len(text) >= 19:
+        return text[:19]
+    return text
+
+
 # Function to get issues by JQL
 def get_issues_by_jql(jql, extra_field_ids=None):
     """Fetches issues from Jira based on the provided JQL query.
@@ -234,8 +373,10 @@ def get_issues_by_jql(jql, extra_field_ids=None):
     Returns:
         list: A list of issues returned by the JQL query, or an empty list if an error occurs.
     """
+    timeout = 20
+    url = f'{JIRA_URL}/rest/api/2/search'
+
     try:
-        url = f'{JIRA_URL}/rest/api/2/search'
 
         base_fields = ['key',
                        'summary',
@@ -262,18 +403,18 @@ def get_issues_by_jql(jql, extra_field_ids=None):
             'fields': base_fields
         }
 
-        response = requests.get(url, headers=headers, params=params, timeout=20)
+        response = requests.get(url, headers=headers, params=params, timeout=timeout)
 
         response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
 
         return response.json().get('issues', [])
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching issues: {e}")
-        return []
+        print(format_jira_request_error('Issue search', url, timeout, e))
+        return None
 
 
-def print_issues_in_table_format(issues, excludeCols, extra_fields=None):
+def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile='default', fi_field_map=None):
     """Prints the issues in a table format.
 
     Args:
@@ -284,10 +425,12 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None):
     # Extract the relevant data into a list of dictionaries
     data = []
     extra_fields = extra_fields or []
+    fi_field_map = fi_field_map or {}
 
     for index, issue in enumerate(issues, start=1):
         key = issue['key']
-        summary = issue['fields']['summary'] if len(issue['fields']['summary']) < 120 else issue['fields']['summary'][:120] + "..."
+        summary_limit = 70 if profile == 'fi' else 120
+        summary = issue['fields']['summary'] if len(issue['fields']['summary']) < summary_limit else issue['fields']['summary'][:summary_limit] + "..."
         status = issue['fields']['status']['name']
         assignee = issue['fields']['assignee']['displayName'] if issue['fields']['assignee'] else 'Unassigned'
         reporter = issue['fields']['reporter']['displayName'] if issue['fields']['reporter'] else 'Unknown'
@@ -299,6 +442,43 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None):
         runtime = calculate_runtime(issue)
         fix_versions = ', '.join(fv['name'] for fv in issue['fields']['fixVersions']) if issue['fields'].get('fixVersions') else '-'
         cvss_score = issue['fields']['customfield_33415'] if issue['fields'].get('customfield_33415') else '-'
+        components = extract_field_value(issue, 'components')  # Use 'components' as the field ID directly
+        affected_versions = extract_field_value(issue, fi_field_map.get('Affected Version/s', 'versions'))
+        updated = _format_updated_timestamp(issue['fields'].get('updated'))
+
+        # Highlight Customer Sentiment if RED or YELLOW
+        customer_sentiment = _extract_field_or_dash(issue, fi_field_map.get('Customer Sentiment'))
+        if customer_sentiment.upper() in ['RED', 'YELLOW']:
+            customer_sentiment = f"\033[91m{customer_sentiment}\033[0m" if customer_sentiment.upper() == 'RED' else f"\033[93m{customer_sentiment}\033[0m"
+
+        if profile == 'fi':
+            fi_entry = {
+                'Key': key,
+                'Case Priority': _extract_field_or_dash(issue, fi_field_map.get('Case Priority')),  # Ensure only 'Case Priority' is used
+                'Priority': priority,
+                'Components': components,
+                'Customer Name': _extract_field_or_dash(issue, fi_field_map.get('Customer Name')),
+                'Assignee': assignee,
+                'Affected Version/s': affected_versions,
+                'Summary': summary,
+                'Status': status,
+                'Case Status': _extract_field_or_dash(issue, fi_field_map.get('Case Status')),
+                'Updated': updated,
+                'Etrack Incident': _extract_field_or_dash(issue, fi_field_map.get('Etrack Incident')),
+                'Squad Name': _extract_field_or_dash(issue, fi_field_map.get('Squad Name')),
+                'Cap Involvement': _extract_field_or_dash(issue, fi_field_map.get('Cap Involvement')),
+                'Customer Sentiment': customer_sentiment,
+            }
+
+            for field_id, display_name in extra_fields:
+                value = extract_field_value(issue, field_id)
+                if len(str(value)) > 50:
+                    value = str(value)[:50] + "..."
+                fi_entry[display_name] = value
+
+            filtered_entry = {k: v for k, v in fi_entry.items() if k not in excludeCols}
+            data.append(filtered_entry)
+            continue
 
         unfiltered_entry = {
             'Sr.': index,
@@ -338,7 +518,12 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None):
 
     # Use PrettyTable to print the DataFrame in a table format
     table = PrettyTable()
-    table.field_names = df.columns.tolist()
+    if profile == 'fi':
+        ordered_columns = [col for col in FI_COLUMN_ORDER if col in df.columns.tolist()]
+        remaining_columns = [col for col in df.columns.tolist() if col not in ordered_columns]
+        table.field_names = ordered_columns + remaining_columns
+    else:
+        table.field_names = df.columns.tolist()
 
     # Set column alignment to left
     for field in table.field_names:
@@ -375,16 +560,31 @@ def main():
             else:
                 print(f"Warning: Field '{field_name}' not found in Jira. Skipping.")
 
-    issues = get_issues_by_jql(args.jql, extra_field_ids)
+    fi_field_map = {}
+    fi_extra_field_ids = []
+    if args.profile in ['default', 'fi']:
+        fi_field_map, fi_extra_field_ids = resolve_fi_profile_fields()
+
+    requested_extra_ids = list(dict.fromkeys(extra_field_ids + fi_extra_field_ids))
+
+    issues = get_issues_by_jql(args.jql, requested_extra_ids)
+
+    if issues is None:
+        print("Aborting due to Jira request failure.")
+        return
+
+    effective_profile = resolve_effective_profile(args.profile, issues)
+    if effective_profile != args.profile:
+        print(f"Auto-selected profile: {effective_profile} (from issue key pattern)")
 
     if not issues:
         print("No issues found.")
         return
 
-    # Combine preset excludes with user-specified excludes
-    all_excludes = list(set(args.excludeCols + PRESET_EXCLUDES.get(args.preset, [])))
+    # Combine profile excludes with user-specified excludes
+    all_excludes = list(set(args.excludeCols + PROFILE_EXCLUDES.get(effective_profile, [])))
 
-    print_issues_in_table_format(issues, all_excludes, extra_fields)
+    print_issues_in_table_format(issues, all_excludes, extra_fields, profile=effective_profile, fi_field_map=fi_field_map)
 
 
 if __name__ == '__main__':

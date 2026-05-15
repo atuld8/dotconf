@@ -49,6 +49,7 @@ import sys
 import json
 import argparse
 import subprocess
+from urllib.parse import urlparse
 from typing import Dict, List, Optional, Tuple, Set
 from collections import OrderedDict
 
@@ -110,6 +111,49 @@ class JiraClient:
         }
         self._field_cache: Optional[Dict[str, Dict]] = None
 
+    def _format_request_error(self, method: str, url: str, timeout: int,
+                              exc: Exception) -> str:
+        """Build detailed, actionable error text for Jira request failures."""
+        host = urlparse(url).hostname or "unknown-host"
+        details = str(exc)
+
+        lines = [
+            f"Jira request failed for {method.upper()} {url}",
+            f"Host: {host} | Timeout: {timeout}s",
+        ]
+
+        if isinstance(exc, requests.exceptions.SSLError):
+            lines.append("Cause: TLS/SSL handshake failure while connecting to Jira.")
+            if "UNEXPECTED_EOF_WHILE_READING" in details:
+                lines.append(
+                    "Likely reason: peer/proxy closed the TLS handshake unexpectedly "
+                    "(common with VPN/proxy/interception issues)."
+                )
+            elif "CERTIFICATE_VERIFY_FAILED" in details:
+                lines.append(
+                    "Likely reason: certificate trust validation failed "
+                    "(missing/intercepted/untrusted CA chain)."
+                )
+        elif isinstance(exc, requests.exceptions.ConnectTimeout):
+            lines.append("Cause: connection timeout while trying to reach Jira.")
+        elif isinstance(exc, requests.exceptions.ReadTimeout):
+            lines.append("Cause: Jira did not respond within the configured timeout.")
+        elif isinstance(exc, requests.exceptions.ConnectionError):
+            lines.append("Cause: network connection to Jira could not be established.")
+        else:
+            lines.append("Cause: HTTP request error while communicating with Jira.")
+
+        lines.extend([
+            f"Technical details: {details}",
+            "Possible fixes:",
+            "  1) Verify VPN/corporate network is connected and stable.",
+            f"  2) Test connectivity: curl -Iv https://{host}/rest/api/2/myself",
+            "  3) Check proxy/TLS inspection settings (try bypassing proxy for Jira host).",
+            "  4) Confirm local CA trust/certificates are up to date (certifi/system keychain).",
+            "  5) Retry after a few minutes in case of transient Jira or network edge issues.",
+        ])
+        return "\n".join(lines)
+
     def _request(self, method: str, endpoint: str, data: Optional[Dict] = None,
                  timeout: int = 30) -> requests.Response:
         """Make an API request."""
@@ -117,11 +161,14 @@ class JiraClient:
             raise RuntimeError("requests library not installed. Run: pip install requests")
 
         url = f"{self.url}/rest/api/2/{endpoint}"
-        response = requests.request(
-            method, url, headers=self.headers,
-            json=data, timeout=timeout
-        )
-        return response
+        try:
+            response = requests.request(
+                method, url, headers=self.headers,
+                json=data, timeout=timeout
+            )
+            return response
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
 
     def get_all_fields(self) -> Dict[str, Dict]:
         """Fetch all Jira fields and cache the mapping."""
@@ -2314,6 +2361,9 @@ def main():
                 print("[OK] All commits have Jira IDs")
 
     except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except RuntimeError as e:
         print(f"Error: {e}")
         sys.exit(1)
     except Exception as e:
