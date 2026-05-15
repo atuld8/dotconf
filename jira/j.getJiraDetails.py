@@ -65,7 +65,11 @@ def _opt_value(field: Any) -> str:
         values = []
         for item in field:
             if isinstance(item, dict):
-                values.append(_opt_value(item))
+                # Special handling: if dict has 'name', prefer that
+                if "name" in item:
+                    values.append(str(item["name"]))
+                else:
+                    values.append(_opt_value(item))
             else:
                 values.append(str(item))
         values = [value for value in values if value and value != "-"]
@@ -1249,6 +1253,11 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
         _append_if_present(rows, "Source", _field_value_by_name(issue, "Source"))
         _append_if_present(rows, "Security Level", _field_value_by_name(issue, "Security Level"))
 
+
+    versions_value = _field_value_by_name(issue, "Affects Version/s")
+    if not _is_empty_value(versions_value):
+        rows.append(["Affects Version/s", _opt_value(versions_value)])
+
     if profile_type == "fi":
         label_order = {
             "Solution": 1,
@@ -1270,6 +1279,7 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "Watchers": 17,
             "Watcher Groups": 18,
             "Slack": 19,
+            "Affects Version/s": 20,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
     elif profile_type == "pvm":
@@ -1284,6 +1294,7 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "Watcher Groups": 8,
             "Epic Link": 9,
             "Sprint": 10,
+            "Affects Version/s": 11,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
 
@@ -1348,6 +1359,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Watcher Groups",
         "Slack",
         "Fixed Version/s",
+        "Affects Version/s",
         "Resolved",
         "Security Issue Watchers",
         "CVSS Score",
@@ -1455,6 +1467,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         f"* Labels: {_summary_value(summary_rows, 'Labels')}"
     )
     print(separator)
+
+    # Print optional fields in compact format as well
     optional_parts = []
     pvm_long_parts = []
     for label in optional_labels:
@@ -1475,32 +1489,16 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
             pvm_long_parts.append(part)
         else:
             optional_parts.append(part)
-    if optional_parts:
-        if pvm_long_parts:
-            print()
-            for part in pvm_long_parts:
-                print(part)
-                print()
 
-        if profile_type == "pvm":
-            cvss_index = next(
-                (index for index, part in enumerate(optional_parts) if part.startswith("* CVSS Score:")),
-                -1,
-            )
-            if cvss_index > 0:
-                _print_compact_segments(optional_parts[:cvss_index])
-                _print_compact_segments(optional_parts[cvss_index:])
-            else:
-                _print_compact_segments(optional_parts)
-        else:
-            _print_compact_segments(optional_parts)
+    if optional_parts:
+        for part in optional_parts:
+            print(part)
         print(separator)
     elif pvm_long_parts:
-        print()
         for part in pvm_long_parts:
             print(part)
-            print()
         print(separator)
+
     print(
         f"* Updated: {_summary_value(summary_rows, 'Updated')} | "
         f"* Comments: {_summary_value(summary_rows, 'Comments')} | "
