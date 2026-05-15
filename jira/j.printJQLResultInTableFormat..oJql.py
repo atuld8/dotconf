@@ -46,6 +46,7 @@ headers = {
 
 
 # Set up the command line argument parser
+
 parser = argparse.ArgumentParser(description='Run a JQL query and display the results in a table format.')
 parser.add_argument(
     'jql',
@@ -76,6 +77,13 @@ parser.add_argument(
     default='default',
     help="Output profile: 'default' (existing columns), 'pvm' (security/patch focused), 'fi' (FI-focused columns). "
          "When profile is default, auto-switches to fi if all keys are FI-* and to pvm if all keys are PVM-*"
+)
+
+# Add debug flag
+parser.add_argument(
+    "-d", "--debug",
+    action="store_true",
+    help="Enable debug output for field resolution and mapping."
 )
 
 args = parser.parse_args()
@@ -229,22 +237,26 @@ def resolve_fi_profile_fields():
     mapping = {}
     extra_field_ids = []
 
+
     for column_name, candidates in FI_DYNAMIC_FIELD_CANDIDATES.items():
         static_id = FI_STATIC_FIELD_IDS.get(column_name)
         if static_id:
             mapping[column_name] = static_id
             extra_field_ids.append(static_id)
-            print(f"Resolved FI column '{column_name}' -> {static_id} (static)")
+            if args.debug:
+                print(f"Resolved FI column '{column_name}' -> {static_id} (static)")
             continue
 
         field_id, actual_name = get_field_id_by_any_name(candidates)
         if field_id:
             mapping[column_name] = field_id
             extra_field_ids.append(field_id)
-            print(f"Resolved FI column '{column_name}' -> {field_id} ({actual_name})")
+            if args.debug:
+                print(f"Resolved FI column '{column_name}' -> {field_id} ({actual_name})")
         else:
             mapping[column_name] = None
-            print(f"Warning: FI column '{column_name}' field not found. Will show '-' values.")
+            if args.debug:
+                print(f"Warning: FI column '{column_name}' field not found. Will show '-' values.")
 
     return mapping, extra_field_ids
 
