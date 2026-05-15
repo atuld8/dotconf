@@ -9,6 +9,7 @@ import os
 import argparse
 import sys
 import requests
+import time
 import pandas as pd
 from dotenv import load_dotenv
 from prettytable import PrettyTable
@@ -109,6 +110,7 @@ FI_COLUMN_ORDER = [
     'Components',
     'Customer Name',
     'Assignee',
+    'Assignee Manager',
     'Affects Version/s',
     'Summary',
     'Status',
@@ -123,6 +125,7 @@ FI_COLUMN_ORDER = [
 FI_DYNAMIC_FIELD_CANDIDATES = OrderedDict([
     ('Case Priority', ['Case Priority']),  # Removed incorrect alternative name
     ('Customer Name', ['Customer Name', 'Customer']),
+    ('Assignee Manager', ['Assignee Manager']),
     ('Case Status', ['Case Status']),
     ('Etrack Incident', ['Etrack Incident']),
     ('Squad Name', ['Squad Name']),
@@ -181,6 +184,82 @@ def format_jira_request_error(operation, url, timeout, exc):
     return "\n".join(lines)
 
 
+def _is_transient_ssl_error(exc):
+    """Return True for retryable SSL handshake/socket edge cases."""
+    details = str(exc)
+    return (
+        'UNEXPECTED_EOF_WHILE_READING' in details
+        or 'EOF occurred in violation of protocol' in details
+        or 'SSLEOFError' in details
+        or 'ConnectionResetError' in details
+        or 'bad record mac' in details.lower()
+    )
+
+
+def jira_get_with_retry(url, operation, timeout=20, params=None):
+    """GET Jira endpoint with retries/backoff for transient network/TLS failures."""
+    max_retries = 5
+    retryable_http = {429, 500, 502, 503, 504}
+    request_headers = dict(headers)
+    request_headers['Connection'] = 'close'
+
+    last_exc = None
+
+    for attempt in range(1, max_retries + 1):
+        session = requests.Session()
+        try:
+            response = session.get(url, headers=request_headers, params=params, timeout=timeout)
+
+            if response.status_code in retryable_http and attempt < max_retries:
+                wait = min(2 ** attempt, 30)
+                print(
+                    f"{operation}: transient Jira HTTP {response.status_code} "
+                    f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
+                    file=sys.stderr,
+                )
+                time.sleep(wait)
+                continue
+
+            return response
+
+        except requests.exceptions.SSLError as exc:
+            last_exc = exc
+            if _is_transient_ssl_error(exc) and attempt < max_retries:
+                wait = min(2 ** attempt, 30)
+                print(
+                    f"{operation}: transient SSL error (attempt {attempt}/{max_retries}), "
+                    f"retrying in {wait}s...",
+                    file=sys.stderr,
+                )
+                time.sleep(wait)
+                continue
+            raise
+
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.ConnectTimeout,
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.Timeout,
+                requests.exceptions.ChunkedEncodingError) as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                wait = min(2 ** attempt, 30)
+                print(
+                    f"{operation}: transient network error (attempt {attempt}/{max_retries}), "
+                    f"retrying in {wait}s...",
+                    file=sys.stderr,
+                )
+                time.sleep(wait)
+                continue
+            raise
+
+        finally:
+            session.close()
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"{operation} failed after retries")
+
+
 def get_all_fields():
     """Fetches all Jira fields and returns a name-to-ID mapping.
 
@@ -195,7 +274,7 @@ def get_all_fields():
     url = f'{JIRA_URL}/rest/api/2/field'
 
     try:
-        response = requests.get(url, headers=headers, timeout=timeout)
+        response = jira_get_with_retry(url, operation='Field discovery', timeout=timeout)
         response.raise_for_status()
 
         fields = response.json()
@@ -464,7 +543,12 @@ def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
                 'fields': base_fields
             }
 
-            response = requests.get(url, headers=headers, params=params, timeout=timeout)
+            response = jira_get_with_retry(
+                url,
+                operation='Issue search',
+                timeout=timeout,
+                params=params,
+            )
             response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
 
             payload = response.json()
@@ -538,6 +622,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
                 'Components': components,
                 'Customer Name': _extract_field_or_dash(issue, fi_field_map.get('Customer Name')),
                 'Assignee': assignee,
+                'Assignee Manager': _extract_field_or_dash(issue, fi_field_map.get('Assignee Manager')),
                 'Affects Version/s': affected_versions,
                 'Summary': summary,
                 'Status': status,
