@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import textwrap
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -666,15 +667,88 @@ class JiraClient:
         }
 
     def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
-        try:
-            return requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
-        except requests.exceptions.SSLError as exc:
-            raise RuntimeError(
-                f"TLS/SSL error while connecting to Jira ({self.server}). "
-                f"Please check VPN/proxy/certificate setup. Details: {exc}"
-            ) from exc
-        except requests.exceptions.RequestException as exc:
-            raise RuntimeError(f"Network error while calling Jira ({self.server}): {exc}") from exc
+        """GET with retry on transient network/TLS errors (exponential backoff).
+
+        Uses a fresh Session per attempt with ``Connection: close`` to avoid
+        stale keep-alive sockets — a common cause of
+        ``[SSL: UNEXPECTED_EOF_WHILE_READING]`` on macOS (LibreSSL) talking to
+        Jira behind a load balancer that may drop idle TLS sessions.
+        """
+        max_retries = 5
+        last_exc: Optional[Exception] = None
+        request_headers = dict(self.headers)
+        request_headers["Connection"] = "close"
+
+        for attempt in range(1, max_retries + 1):
+            session = requests.Session()
+            try:
+                try:
+                    response = session.get(
+                        url,
+                        headers=request_headers,
+                        params=params,
+                        timeout=self.timeout,
+                    )
+                except requests.exceptions.SSLError as exc:
+                    # Transient SSL/EOF errors — retry.
+                    msg = str(exc)
+                    is_transient_ssl = (
+                        "UNEXPECTED_EOF_WHILE_READING" in msg
+                        or "EOF occurred in violation of protocol" in msg
+                        or "SSLEOFError" in msg
+                        or "ConnectionResetError" in msg
+                        or "bad record mac" in msg.lower()
+                    )
+                    if is_transient_ssl and attempt < max_retries:
+                        last_exc = exc
+                        wait = min(2 ** attempt, 30)
+                        print(
+                            f"Transient SSL error calling Jira (attempt {attempt}/{max_retries}): {exc}. "
+                            f"Retrying in {wait}s...",
+                            file=sys.stderr,
+                        )
+                        time.sleep(wait)
+                        continue
+                    raise RuntimeError(
+                        f"TLS/SSL error while connecting to Jira ({self.server}). "
+                        f"Please check VPN/proxy/certificate setup. Details: {exc}"
+                    ) from exc
+                except (requests.exceptions.ConnectionError,
+                        requests.exceptions.Timeout,
+                        requests.exceptions.ChunkedEncodingError) as exc:
+                    last_exc = exc
+                    if attempt < max_retries:
+                        wait = min(2 ** attempt, 30)
+                        print(
+                            f"Network error calling Jira (attempt {attempt}/{max_retries}): {exc}. "
+                            f"Retrying in {wait}s...",
+                            file=sys.stderr,
+                        )
+                        time.sleep(wait)
+                        continue
+                    raise RuntimeError(f"Network error while calling Jira ({self.server}): {exc}") from exc
+                except requests.exceptions.RequestException as exc:
+                    raise RuntimeError(f"Network error while calling Jira ({self.server}): {exc}") from exc
+
+                # Retry on transient server-side errors as well.
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
+                    wait = min(2 ** attempt, 30)
+                    print(
+                        f"Jira returned {response.status_code} (attempt {attempt}/{max_retries}). "
+                        f"Retrying in {wait}s...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(wait)
+                    continue
+
+                return response
+            finally:
+                session.close()
+
+        # Should not reach here, but keep a safe fallback.
+        raise RuntimeError(
+            f"Network error while calling Jira ({self.server}) after {max_retries} attempts: {last_exc}"
+        )
 
     def get_issue(self, issue_key: str) -> Dict[str, Any]:
         url = f"{self.base_url}/rest/api/2/issue/{issue_key}"
