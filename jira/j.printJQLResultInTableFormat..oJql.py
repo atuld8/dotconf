@@ -7,6 +7,7 @@
 
 import os
 import argparse
+import sys
 import requests
 import pandas as pd
 from dotenv import load_dotenv
@@ -14,6 +15,15 @@ from prettytable import PrettyTable
 from datetime import datetime
 from collections import OrderedDict
 from urllib.parse import urlparse
+
+# Keep console output safe even when shell locale is ASCII.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+else:  # pragma: no cover
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 load_dotenv()
 
@@ -84,7 +94,7 @@ FI_COLUMN_ORDER = [
     'Components',
     'Customer Name',
     'Assignee',
-    'Affected Version/s',
+    'Affects Version/s',
     'Summary',
     'Status',
     'Case Status',
@@ -104,6 +114,13 @@ FI_DYNAMIC_FIELD_CANDIDATES = OrderedDict([
     ('Cap Involvement', ['CAP Involvement', 'Cap Involvement']),
     ('Customer Sentiment', ['Customer Sentiment'])
 ])
+
+# Prefer stable Jira IDs (from working j.getJiraDetails.py behavior), then fall back to name resolution.
+FI_STATIC_FIELD_IDS = {
+    'Customer Name': 'customfield_18901',
+    'Case Status': 'customfield_16200',
+    'Etrack Incident': 'customfield_33802',
+}
 
 
 def format_jira_request_error(operation, url, timeout, exc):
@@ -213,6 +230,13 @@ def resolve_fi_profile_fields():
     extra_field_ids = []
 
     for column_name, candidates in FI_DYNAMIC_FIELD_CANDIDATES.items():
+        static_id = FI_STATIC_FIELD_IDS.get(column_name)
+        if static_id:
+            mapping[column_name] = static_id
+            extra_field_ids.append(static_id)
+            print(f"Resolved FI column '{column_name}' -> {static_id} (static)")
+            continue
+
         field_id, actual_name = get_field_id_by_any_name(candidates)
         if field_id:
             mapping[column_name] = field_id
@@ -387,7 +411,10 @@ def get_issues_by_jql(jql, extra_field_ids=None):
                        'issuetype',
                        'labels',
                        'created',
+                       'updated',
                        'resolutiondate',
+                       'components',
+                       'versions',
                        'fixVersions',
                        'customfield_20303',
                        'customfield_10008',
@@ -443,7 +470,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
         fix_versions = ', '.join(fv['name'] for fv in issue['fields']['fixVersions']) if issue['fields'].get('fixVersions') else '-'
         cvss_score = issue['fields']['customfield_33415'] if issue['fields'].get('customfield_33415') else '-'
         components = extract_field_value(issue, 'components')  # Use 'components' as the field ID directly
-        affected_versions = extract_field_value(issue, fi_field_map.get('Affected Version/s', 'versions'))
+        affected_versions = extract_field_value(issue, 'versions')
         updated = _format_updated_timestamp(issue['fields'].get('updated'))
 
         # Highlight Customer Sentiment if RED or YELLOW
@@ -459,7 +486,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
                 'Components': components,
                 'Customer Name': _extract_field_or_dash(issue, fi_field_map.get('Customer Name')),
                 'Assignee': assignee,
-                'Affected Version/s': affected_versions,
+                'Affects Version/s': affected_versions,
                 'Summary': summary,
                 'Status': status,
                 'Case Status': _extract_field_or_dash(issue, fi_field_map.get('Case Status')),
