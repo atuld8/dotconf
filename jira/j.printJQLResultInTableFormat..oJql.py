@@ -294,11 +294,11 @@ def calculate_runtime(issue):
 
     try:
         # Jira datetime format: 2024-01-15T10:30:00.000+0000
-        created = datetime.fromisoformat(created_str.replace('Z', '+00:00').split('.')[0])
+        created = datetime.strptime(created_str.replace('Z', '+00:00').split('.')[0], "%Y-%m-%dT%H:%M:%S%z")
 
         if resolution_str and status in ['resolved', 'closed', 'done', 'complete', 'completed']:
             # Closed issue: creation to resolution
-            resolved = datetime.fromisoformat(resolution_str.replace('Z', '+00:00').split('.')[0])
+            resolved = datetime.strptime(resolution_str.replace('Z', '+00:00').split('.')[0], "%Y-%m-%dT%H:%M:%S%z")
             delta = resolved - created
         else:
             # Open issue: creation to now
