@@ -27,8 +27,6 @@ Examples:
     j.fi.rpt.py -i dump.ready.1 --live --stale-days 30 --list
 """
 
-from __future__ import annotations
-
 import argparse
 import importlib.util
 import os
