@@ -360,17 +360,17 @@ class JiraClient:
 def load_file_lines(filepath: str) -> List[str]:
     """
     Load non-empty, stripped lines from a file.
-    
+
     Supports:
     - Full line comments: lines starting with #
     - Inline comments: anything after # is stripped
-    
+
     Example input (discovery file format):
         # Header comment
         WORKLOADS_CLOUD_SNAPSHOT  # 34
         WORKLOADS_DB_AGENT_SQL  # 12
         10.5.0.1  # 45
-    
+
     Returns: ['WORKLOADS_CLOUD_SNAPSHOT', 'WORKLOADS_DB_AGENT_SQL', '10.5.0.1']
     """
     if not filepath:
@@ -453,6 +453,57 @@ def extract_field_value(field_value: Any) -> str:
         return ", ".join(values) if values else "-"
 
     return str(field_value)
+
+
+def extract_email_address(field_value: Any, email_domain: Optional[str] = None) -> Optional[str]:
+    """
+    Extract email address from Jira user field.
+
+    Args:
+        field_value: Jira user field (dict with emailAddress, name, key, displayName)
+        email_domain: If provided, construct email from username@domain when no email found
+
+    Returns:
+        Email address string or None
+    """
+    if field_value is None:
+        return None
+
+    if isinstance(field_value, dict):
+        # 1. Prefer explicit emailAddress field
+        email = field_value.get('emailAddress')
+        if email:
+            return email.strip()
+
+        # 2. Try name field (often username = email in corporate Jira)
+        name = field_value.get('name')
+        if name:
+            name = name.strip()
+            if '@' in name:
+                return name
+            # Construct email if domain provided
+            if email_domain:
+                return f"{name}@{email_domain}"
+
+        # 3. Try key field (some Jira instances use key as email/username)
+        key = field_value.get('key')
+        if key:
+            key = key.strip()
+            if '@' in key:
+                return key
+            if email_domain and not name:
+                return f"{key}@{email_domain}"
+
+        # 4. Last resort: try to extract from displayName (less reliable)
+        display_name = field_value.get('displayName', '')
+        if display_name and '@' in display_name:
+            # Extract email-like pattern from displayName
+            import re
+            match = re.search(r'[\w.+-]+@[\w.-]+\.\w+', display_name)
+            if match:
+                return match.group(0)
+
+    return None
 
 
 def extract_list_values(field_value: Any) -> List[str]:
@@ -703,9 +754,10 @@ class FIReport:
         'business_unit': None,  # Will be resolved dynamically
     }
 
-    def __init__(self, client: JiraClient, validator: FIValidator):
+    def __init__(self, client: JiraClient, validator: FIValidator, email_domain: Optional[str] = None):
         self.client = client
         self.validator = validator
+        self.email_domain = email_domain
         self._resolve_custom_fields()
 
     def _resolve_custom_fields(self):
@@ -754,10 +806,16 @@ class FIReport:
         priority = extract_field_value(fields.get('priority'))
         resolution = extract_field_value(fields.get('resolution'))
 
-        # Assignee and Manager
+        # Assignee and Manager (with emails)
         assignee = extract_field_value(fields.get('assignee'))
+        assignee_email = extract_email_address(fields.get('assignee'), self.email_domain)
         manager_field = self.KNOWN_FIELDS.get('assignee_manager')
         assignee_manager = extract_field_value(fields.get(manager_field)) if manager_field else "-"
+        # Assignee Manager field value is often the email itself
+        if assignee_manager and assignee_manager != "-" and '@' in assignee_manager:
+            assignee_manager_email = assignee_manager.strip()
+        else:
+            assignee_manager_email = extract_email_address(fields.get(manager_field), self.email_domain) if manager_field else None
 
         # Dates
         created = normalize_timestamp(fields.get('created'))
@@ -816,6 +874,8 @@ class FIReport:
             '_error_count': len(validation_errors),
             '_versions_list': versions_list,
             '_components_list': components_list,
+            '_assignee_email': assignee_email,
+            '_assignee_manager_email': assignee_manager_email,
         }
 
     def fetch_and_validate(self, fi_ids: List[str] = None, jql: str = None) -> Tuple[List[Dict], List[str]]:
@@ -854,18 +914,18 @@ def filter_columns(all_columns: List[str], include_cols: Optional[str] = None,
                    exclude_cols: Optional[str] = None) -> List[str]:
     """
     Filter columns based on include/exclude lists.
-    
+
     Args:
         all_columns: Full list of available columns
         include_cols: Comma-separated list of columns to include (case-insensitive)
         exclude_cols: Comma-separated list of columns to exclude (case-insensitive)
-    
+
     Returns:
         Filtered list of columns preserving original order
     """
     # Build case-insensitive lookup
     col_map = {c.lower(): c for c in all_columns}
-    
+
     if include_cols:
         # Only include specified columns
         requested = [c.strip() for c in include_cols.split(',')]
@@ -877,7 +937,7 @@ def filter_columns(all_columns: List[str], include_cols: Optional[str] = None,
             else:
                 print(f"Warning: Unknown column '{req}' (ignored)", file=sys.stderr)
         return result if result else all_columns
-    
+
     if exclude_cols:
         # Exclude specified columns
         excluded = {c.strip().lower() for c in exclude_cols.split(',')}
@@ -888,7 +948,7 @@ def filter_columns(all_columns: List[str], include_cols: Optional[str] = None,
         for u in unknown:
             print(f"Warning: Unknown column '{u}' in exclusion list (ignored)", file=sys.stderr)
         return result
-    
+
     return all_columns
 
 
@@ -1025,6 +1085,38 @@ def export_csv(records: List[Dict], output_path: str, columns: List[str] = None)
             writer.writerow({col: record.get(col, "") for col in available_columns})
 
     print(f"Exported {len(records)} records to {output_path}", file=sys.stderr)
+
+
+def print_email_lists(records: List[Dict]):
+    """
+    Print email lists for Outlook.
+    TO: All unique assignee emails (comma-separated)
+    CC: All unique assignee manager emails (comma-separated)
+    """
+    assignee_emails = set()
+    manager_emails = set()
+
+    for record in records:
+        email = record.get('_assignee_email')
+        if email:
+            assignee_emails.add(email)
+        manager_email = record.get('_assignee_manager_email')
+        if manager_email:
+            manager_emails.add(manager_email)
+
+    print("\n" + "=" * 60)
+    print("EMAIL NOTIFICATION LISTS (for Outlook)")
+    print("=" * 60)
+
+    if assignee_emails:
+        print(f"TO: {', '.join(sorted(assignee_emails))}")
+    else:
+        print("TO: (no assignee emails found)")
+
+    if manager_emails:
+        print(f"CC: {', '.join(sorted(manager_emails))}")
+    else:
+        print("CC: (no assignee manager emails found)")
 
 
 # ---------------------------------------------------------------------------
@@ -1178,6 +1270,10 @@ def parse_args():
                               help='Exclude these columns from output (comma-separated, case-insensitive)')
     output_group.add_argument('-L', '--list-cols', action='store_true',
                               help='List available column names and exit')
+    output_group.add_argument('-en', '--email-notification', action='store_true',
+                              help='Print TO: (assignee emails) and CC: (manager emails) for Outlook')
+    output_group.add_argument('--email-domain', type=str, metavar='DOMAIN',
+                              help='Email domain to construct emails from usernames (e.g., veritas.com)')
 
     # Discovery mode - build config files
     discovery_group = parser.add_argument_group('Discovery Mode (Build Config Files)')
@@ -1267,7 +1363,7 @@ def main():
     # Initialize client and validator
     client = JiraClient(JIRA_BASE_URL, JIRA_TOKEN)
     validator = FIValidator(config, debug=args.debug)
-    report = FIReport(client, validator)
+    report = FIReport(client, validator, email_domain=args.email_domain)
 
     # Fetch and validate
     try:
@@ -1354,6 +1450,10 @@ def main():
     # Export to CSV if requested
     if args.output:
         export_csv(records, args.output, columns=display_columns)
+
+    # Email notification output
+    if args.email_notification and records:
+        print_email_lists(records)
 
     # Exit with error code if any validation errors
     errors_count = sum(1 for r in records if r.get('_has_errors', False))
