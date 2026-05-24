@@ -315,6 +315,19 @@ class JiraClient:
             }
 
             response = self._request_with_retry('GET', url, params=params, operation='Issue search')
+
+            # Handle JQL errors with clean messaging (no traceback)
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_msgs = error_data.get('errorMessages', [])
+                    errors = error_data.get('errors', {})
+                    msg = '; '.join(error_msgs) if error_msgs else str(errors)
+                    print(f"JQL Error: {msg}", file=sys.stderr)
+                except Exception:
+                    print(f"Error: Bad request (400)", file=sys.stderr)
+                sys.exit(1)
+
             response.raise_for_status()
 
             payload = response.json()
@@ -455,31 +468,44 @@ class WatcherManager:
         return added, removed
 
     def add_watchers(self, watcher_list: List[Dict], users_to_add: List[str],
-                     verbose: bool = True) -> Tuple[List[Dict], List[str]]:
+                     verbose: bool = True, force: bool = False) -> Tuple[List[Dict], List[str]]:
         """
         Add users to watcher list.
         Returns (updated_list, list_of_added_users).
+        If force=True, skip user validation (for groups/DLs).
         """
-        watcher_urls = {w.get('self') for w in watcher_list}
+        watcher_names = {w.get('name', '').lower() for w in watcher_list}
         added = []
         result = watcher_list[:]
 
         for username in users_to_add:
-            user = self.get_user_details(username)
-            if not user:
-                print(f"Warning: User '{username}' not found, skipping", file=sys.stderr)
-                continue
-
-            if user.get('self') in watcher_urls:
+            if force:
+                # Skip validation, create minimal user dict
+                if username.lower() in watcher_names:
+                    if verbose:
+                        print(f"  {username} already in watcher list")
+                    continue
                 if verbose:
-                    print(f"  {user.get('name')} already in watcher list")
-                continue
+                    print(f"  Adding {username} (force mode)")
+                result.append({'name': username})
+                watcher_names.add(username.lower())
+                added.append(username)
+            else:
+                user = self.get_user_details(username)
+                if not user:
+                    print(f"Warning: User '{username}' not found, skipping", file=sys.stderr)
+                    continue
 
-            if verbose:
-                print(f"  Adding {user.get('name')}")
-            result.append(user)
-            watcher_urls.add(user.get('self'))
-            added.append(username)
+                if user.get('name', '').lower() in watcher_names:
+                    if verbose:
+                        print(f"  {user.get('name')} already in watcher list")
+                    continue
+
+                if verbose:
+                    print(f"  Adding {user.get('name')}")
+                result.append(user)
+                watcher_names.add(user.get('name', '').lower())
+                added.append(username)
 
         return result, added
 
@@ -517,20 +543,27 @@ class WatcherManager:
 
         return result, removed
 
-    def set_watchers(self, users: List[str], verbose: bool = True) -> List[Dict]:
+    def set_watchers(self, users: List[str], verbose: bool = True, force: bool = False) -> List[Dict]:
         """
         Create a new watcher list from usernames.
         Returns list of user dicts.
+        If force=True, skip user validation (for groups/DLs).
         """
         result = []
         for username in users:
-            user = self.get_user_details(username)
-            if not user:
-                print(f"Warning: User '{username}' not found, skipping", file=sys.stderr)
-                continue
-            if verbose:
-                print(f"  Setting {user.get('name')}")
-            result.append(user)
+            if force:
+                # Skip validation, create minimal user dict
+                if verbose:
+                    print(f"  Setting {username} (force mode)")
+                result.append({'name': username})
+            else:
+                user = self.get_user_details(username)
+                if not user:
+                    print(f"Warning: User '{username}' not found, skipping", file=sys.stderr)
+                    continue
+                if verbose:
+                    print(f"  Setting {user.get('name')}")
+                result.append(user)
         return result
 
 
@@ -730,7 +763,7 @@ def cmd_update_watchers(client: JiraClient, issue_keys: List[str],
                         custom_field: str, field_name: str = 'Watchers',
                         set_users: Optional[List[str]] = None,
                         dry_run: bool = False, quiet: bool = False,
-                        output_file: Optional[str] = None):
+                        output_file: Optional[str] = None, force: bool = False):
     """Add/remove/set watchers for issues."""
     manager = WatcherManager(client, custom_field=custom_field)
     results = []
@@ -758,16 +791,16 @@ def cmd_update_watchers(client: JiraClient, issue_keys: List[str],
                 # Set mode: remove all current, add all new
                 actual_remove = [n for n in before_names if n not in set_users]
                 actual_add = [u for u in set_users if u not in before_names]
-                print("Setting watchers (built-in mode):")
+                print(f"Setting {field_name} (built-in mode):")
 
             if actual_remove:
-                print("Removing watchers:")
+                print(f"Removing from {field_name}:")
                 for u in actual_remove:
                     if not quiet:
                         print(f"  Removing {u}")
 
             if actual_add:
-                print("Adding watchers:")
+                print(f"Adding to {field_name}:")
                 for u in actual_add:
                     if not quiet:
                         print(f"  Adding {u}")
@@ -799,8 +832,8 @@ def cmd_update_watchers(client: JiraClient, issue_keys: List[str],
             # Custom field: bulk update
             if set_users is not None:
                 # Set mode: replace entire list
-                print("Setting watchers:")
-                final_watchers = manager.set_watchers(set_users, verbose=not quiet)
+                print(f"Setting {field_name}:")
+                final_watchers = manager.set_watchers(set_users, verbose=not quiet, force=force)
                 added = set_users
                 removed = before_names
             else:
@@ -808,16 +841,16 @@ def cmd_update_watchers(client: JiraClient, issue_keys: List[str],
                 final_watchers = current_watchers[:]
 
                 if remove_users:
-                    print("Removing watchers:")
+                    print(f"Removing from {field_name}:")
                     final_watchers, removed = manager.remove_watchers(
                         final_watchers, remove_users, verbose=not quiet)
                 else:
                     removed = []
 
                 if add_users:
-                    print("Adding watchers:")
+                    print(f"Adding to {field_name}:")
                     final_watchers, added = manager.add_watchers(
-                        final_watchers, add_users, verbose=not quiet)
+                        final_watchers, add_users, verbose=not quiet, force=force)
                 else:
                     added = []
 
@@ -929,6 +962,9 @@ def parse_args():
     exec_group.add_argument(
         '-m', '--max', type=int, default=0, metavar='N',
         help='Limit number of issues to process (0 = unlimited)')
+    exec_group.add_argument(
+        '-F', '--force', action='store_true',
+        help='Skip user validation (use for groups/distribution lists)')
 
     # Watcher field selection
     field_group = parser.add_argument_group('Watcher Field Selection',
@@ -1082,9 +1118,12 @@ def main():
             print(f"Limited to first {args.max} issues", file=sys.stderr)
 
     if not issue_keys:
-        print("Error: No issue keys provided. Use -j, -f, -q, or pipe to stdin.",
-              file=sys.stderr)
-        sys.exit(1)
+        if args.jql:
+            print("No issues found matching the JQL query.", file=sys.stderr)
+        else:
+            print("Error: No issue keys provided. Use -j, -f, -q, or pipe to stdin.",
+                  file=sys.stderr)
+        sys.exit(0 if args.jql else 1)
 
     # Collect users to add/remove/set
     add_users = list(args.add) if args.add else []
@@ -1191,7 +1230,8 @@ def main():
             set_users=set_users,
             dry_run=args.dry_run,
             quiet=args.quiet,
-            output_file=args.output
+            output_file=args.output,
+            force=args.force
         )
 
 
