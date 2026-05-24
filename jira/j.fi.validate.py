@@ -121,6 +121,7 @@ OUTPUT_COLUMNS = [
     'Priority',
     'Assignee',
     'Assignee Manager',
+    'Manager Groups',
     'Case Status',
     'Status',
     'Created',
@@ -154,6 +155,7 @@ class JiraClient:
             'Connection': 'close',
         }
         self._field_cache: Optional[Dict[str, Dict]] = None
+        self._user_groups_cache: Dict[str, List[str]] = {}  # username -> groups
 
     def _is_transient_error(self, exc: Exception) -> bool:
         """Check if error is transient and retryable."""
@@ -314,6 +316,60 @@ class JiraClient:
             if e.response is not None and e.response.status_code == 404:
                 return None
             raise
+
+    def get_user_groups(self, username: str, filter_patterns: List[str] = None) -> List[str]:
+        """
+        Get groups for a user. Results are cached.
+
+        Args:
+            username: Jira username
+            filter_patterns: Optional list of glob patterns to filter groups (e.g., ['*-managers', '*-directors'])
+
+        Returns:
+            List of group names (filtered if patterns provided)
+        """
+        if not username:
+            return []
+
+        # Check cache first
+        if username in self._user_groups_cache:
+            groups = self._user_groups_cache[username]
+        else:
+            url = f"{self.base_url}/rest/api/2/user"
+            params = {
+                'username': username,
+                'expand': 'groups',
+            }
+
+            try:
+                response = self._request_with_retry('GET', url, params=params, operation=f'User groups {username}')
+                if response.status_code == 404:
+                    self._user_groups_cache[username] = []
+                    return []
+                response.raise_for_status()
+
+                user_data = response.json()
+                groups_data = user_data.get('groups', {}).get('items', [])
+                groups = [g.get('name', '') for g in groups_data if g.get('name')]
+                self._user_groups_cache[username] = groups
+
+            except Exception as e:
+                print(f"Warning: Could not fetch groups for {username}: {e}", file=sys.stderr)
+                self._user_groups_cache[username] = []
+                return []
+
+        # Apply filter patterns if provided
+        if filter_patterns and groups:
+            import fnmatch
+            filtered = []
+            for g in groups:
+                for pattern in filter_patterns:
+                    if fnmatch.fnmatch(g.lower(), pattern.lower()):
+                        filtered.append(g)
+                        break
+            return filtered
+
+        return groups
 
     def get_issues_batch(self, issue_keys: List[str], fields: List[str]) -> Tuple[List[Dict], List[str]]:
         """Fetch multiple issues by keys. Returns (found_issues, not_found_keys)."""
@@ -754,10 +810,12 @@ class FIReport:
         'business_unit': None,  # Will be resolved dynamically
     }
 
-    def __init__(self, client: JiraClient, validator: FIValidator, email_domain: Optional[str] = None):
+    def __init__(self, client: JiraClient, validator: FIValidator, email_domain: Optional[str] = None,
+                 fetch_manager_groups: bool = False):
         self.client = client
         self.validator = validator
         self.email_domain = email_domain
+        self.fetch_manager_groups = fetch_manager_groups
         self._resolve_custom_fields()
 
     def _resolve_custom_fields(self):
@@ -817,6 +875,17 @@ class FIReport:
         else:
             assignee_manager_email = extract_email_address(fields.get(manager_field), self.email_domain) if manager_field else None
 
+        # Manager Groups (optional - requires extra API calls)
+        manager_groups = "-"
+        if self.fetch_manager_groups and assignee_manager_email and '@' in assignee_manager_email:
+            # Extract username from email (strip @domain.com)
+            manager_username = assignee_manager_email.split('@')[0]
+            groups = self.client.get_user_groups(
+                manager_username,
+                filter_patterns=['*-managers', '*-directors']
+            )
+            manager_groups = ", ".join(sorted(groups)) if groups else "-"
+
         # Dates
         created = normalize_timestamp(fields.get('created'))
         updated = normalize_timestamp(fields.get('updated'))
@@ -857,6 +926,7 @@ class FIReport:
             'Priority': priority,
             'Assignee': assignee,
             'Assignee Manager': assignee_manager,
+            'Manager Groups': manager_groups,
             'Case Status': case_status,
             'Status': status,
             'Created': created,
@@ -1274,6 +1344,8 @@ def parse_args():
                               help='Print TO: (assignee emails) and CC: (manager emails) for Outlook')
     output_group.add_argument('--email-domain', type=str, metavar='DOMAIN',
                               help='Email domain to construct emails from usernames (e.g., veritas.com)')
+    output_group.add_argument('-mg', '--manager-groups', action='store_true',
+                              help='Fetch manager groups (*-managers, *-directors) - adds API calls')
 
     # Discovery mode - build config files
     discovery_group = parser.add_argument_group('Discovery Mode (Build Config Files)')
@@ -1363,7 +1435,8 @@ def main():
     # Initialize client and validator
     client = JiraClient(JIRA_BASE_URL, JIRA_TOKEN)
     validator = FIValidator(config, debug=args.debug)
-    report = FIReport(client, validator, email_domain=args.email_domain)
+    report = FIReport(client, validator, email_domain=args.email_domain,
+                      fetch_manager_groups=args.manager_groups)
 
     # Fetch and validate
     try:
