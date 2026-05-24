@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-FI Validator - Validate FI tickets for NBU product against version/component rules.
+FI Validator - Validate FI tickets against group-based version/component rules.
 
-Validates FI tickets against:
-- Affects Version/s: Must be within valid version list
-- Component/s: Must match allowed components for the business unit
-- Business Unit: Must match expected value (loaded from config)
+Validates FI tickets using group-based configuration:
+- Components belong to groups (e.g., NetBackup_Core, ALTA_IT)
+- Each group has valid versions
+- A component's version must be in one of its group's valid versions
 
 Input Methods:
 - JQL query via -j/--jql
@@ -16,36 +16,41 @@ Output:
 - Console table with validation results
 - Optional CSV export via -o/--output
 
-Configuration Files:
-- Versions file: One valid version per line (e.g., 9.1, 10.1.1, 11.0)
-- Components file: One valid component per line
-- Business Unit file: Single line with expected BU value
+Configuration File Format (INI-style):
+    [GroupName:components]
+    component1  # count
+    component2
+
+    [GroupName:versions]
+    10.1.1  # count
+    10.2.0.1
+
+    [Unknown:components]
+    # New/unassigned components go here
+
+    [Unknown:versions]
+    # New/unassigned versions go here
 
 Environment variables expected:
 - JIRA_SERVER_NAME
 - JIRA_ACC_TOKEN
 
 Examples:
-    # Validate using JQL query
+    # Build groups config from FI data (creates Unknown groups)
     j.fi.validate.py -j "project = FI AND 'Business Unit' = NBU" \\
-        --versions-file valid_versions.txt \\
-        --components-file valid_components.txt \\
-        --bu-file business_unit.txt
+        --build-groups groups.ini
 
-    # Validate from file with FI IDs
-    j.fi.validate.py -f fi_ids.txt --versions-file versions.txt --components-file components.txt
+    # Update existing config (merges, new items go to Unknown)
+    j.fi.validate.py -j "project = FI" --build-groups groups.ini
 
-    # Pipe FI IDs via stdin
-    echo "FI-12345" | j.fi.validate.py --versions-file versions.txt --components-file components.txt
+    # Validate using groups config
+    j.fi.validate.py -j "project = FI" -g groups.ini
+
+    # Show only invalid FIs
+    j.fi.validate.py -j "project = FI" -g groups.ini --errors-only
 
     # Export results to CSV
-    j.fi.validate.py -j "project = FI" --versions-file v.txt --components-file c.txt -o report.csv
-
-    # Discovery mode: Build config files from existing FI data
-    j.fi.validate.py -j "project = FI AND 'Business Unit' = NBU" \\
-        --build-vf discovered_versions.txt \\
-        --build-cf discovered_components.txt \\
-        --build-bu discovered_bu.txt
+    j.fi.validate.py -j "project = FI" -g groups.ini -o report.csv
 """
 
 from __future__ import print_function
@@ -57,6 +62,7 @@ import re
 import sys
 import time
 from collections import OrderedDict
+from configparser import ConfigParser
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -450,36 +456,272 @@ def load_file_lines(filepath: str) -> List[str]:
     return lines
 
 
-def load_single_value(filepath: str) -> str:
-    """Load single value from file (first non-empty line)."""
-    lines = load_file_lines(filepath)
-    if not lines:
-        raise ValueError(f"Configuration file is empty: {filepath}")
-    return lines[0]
+# ---------------------------------------------------------------------------
+# Group-Based Configuration
+# ---------------------------------------------------------------------------
+
+class GroupConfig:
+    """
+    Group-based validation configuration.
+
+    Config file format (INI-style):
+        [GroupName:components]
+        component1  # count
+        component2
+
+        [GroupName:versions]
+        10.1.1  # count
+        10.2.0.1
+
+        [Unknown:components]
+        # New/unassigned components
+
+        [Unknown:versions]
+        # New/unassigned versions
+    """
+
+    def __init__(self):
+        # group_name -> set of components (lowercase for comparison)
+        self.group_components: Dict[str, Set[str]] = {}
+        # group_name -> set of versions
+        self.group_versions: Dict[str, Set[str]] = {}
+        # component (lowercase) -> list of group names
+        self.component_to_groups: Dict[str, List[str]] = {}
+        # version -> list of group names
+        self.version_to_groups: Dict[str, List[str]] = {}
+        # For preserving counts during merge
+        self.component_counts: Dict[str, int] = {}
+        self.version_counts: Dict[str, int] = {}
+
+    @classmethod
+    def load(cls, filepath: str) -> 'GroupConfig':
+        """Load configuration from INI file."""
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Configuration file not found: {filepath}")
+
+        config = cls()
+        current_section = None
+        current_group = None
+        current_type = None  # 'components' or 'versions'
+
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                stripped = line.strip()
+
+                # Skip empty lines and full comments
+                if not stripped or stripped.startswith('#'):
+                    continue
+
+                # Section header: [GroupName:type]
+                if stripped.startswith('[') and stripped.endswith(']'):
+                    section = stripped[1:-1]
+                    if ':' not in section:
+                        print(f"Warning: Invalid section '{section}' at line {line_num}, expected [GroupName:components] or [GroupName:versions]", file=sys.stderr)
+                        current_section = None
+                        continue
+
+                    group_name, section_type = section.rsplit(':', 1)
+                    group_name = group_name.strip()
+                    section_type = section_type.strip().lower()
+
+                    if section_type not in ('components', 'versions'):
+                        print(f"Warning: Invalid section type '{section_type}' at line {line_num}, expected 'components' or 'versions'", file=sys.stderr)
+                        current_section = None
+                        continue
+
+                    current_group = group_name
+                    current_type = section_type
+
+                    # Initialize group sets if needed
+                    if current_group not in config.group_components:
+                        config.group_components[current_group] = set()
+                    if current_group not in config.group_versions:
+                        config.group_versions[current_group] = set()
+                    continue
+
+                # Value line
+                if current_group and current_type:
+                    # Parse value and optional count comment
+                    value = stripped
+                    count = 0
+                    if '#' in stripped:
+                        parts = stripped.split('#', 1)
+                        value = parts[0].strip()
+                        try:
+                            count = int(parts[1].strip())
+                        except ValueError:
+                            pass  # Non-numeric comment
+
+                    if not value:
+                        continue
+
+                    if current_type == 'components':
+                        value_lower = value.lower()
+                        config.group_components[current_group].add(value_lower)
+                        config.component_counts[value_lower] = count
+                        # Build reverse mapping
+                        if value_lower not in config.component_to_groups:
+                            config.component_to_groups[value_lower] = []
+                        if current_group not in config.component_to_groups[value_lower]:
+                            config.component_to_groups[value_lower].append(current_group)
+                    else:  # versions
+                        config.group_versions[current_group].add(value)
+                        config.version_counts[value] = count
+                        # Build reverse mapping
+                        if value not in config.version_to_groups:
+                            config.version_to_groups[value] = []
+                        if current_group not in config.version_to_groups[value]:
+                            config.version_to_groups[value].append(current_group)
+
+        # Summary
+        num_groups = len(set(config.group_components.keys()) | set(config.group_versions.keys()))
+        num_components = len(config.component_to_groups)
+        num_versions = len(config.version_to_groups)
+        print(f"Loaded {num_groups} groups with {num_components} components and {num_versions} versions from {filepath}", file=sys.stderr)
+
+        return config
+
+    def get_groups_for_component(self, component: str) -> List[str]:
+        """Get list of groups that contain this component."""
+        return self.component_to_groups.get(component.lower(), [])
+
+    def get_valid_versions_for_component(self, component: str) -> Set[str]:
+        """Get all valid versions for a component (union of all its groups' versions)."""
+        groups = self.get_groups_for_component(component)
+        versions = set()
+        for group in groups:
+            versions.update(self.group_versions.get(group, set()))
+        return versions
+
+    def is_component_known(self, component: str) -> bool:
+        """Check if component exists in any group (including Unknown)."""
+        return component.lower() in self.component_to_groups
+
+    def is_component_in_unknown(self, component: str) -> bool:
+        """Check if component is only in Unknown group."""
+        groups = self.get_groups_for_component(component)
+        return groups == ['Unknown']
 
 
-class ValidationConfig:
-    """Configuration for FI validation rules."""
+def write_groups_config(filepath: str, groups_data: Dict[str, Dict[str, Dict[str, int]]],
+                        existing_config: Optional[GroupConfig] = None):
+    """
+    Write groups configuration to INI file.
 
-    def __init__(self, versions_file: str, components_file: str, bu_file: Optional[str] = None):
-        self.valid_versions: Set[str] = set()
-        self.valid_components: Set[str] = set()
-        self.expected_bu: Optional[str] = None
+    Args:
+        filepath: Output file path
+        groups_data: Dict of {group_name: {'components': {comp: count}, 'versions': {ver: count}}}
+        existing_config: If provided, preserve existing group assignments
+    """
+    # Merge with existing if provided
+    if existing_config:
+        # Find items not in any existing group -> add to Unknown
+        all_existing_components = set()
+        all_existing_versions = set()
+        for group, comps in existing_config.group_components.items():
+            all_existing_components.update(comps)
+        for group, vers in existing_config.group_versions.items():
+            all_existing_versions.update(vers)
 
-        # Load versions (case-sensitive)
-        if versions_file:
-            self.valid_versions = set(load_file_lines(versions_file))
-            print(f"Loaded {len(self.valid_versions)} valid versions from {versions_file}", file=sys.stderr)
+        # Get new discovered items
+        new_components = {}
+        new_versions = {}
+        for group, data in groups_data.items():
+            for comp, count in data.get('components', {}).items():
+                comp_lower = comp.lower()
+                if comp_lower not in all_existing_components:
+                    new_components[comp] = new_components.get(comp, 0) + count
+            for ver, count in data.get('versions', {}).items():
+                if ver not in all_existing_versions:
+                    new_versions[ver] = new_versions.get(ver, 0) + count
 
-        # Load components (case-insensitive comparison later)
-        if components_file:
-            self.valid_components = set(c.lower() for c in load_file_lines(components_file))
-            print(f"Loaded {len(self.valid_components)} valid components from {components_file}", file=sys.stderr)
+        # Build output: existing groups + Unknown with new items
+        output_groups = OrderedDict()
 
-        # Load expected business unit
-        if bu_file:
-            self.expected_bu = load_single_value(bu_file)
-            print(f"Expected Business Unit: {self.expected_bu}", file=sys.stderr)
+        # Copy existing groups with updated counts
+        for group in sorted(existing_config.group_components.keys()):
+            if group == 'Unknown':
+                continue  # Handle Unknown last
+            output_groups[group] = {
+                'components': {},
+                'versions': {}
+            }
+            for comp in sorted(existing_config.group_components.get(group, set())):
+                # Use new count if available, else existing
+                new_count = 0
+                for g, d in groups_data.items():
+                    for c, cnt in d.get('components', {}).items():
+                        if c.lower() == comp:
+                            new_count = cnt
+                            break
+                output_groups[group]['components'][comp] = new_count or existing_config.component_counts.get(comp, 0)
+
+            for ver in sort_versions(list(existing_config.group_versions.get(group, set()))):
+                new_count = 0
+                for g, d in groups_data.items():
+                    new_count = d.get('versions', {}).get(ver, 0)
+                    if new_count:
+                        break
+                output_groups[group]['versions'][ver] = new_count or existing_config.version_counts.get(ver, 0)
+
+        # Add Unknown group with new + existing unknown items
+        existing_unknown_comps = existing_config.group_components.get('Unknown', set())
+        existing_unknown_vers = existing_config.group_versions.get('Unknown', set())
+
+        unknown_comps = {}
+        unknown_vers = {}
+
+        # Add existing unknown items
+        for comp in existing_unknown_comps:
+            unknown_comps[comp] = existing_config.component_counts.get(comp, 0)
+        for ver in existing_unknown_vers:
+            unknown_vers[ver] = existing_config.version_counts.get(ver, 0)
+
+        # Add new items
+        for comp, count in new_components.items():
+            unknown_comps[comp.lower()] = count
+        for ver, count in new_versions.items():
+            unknown_vers[ver] = count
+
+        if unknown_comps or unknown_vers:
+            output_groups['Unknown'] = {
+                'components': unknown_comps,
+                'versions': unknown_vers
+            }
+
+        groups_data = output_groups
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write("# FI Validation Groups Configuration\n")
+        f.write("# Format: [GroupName:components] and [GroupName:versions]\n")
+        f.write("# Move items from [Unknown] to appropriate groups\n")
+        f.write("#\n\n")
+
+        for group_name, data in groups_data.items():
+            components = data.get('components', {})
+            versions = data.get('versions', {})
+
+            if components:
+                f.write(f"[{group_name}:components]\n")
+                for comp in sorted(components.keys(), key=str.lower):
+                    count = components[comp]
+                    if count:
+                        f.write(f"{comp}  # {count}\n")
+                    else:
+                        f.write(f"{comp}\n")
+                f.write("\n")
+
+            if versions:
+                f.write(f"[{group_name}:versions]\n")
+                for ver in sort_versions(list(versions.keys())):
+                    count = versions[ver]
+                    if count:
+                        f.write(f"{ver}  # {count}\n")
+                    else:
+                        f.write(f"{ver}\n")
+                f.write("\n")
+
+    print(f"Wrote groups configuration to {filepath}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -659,97 +901,78 @@ def extract_etracks(fields: Dict[str, Any], etrack_field_id: str, alt_etrack_fie
 # ---------------------------------------------------------------------------
 
 class FIValidator:
-    """Validate FI issues against configuration rules."""
+    """Validate FI issues against group-based configuration rules."""
 
-    def __init__(self, config: ValidationConfig, debug: bool = False):
+    def __init__(self, config: Optional[GroupConfig] = None, debug: bool = False):
         self.config = config
         self.debug = debug
 
-    def validate_versions(self, versions: List[str]) -> Tuple[bool, List[str]]:
+    def validate_issue(self, versions: List[str], components: List[str], bu: str = "") -> List[str]:
         """
-        Validate versions against allowed list.
-        Returns (is_valid, list_of_invalid_versions).
-        """
-        if not self.config.valid_versions:
-            return True, []  # No validation if no versions configured
+        Validate component-version combinations using group rules.
 
-        if not versions:
-            return False, ["No versions specified"]
+        Logic:
+        - Check if components exist in any group
+        - Check if versions exist in any group
+        - Check if version-component combinations are valid
 
-        invalid = []
-        for v in versions:
-            if v not in self.config.valid_versions:
-                invalid.append(v)
-
-        return len(invalid) == 0, invalid
-
-    def validate_components(self, components: List[str]) -> Tuple[bool, List[str]]:
-        """
-        Validate components against allowed list.
-        Returns (is_valid, list_of_invalid_components).
-        """
-        if not self.config.valid_components:
-            return True, []  # No validation if no components configured
-
-        if not components:
-            return False, ["No components specified"]
-
-        invalid = []
-        for c in components:
-            c_lower = c.lower()
-            if c_lower not in self.config.valid_components:
-                if self.debug:
-                    print(f"DEBUG: Component '{c}' (lower='{c_lower}', "
-                          f"bytes={c_lower.encode()}) not in valid set", file=sys.stderr)
-                invalid.append(c)
-
-        return len(invalid) == 0, invalid
-
-    def validate_business_unit(self, bu: str) -> Tuple[bool, str]:
-        """
-        Validate business unit matches expected value.
-        Returns (is_valid, error_message or empty string).
-        """
-        if not self.config.expected_bu:
-            return True, ""  # No validation if no BU configured
-
-        actual_bu = bu.strip() if bu and bu != "-" else ""
-
-        if not actual_bu:
-            return False, f"Business Unit not set (expected: {self.config.expected_bu})"
-
-        if actual_bu.lower() != self.config.expected_bu.lower():
-            return False, f"Business Unit mismatch: '{actual_bu}' (expected: {self.config.expected_bu})"
-
-        return True, ""
-
-    def validate_issue(self, versions: List[str], components: List[str], bu: str) -> List[str]:
-        """
-        Validate all rules for an issue.
-        Returns list of validation error messages.
+        Returns list of validation error messages (compact format).
         """
         errors = []
 
-        # Version validation
-        version_ok, invalid_versions = self.validate_versions(versions)
-        if not version_ok:
-            if invalid_versions == ["No versions specified"]:
-                errors.append("No Affects Version/s specified")
-            else:
-                errors.append(f"Invalid version(s): {', '.join(invalid_versions)}")
+        if not self.config:
+            return errors  # No validation if no config
 
-        # Component validation
-        component_ok, invalid_components = self.validate_components(components)
-        if not component_ok:
-            if invalid_components == ["No components specified"]:
-                errors.append("No Component/s specified")
-            else:
-                errors.append(f"Invalid component(s): {', '.join(invalid_components)}")
+        if not components:
+            errors.append("NoComp")
+            return errors
 
-        # Business Unit validation
-        bu_ok, bu_error = self.validate_business_unit(bu)
-        if not bu_ok:
-            errors.append(bu_error)
+        if not versions:
+            errors.append("NoVer")
+            return errors
+
+        # Check each component
+        for component in components:
+            groups = self.config.get_groups_for_component(component)
+
+            if not groups:
+                # Component not in any group
+                errors.append(f"BadComp:{component}")
+                continue
+
+            if self.config.is_component_in_unknown(component):
+                # Component only in Unknown group - warn
+                errors.append(f"Unassigned:{component}")
+                continue
+
+        # Check each version - is it in ANY group?
+        all_known_versions = set()
+        for group_vers in self.config.group_versions.values():
+            all_known_versions.update(group_vers)
+
+        for version in versions:
+            if version not in all_known_versions:
+                errors.append(f"BadVer:{version}")
+
+        # Check version-component combinations (only for known components/versions)
+        for component in components:
+            groups = self.config.get_groups_for_component(component)
+            if not groups or self.config.is_component_in_unknown(component):
+                continue  # Already reported above
+
+            valid_versions = self.config.get_valid_versions_for_component(component)
+            if not valid_versions:
+                if self.debug:
+                    print(f"DEBUG: Component '{component}' groups {groups} have no versions defined", file=sys.stderr)
+                continue
+
+            for version in versions:
+                # Skip if version is globally unknown (already reported)
+                if version not in all_known_versions:
+                    continue
+                # Check if version is valid for this component's groups
+                if version not in valid_versions:
+                    errors.append(f"V:{version}/C:{component}")
 
         return errors
 
@@ -877,6 +1100,7 @@ class FIReport:
 
         # Manager Groups (optional - requires extra API calls)
         manager_groups = "-"
+        manager_groups_list = []  # Raw list for filtering
         if self.fetch_manager_groups and assignee_manager_email and '@' in assignee_manager_email:
             # Extract username from email (strip @domain.com)
             manager_username = assignee_manager_email.split('@')[0]
@@ -884,6 +1108,7 @@ class FIReport:
                 manager_username,
                 filter_patterns=['*-managers', '*-directors']
             )
+            manager_groups_list = groups if groups else []
             manager_groups = ", ".join(sorted(groups)) if groups else "-"
 
         # Dates
@@ -946,6 +1171,7 @@ class FIReport:
             '_components_list': components_list,
             '_assignee_email': assignee_email,
             '_assignee_manager_email': assignee_manager_email,
+            '_manager_groups_list': manager_groups_list,
         }
 
     def fetch_and_validate(self, fi_ids: List[str] = None, jql: str = None) -> Tuple[List[Dict], List[str]]:
@@ -1105,23 +1331,58 @@ def print_summary(records: List[Dict], not_found: List[str]):
             notes = r.get('Validation Notes', '')
             if notes and notes != 'OK':
                 for error in notes.split('; '):
-                    # Normalize error type
-                    if 'Invalid version' in error:
-                        key = 'Invalid Affects Version/s'
-                    elif 'Invalid component' in error:
-                        key = 'Invalid Component/s'
-                    elif 'Business Unit' in error:
-                        key = 'Business Unit Issue'
-                    elif 'No Affects Version' in error:
-                        key = 'Missing Affects Version/s'
-                    elif 'No Component' in error:
-                        key = 'Missing Component/s'
+                    # Normalize error type (compact format)
+                    if error.startswith('V:') and '/C:' in error:
+                        key = 'Ver/Comp Mismatch'
+                    elif error.startswith('BadComp:'):
+                        key = 'Bad Component'
+                    elif error.startswith('BadVer:'):
+                        key = 'Bad Version'
+                    elif error.startswith('Unassigned:'):
+                        key = 'Unassigned Component'
+                    elif error == 'NoVer':
+                        key = 'Missing Version'
+                    elif error == 'NoComp':
+                        key = 'Missing Component'
                     else:
                         key = error
                     error_counts[key] = error_counts.get(key, 0) + 1
 
         for error, count in sorted(error_counts.items(), key=lambda x: -x[1]):
-            print(f"  {error:35s}: {count:4d}")
+            print(f"  {error:25s}: {count:4d}")
+
+
+def print_validation_legend():
+    """Print the validation error code legend."""
+    print("\n" + "=" * 60)
+    print("VALIDATION NOTES LEGEND")
+    print("=" * 60)
+    print("  BadComp:X      - Component X not in any group")
+    print("  BadVer:Y       - Version Y not in any group")
+    print("  V:Y/C:X        - Version Y valid but wrong for component X")
+    print("  Unassigned:X   - Component X in Unknown group (needs assignment)")
+    print("  NoComp         - No component specified")
+    print("  NoVer          - No version specified")
+    print("  OK             - Valid")
+
+
+def print_detailed_failures(records: List[Dict]):
+    """Print detailed failure information for each invalid FI (one line per FI)."""
+    invalid_records = [r for r in records if r.get('_has_errors', False)]
+    if not invalid_records:
+        return
+
+    print("\n" + "=" * 60)
+    print("DETAILED VALIDATION FAILURES")
+    print("=" * 60)
+
+    for record in invalid_records:
+        key = record.get('Key', '-')
+        notes = record.get('Validation Notes', '')
+        if notes and notes != 'OK':
+            comp = record.get('Component/s', '-')
+            ver = record.get('Affects Version/s', '-')
+            print(f"{key}: C={comp} V={ver} => {notes}")
 
 
 def print_not_found(not_found: List[str]):
@@ -1182,6 +1443,9 @@ def print_email_lists(records: List[Dict]):
         print(f"TO: {', '.join(sorted(assignee_emails))}")
     else:
         print("TO: (no assignee emails found)")
+
+    print()
+    print()
 
     if manager_emails:
         print(f"CC: {', '.join(sorted(manager_emails))}")
@@ -1266,31 +1530,6 @@ def discover_values_from_records(records: List[Dict]) -> Dict[str, Dict[str, int
     }
 
 
-def write_discovery_file(filepath: str, values: Dict[str, int], sort_func, label: str):
-    """
-    Write discovered values to file with counts as comments.
-    """
-    if not values:
-        print(f"No {label} values discovered.", file=sys.stderr)
-        return
-
-    # Sort values
-    sorted_values = sort_func(list(values.keys()))
-
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(f"# {label} discovered from FI data\n")
-        f.write(f"# Total unique values: {len(sorted_values)}\n")
-        f.write("# Format: value  # count\n")
-        f.write("# Remove or comment out invalid entries before using for validation\n")
-        f.write("#\n")
-
-        for value in sorted_values:
-            count = values[value]
-            f.write(f"{value}  # {count}\n")
-
-    print(f"Wrote {len(sorted_values)} {label} to {filepath}", file=sys.stderr)
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1310,14 +1549,10 @@ def parse_args():
     input_group.add_argument('-f', '--file', type=str,
                              help='File containing FI IDs (one per line or mixed text)')
 
-    # Configuration files
-    config_group = parser.add_argument_group('Configuration Files')
-    config_group.add_argument('-V', '--versions-file', '--vf', type=str,
-                              help='File with valid versions (one per line)')
-    config_group.add_argument('-C', '--components-file', '--cf', type=str,
-                              help='File with valid components (one per line)')
-    config_group.add_argument('-B', '--bu-file', '--bf', type=str,
-                              help='File with expected Business Unit value')
+    # Configuration
+    config_group = parser.add_argument_group('Configuration')
+    config_group.add_argument('-g', '--groups', type=str, metavar='FILE',
+                              help='Groups configuration file (INI format with [Group:components] and [Group:versions])')
 
     # Output options
     output_group = parser.add_argument_group('Output Options')
@@ -1342,19 +1577,19 @@ def parse_args():
                               help='List available column names and exit')
     output_group.add_argument('-en', '--email-notification', action='store_true',
                               help='Print TO: (assignee emails) and CC: (manager emails) for Outlook')
-    output_group.add_argument('--email-domain', type=str, metavar='DOMAIN',
+    output_group.add_argument('-ed', '--email-domain', type=str, metavar='DOMAIN',
                               help='Email domain to construct emails from usernames (e.g., veritas.com)')
     output_group.add_argument('-mg', '--manager-groups', action='store_true',
                               help='Fetch manager groups (*-managers, *-directors) - adds API calls')
+    output_group.add_argument('-fg', '--filter-groups', type=str, metavar='GROUPS',
+                              help='Filter to FIs where manager belongs to any of these groups (comma-separated, requires -mg)')
+    output_group.add_argument('-V', '--verbose', action='store_true',
+                              help='Show detailed failures and validation legend')
 
-    # Discovery mode - build config files
-    discovery_group = parser.add_argument_group('Discovery Mode (Build Config Files)')
-    discovery_group.add_argument('--build-vf', type=str, metavar='FILE',
-                                  help='Discover unique versions and write to FILE (sorted numerically)')
-    discovery_group.add_argument('--build-cf', type=str, metavar='FILE',
-                                  help='Discover unique components and write to FILE (sorted alphabetically)')
-    discovery_group.add_argument('--build-bu', type=str, metavar='FILE',
-                                  help='Discover unique Business Units and write to FILE (sorted alphabetically)')
+    # Discovery mode - build config file
+    discovery_group = parser.add_argument_group('Discovery Mode')
+    discovery_group.add_argument('-bg', '--build-groups', type=str, metavar='FILE',
+                                  help='Build/update groups config file from discovered data (merges with existing)')
 
     # Debug
     parser.add_argument('-d', '--debug', action='store_true',
@@ -1410,27 +1645,16 @@ def main():
         sys.exit(1)
 
     # Check if discovery mode is enabled
-    discovery_mode = args.build_vf or args.build_cf or args.build_bu
+    discovery_mode = args.build_groups
 
-    # In discovery mode, we don't need validation config files
-    if not discovery_mode:
-        # Load validation config (all optional - if not provided, that rule is skipped)
+    # Load group config if provided (not in discovery mode)
+    config = None
+    if not discovery_mode and args.groups:
         try:
-            config = ValidationConfig(
-                versions_file=args.versions_file,
-                components_file=args.components_file,
-                bu_file=args.bu_file,
-            )
+            config = GroupConfig.load(args.groups)
         except (FileNotFoundError, ValueError) as e:
             print(f"Configuration Error: {e}", file=sys.stderr)
             sys.exit(1)
-    else:
-        # Empty config for discovery mode
-        config = ValidationConfig(
-            versions_file=None,
-            components_file=None,
-            bu_file=None,
-        )
 
     # Initialize client and validator
     client = JiraClient(JIRA_BASE_URL, JIRA_TOKEN)
@@ -1452,36 +1676,31 @@ def main():
         print("No FI issues found matching the criteria.", file=sys.stderr)
         sys.exit(0)
 
-    # Discovery mode: extract and write config files, then exit
+    # Discovery mode: build groups config file, then exit
     if discovery_mode:
         print(f"\nDiscovery mode: Analyzing {len(records)} FI records...", file=sys.stderr)
         discovered = discover_values_from_records(records)
 
-        if args.build_vf:
-            write_discovery_file(
-                args.build_vf,
-                discovered['versions'],
-                sort_versions,
-                'Affects Version/s'
-            )
+        # Load existing config if file exists (for merging)
+        existing_config = None
+        if os.path.exists(args.build_groups):
+            try:
+                existing_config = GroupConfig.load(args.build_groups)
+                print(f"Merging with existing config: {args.build_groups}", file=sys.stderr)
+            except Exception as e:
+                print(f"Warning: Could not load existing config, creating new: {e}", file=sys.stderr)
 
-        if args.build_cf:
-            write_discovery_file(
-                args.build_cf,
-                discovered['components'],
-                sort_strings,
-                'Component/s'
-            )
+        # Build groups data (all discovered items go to Unknown for new file)
+        groups_data = {
+            'Unknown': {
+                'components': discovered['components'],
+                'versions': discovered['versions']
+            }
+        }
 
-        if args.build_bu:
-            write_discovery_file(
-                args.build_bu,
-                discovered['business_units'],
-                sort_strings,
-                'Business Unit'
-            )
+        write_groups_config(args.build_groups, groups_data, existing_config)
 
-        print("\nDiscovery complete. Review generated files and remove invalid entries.", file=sys.stderr)
+        print("\nDiscovery complete. Edit the config file to move items from [Unknown] to appropriate groups.", file=sys.stderr)
         sys.exit(0)
 
     # Determine show filter (--errors-only and --valid-only are shortcuts)
@@ -1501,6 +1720,20 @@ def main():
         records = [r for r in records if not r.get('_has_errors', False)]
         print(f"Showing {len(records)} valid FIs (filtered from {original_count} total)", file=sys.stderr)
 
+    # Filter by manager groups if requested
+    if args.filter_groups:
+        if not args.manager_groups:
+            print("Warning: -fg/--filter-groups requires -mg/--manager-groups to fetch group data", file=sys.stderr)
+        else:
+            filter_group_set = {g.strip().lower() for g in args.filter_groups.split(',')}
+            pre_filter_count = len(records)
+            records = [
+                r for r in records
+                if any(g.lower() in filter_group_set for g in r.get('_manager_groups_list', []))
+            ]
+            print(f"Filtered to {len(records)} FIs where manager belongs to: {args.filter_groups} "
+                  f"(from {pre_filter_count})", file=sys.stderr)
+
     # Compute display columns based on include/exclude options
     display_columns = filter_columns(
         OUTPUT_COLUMNS,
@@ -1516,6 +1749,11 @@ def main():
 
     if not args.no_summary:
         print_summary(all_records, not_found)  # use all_records for accurate summary
+
+    # Verbose output: legend and detailed failures
+    if args.verbose:
+        print_validation_legend()
+        print_detailed_failures(all_records)
 
     if not_found:
         print_not_found(not_found)
