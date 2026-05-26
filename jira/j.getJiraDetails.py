@@ -337,9 +337,21 @@ def _extract_linked_fis(issue_data: Dict[str, Any]) -> List[str]:
     return sorted(fi_set, key=lambda value: int(value.split("-")[1]))
 
 
-def _extract_etrack_ids(fields: Dict[str, Any]) -> List[str]:
-    candidates: List[str] = []
+def _extract_etrack_ids(issue: Dict[str, Any]) -> List[str]:
+    """Extract etrack IDs from various fields by ID and name.
 
+    Checks the following sources:
+    - customfield_33802: Etrack Incident
+    - customfield_36508: Etrack Ref/Alt
+    - Field named "NBU R&D Ticket" (or "NBU R&D Ticket:")
+    - Field named "Etrack Incident (Internal)" (or "Etrack Incident (Internal):")
+
+    Filters out numbers < 100000 as real etrack IDs are typically 6-7 digits.
+    """
+    candidates: List[str] = []
+    fields = issue.get("fields", {}) if isinstance(issue.get("fields"), dict) else issue
+
+    # Check known customfield IDs
     main_et = fields.get("customfield_33802")
     if main_et:
         candidates.extend(re.findall(r"\d+", str(main_et)))
@@ -348,7 +360,26 @@ def _extract_etrack_ids(fields: Dict[str, Any]) -> List[str]:
     if alt_et:
         candidates.extend(re.findall(r"\d+", str(alt_et)))
 
-    return sorted(set(candidates), key=int)
+    # Check by field name using names mapping
+    names = issue.get("names") if isinstance(issue.get("names"), dict) else {}
+    name_patterns = [
+        "nbu r&d ticket",
+        "nbu r&d ticket:",
+        "etrack incident (internal)",
+        "etrack incident (internal):",
+    ]
+    for key, mapped_name in names.items():
+        if not isinstance(mapped_name, str):
+            continue
+        normalized = mapped_name.strip().casefold()
+        if any(normalized == pat or normalized.startswith(pat.rstrip(":")) for pat in name_patterns):
+            value = fields.get(key)
+            if value:
+                candidates.extend(re.findall(r"\d+", str(value)))
+
+    # Filter out small numbers (< 100000) as real etrack IDs are 6-7 digits
+    valid_ids = [c for c in candidates if int(c) >= 100000]
+    return sorted(set(valid_ids), key=int) if valid_ids else []
 
 
 def _is_meaningful_text(value: str) -> bool:
@@ -607,6 +638,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                     "assignee": "-",
                     "severity": "-",
                     "priority": "-",
+                    "version": "-",
                     "abstract": f"Etrack module unavailable: {exc}",
                 }
             return details
@@ -620,6 +652,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "assignee": "-",
                 "severity": "-",
                 "priority": "-",
+                "version": "-",
                 "abstract": f"Unable to initialize Etrack executor: {exc}",
             }
         return details
@@ -635,6 +668,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "assignee": info.assignee or "-",
                 "severity": info.severity or "-",
                 "priority": info.priority or "-",
+                "version": info.version or "-",
                 "abstract": abstract,
             }
         else:
@@ -643,6 +677,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "assignee": "-",
                 "severity": "-",
                 "priority": "-",
+                "version": "-",
                 "abstract": "No etrack details found",
             }
 
@@ -1324,7 +1359,7 @@ def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = N
             pass  # Fall back to partial data
 
     fields = issue.get("fields", {})
-    etrack_ids = _extract_etrack_ids(fields)
+    etrack_ids = _extract_etrack_ids(issue)
     sfdc_links = _extract_sfdc_case_links(issue)
 
     return {
@@ -2248,7 +2283,7 @@ def main() -> int:
     status_context = _extract_current_status_and_next_steps(fields, comments)
     linked_fis = _extract_linked_fis(issue)
     linked_status: Optional[Dict[str, Dict[str, str]]] = None
-    etrack_ids = _extract_etrack_ids(fields)
+    etrack_ids = _extract_etrack_ids(issue)
     sfdc_case_links = _extract_sfdc_case_links(issue)
     timeline_context = _extract_timeline_context(issue)
 
@@ -2529,10 +2564,11 @@ def main() -> int:
                         info.get("state", "-"),
                         info.get("severity", "-"),
                         info.get("priority", "-"),
+                        info.get("version", "-"),
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "State", "Severity", "Priority", "Assignee", "Abstract"])
+                _print_table(rows, ["Incident", "State", "Severity", "Priority", "Version", "Assignee", "Abstract"])
 
             if args.show_etrack_details:
                 if sfdc_case_links:

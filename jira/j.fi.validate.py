@@ -915,6 +915,8 @@ class FIValidator:
         - Check if components exist in any group
         - Check if versions exist in any group
         - Check if version-component combinations are valid
+        - N/A versions are filtered out but warned about
+        - If at least one version is valid, invalid versions become warnings (IgnVer)
 
         Returns list of validation error messages (compact format).
         """
@@ -928,6 +930,18 @@ class FIValidator:
             return errors
 
         if not versions:
+            errors.append("NoVer")
+            return errors
+
+        # Filter out N/A from versions but track if present
+        has_na = any(v.upper() == 'N/A' for v in versions)
+        valid_versions_list = [v for v in versions if v.upper() != 'N/A']
+
+        if has_na:
+            errors.append("HasN/A")
+
+        if not valid_versions_list:
+            # Only N/A was present
             errors.append("NoVer")
             return errors
 
@@ -950,11 +964,19 @@ class FIValidator:
         for group_vers in self.config.group_versions.values():
             all_known_versions.update(group_vers)
 
-        for version in versions:
-            if version not in all_known_versions:
-                errors.append(f"BadVer:{version}")
+        # Separate known and unknown versions
+        known_versions = [v for v in valid_versions_list if v in all_known_versions]
+        unknown_versions = [v for v in valid_versions_list if v not in all_known_versions]
 
-        # Check version-component combinations (only for known components/versions)
+        # If at least one version is known, unknown versions are warnings; otherwise errors
+        has_any_known_version = len(known_versions) > 0
+        for version in unknown_versions:
+            if has_any_known_version:
+                errors.append(f"IgnVer:{version}")  # Warning - ignored
+            else:
+                errors.append(f"BadVer:{version}")  # Error - no valid versions
+
+        # Check version-component combinations (only for known versions)
         for component in components:
             groups = self.config.get_groups_for_component(component)
             if not groups or self.config.is_component_in_unknown(component):
@@ -966,13 +988,17 @@ class FIValidator:
                     print(f"DEBUG: Component '{component}' groups {groups} have no versions defined", file=sys.stderr)
                 continue
 
-            for version in versions:
-                # Skip if version is globally unknown (already reported)
-                if version not in all_known_versions:
-                    continue
-                # Check if version is valid for this component's groups
-                if version not in valid_versions:
-                    errors.append(f"V:{version}/C:{component}")
+            # Separate valid and invalid versions for this component
+            comp_valid = [v for v in known_versions if v in valid_versions]
+            comp_invalid = [v for v in known_versions if v not in valid_versions]
+
+            # If at least one version is valid for component, mismatches are warnings
+            has_valid_for_comp = len(comp_valid) > 0
+            for version in comp_invalid:
+                if has_valid_for_comp:
+                    errors.append(f"IgnV:{version}/C:{component}")  # Warning - ignored
+                else:
+                    errors.append(f"V:{version}/C:{component}")  # Error - no valid combo
 
         return errors
 
@@ -1010,9 +1036,13 @@ def is_jql_query(text: str) -> bool:
 
 def read_stdin_input() -> str:
     """Read input from stdin if available."""
-    if sys.stdin.isatty():
+    try:
+        if sys.stdin.isatty():
+            return ""
+        return sys.stdin.read()
+    except (OSError, IOError):
+        # Handle bad file descriptor or other stdin issues
         return ""
-    return sys.stdin.read()
 
 
 # ---------------------------------------------------------------------------
@@ -1033,12 +1063,27 @@ class FIReport:
         'business_unit': None,  # Will be resolved dynamically
     }
 
+    # Warning codes that don't count as errors (exact matches and prefixes)
+    WARNING_CODES = {'HasN/A'}  # Exact matches
+    WARNING_PREFIXES = ('IgnVer:', 'IgnV:')  # Prefix matches
+
+    @classmethod
+    def is_warning(cls, error: str) -> bool:
+        """Check if an error code is a warning (doesn't count as error)."""
+        if error in cls.WARNING_CODES:
+            return True
+        for prefix in cls.WARNING_PREFIXES:
+            if error.startswith(prefix):
+                return True
+        return False
+
     def __init__(self, client: JiraClient, validator: FIValidator, email_domain: Optional[str] = None,
-                 fetch_manager_groups: bool = False):
+                 fetch_manager_groups: bool = False, ignore_warnings: bool = False):
         self.client = client
         self.validator = validator
         self.email_domain = email_domain
         self.fetch_manager_groups = fetch_manager_groups
+        self.ignore_warnings = ignore_warnings
         self._resolve_custom_fields()
 
     def _resolve_custom_fields(self):
@@ -1143,7 +1188,10 @@ class FIReport:
 
         # Validation
         validation_errors = self.validator.validate_issue(versions_list, components_list, business_unit)
-        validation_notes = "; ".join(validation_errors) if validation_errors else "OK"
+        # Store all codes for summary, but filter display based on ignore_warnings
+        all_validation_codes = "; ".join(validation_errors) if validation_errors else "OK"
+        display_errors = [e for e in validation_errors if not self.is_warning(e)] if self.ignore_warnings else validation_errors
+        validation_notes = "; ".join(display_errors) if display_errors else "OK"
 
         return {
             'Key': key,
@@ -1165,8 +1213,9 @@ class FIReport:
             'Linked Etracks': etracks,
             'Aged Reason': aged_reason,
             'Validation Notes': validation_notes,
-            '_has_errors': len(validation_errors) > 0,
-            '_error_count': len(validation_errors),
+            '_all_validation_codes': all_validation_codes,  # For summary stats (includes warnings)
+            '_has_errors': any(not self.is_warning(e) for e in validation_errors),
+            '_error_count': sum(1 for e in validation_errors if not self.is_warning(e)),
             '_versions_list': versions_list,
             '_components_list': components_list,
             '_assignee_email': assignee_email,
@@ -1297,12 +1346,24 @@ def print_summary(records: List[Dict], not_found: List[str]):
     with_errors = sum(1 for r in records if r.get('_has_errors', False))
     without_errors = total - with_errors
 
+    # Count records with warnings (use _all_validation_codes to include even when -iw used)
+    def has_warning(notes):
+        if not notes or notes == 'OK':
+            return False
+        for code in notes.split('; '):
+            if code == 'HasN/A' or code.startswith('IgnVer:') or code.startswith('IgnV:'):
+                return True
+        return False
+
+    with_warnings = sum(1 for r in records if has_warning(r.get('_all_validation_codes', '')))
+
     print("\n" + "=" * 60)
     print("VALIDATION SUMMARY")
     print("=" * 60)
     print(f"Total FIs Validated:    {total}")
     print(f"Valid (No Issues):      {without_errors}")
     print(f"Invalid (Has Issues):   {with_errors}")
+    print(f"With Warnings:          {with_warnings}")
 
     if not_found:
         print(f"Not Found/Inaccessible: {len(not_found)}")
@@ -1323,33 +1384,52 @@ def print_summary(records: List[Dict], not_found: List[str]):
         if count > 0:
             print(f"  {label:15s}: {count:4d}")
 
-    # Error breakdown
-    if with_errors > 0:
-        print("\n--- Common Validation Issues ---")
-        error_counts = {}
-        for r in records:
-            notes = r.get('Validation Notes', '')
-            if notes and notes != 'OK':
-                for error in notes.split('; '):
-                    # Normalize error type (compact format)
-                    if error.startswith('V:') and '/C:' in error:
-                        key = 'Ver/Comp Mismatch'
-                    elif error.startswith('BadComp:'):
-                        key = 'Bad Component'
-                    elif error.startswith('BadVer:'):
-                        key = 'Bad Version'
-                    elif error.startswith('Unassigned:'):
-                        key = 'Unassigned Component'
-                    elif error == 'NoVer':
-                        key = 'Missing Version'
-                    elif error == 'NoComp':
-                        key = 'Missing Component'
-                    else:
-                        key = error
+    # Error/Warning breakdown - use _all_validation_codes to always show warnings
+    error_counts = {}
+    warning_counts = {}
+    warning_types = {'Ignored Version (warn)', 'Ignored Ver/Comp (warn)', 'Has N/A Version'}
+
+    for r in records:
+        # Use _all_validation_codes for summary (includes warnings even with -iw)
+        notes = r.get('_all_validation_codes', r.get('Validation Notes', ''))
+        if notes and notes != 'OK':
+            for error in notes.split('; '):
+                # Normalize error type (compact format)
+                if error.startswith('V:') and '/C:' in error:
+                    key = 'Ver/Comp Mismatch'
+                elif error.startswith('BadComp:'):
+                    key = 'Bad Component'
+                elif error.startswith('BadVer:'):
+                    key = 'Bad Version'
+                elif error.startswith('Unassigned:'):
+                    key = 'Unassigned Component'
+                elif error.startswith('IgnVer:'):
+                    key = 'Ignored Version (warn)'
+                elif error.startswith('IgnV:') and '/C:' in error:
+                    key = 'Ignored Ver/Comp (warn)'
+                elif error == 'HasN/A':
+                    key = 'Has N/A Version'
+                elif error == 'NoVer':
+                    key = 'Missing Version'
+                elif error == 'NoComp':
+                    key = 'Missing Component'
+                else:
+                    key = error
+
+                if key in warning_types:
+                    warning_counts[key] = warning_counts.get(key, 0) + 1
+                else:
                     error_counts[key] = error_counts.get(key, 0) + 1
 
+    if error_counts:
+        print("\n--- Validation Errors ---")
         for error, count in sorted(error_counts.items(), key=lambda x: -x[1]):
             print(f"  {error:25s}: {count:4d}")
+
+    if warning_counts:
+        print("\n--- Validation Warnings ---")
+        for warn, count in sorted(warning_counts.items(), key=lambda x: -x[1]):
+            print(f"  {warn:25s}: {count:4d}")
 
 
 def print_validation_legend():
@@ -1361,6 +1441,10 @@ def print_validation_legend():
     print("  BadVer:Y       - Version Y not in any group")
     print("  V:Y/C:X        - Version Y valid but wrong for component X")
     print("  Unassigned:X   - Component X in Unknown group (needs assignment)")
+    print("  --- Warnings (ignored if valid version exists) ---")
+    print("  IgnVer:Y       - Version Y ignored (unknown but has valid version)")
+    print("  IgnV:Y/C:X     - Version Y ignored for component X (has valid combo)")
+    print("  HasN/A         - N/A version present (ignored for validation)")
     print("  NoComp         - No component specified")
     print("  NoVer          - No version specified")
     print("  OK             - Valid")
@@ -1585,6 +1669,8 @@ def parse_args():
                               help='Filter to FIs where manager belongs to any of these groups (comma-separated, requires -mg)')
     output_group.add_argument('-V', '--verbose', action='store_true',
                               help='Show detailed failures and validation legend')
+    output_group.add_argument('-iw', '--ignore-warnings', action='store_true',
+                              help='Hide warning codes (HasN/A) from validation notes')
 
     # Discovery mode - build config file
     discovery_group = parser.add_argument_group('Discovery Mode')
@@ -1660,7 +1746,8 @@ def main():
     client = JiraClient(JIRA_BASE_URL, JIRA_TOKEN)
     validator = FIValidator(config, debug=args.debug)
     report = FIReport(client, validator, email_domain=args.email_domain,
-                      fetch_manager_groups=args.manager_groups)
+                      fetch_manager_groups=args.manager_groups,
+                      ignore_warnings=args.ignore_warnings)
 
     # Fetch and validate
     try:

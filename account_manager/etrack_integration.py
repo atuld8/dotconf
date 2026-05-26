@@ -35,6 +35,7 @@ class EtrackInfo:
     severity: Optional[str]
     priority: Optional[str]
     abstract: Optional[str]
+    version: Optional[str]
 
 
 class EtrackExecutor:
@@ -426,7 +427,7 @@ class EtrackExecutor:
             EtrackInfo object or None
         """
         query = (
-            f"SELECT incident, assigned_to, state, severity, priority, abstract "
+            f"SELECT incident, assigned_to, state, severity, priority, version, abstract "
             f"FROM incident WHERE incident = {incident_no}"
         )
         output = self._execute_command("esql", stdin_input=query)
@@ -447,27 +448,55 @@ class EtrackExecutor:
                 continue
             if line.startswith('---') or line.startswith('==='):
                 continue
+            if 'rows selected' in line.lower() or 'row selected' in line.lower():
+                continue
 
-            # Parse the data line
-            parts = re.split(r'[\t|]+', line)
-            parts = [p.strip() for p in parts if p.strip()]
+            # Parse the data line - use pipe split to preserve empty fields
+            if '|' in line:
+                parts = [p.strip() for p in line.split('|')]
+            else:
+                # Tab-separated - split on tabs, preserving empty fields
+                parts = [p.strip() for p in line.split('\t')]
 
-            if len(parts) >= 2:
-                if len(parts) >= 6:
-                    severity = parts[3] if len(parts) > 3 else None
-                    priority = parts[4] if len(parts) > 4 else None
-                    abstract = parts[5] if len(parts) > 5 else None
-                else:
+            # Filter completely empty parts only at the ends
+            while parts and not parts[0]:
+                parts.pop(0)
+            while parts and not parts[-1]:
+                parts.pop()
+
+            if len(parts) >= 3:
+                # Determine format based on column count
+                incident = parts[0] if len(parts) > 0 else None
+                assignee = parts[1] if len(parts) > 1 else None
+                state = parts[2] if len(parts) > 2 else None
+
+                if len(parts) == 4:
+                    # Fallback format: incident, assigned_to, state, abstract
                     severity = None
                     priority = None
-                    abstract = parts[3] if len(parts) > 3 else None
+                    version = None
+                    abstract = parts[3]
+                elif len(parts) >= 7:
+                    # Full format: incident, assigned_to, state, severity, priority, found_in_ver, abstract
+                    severity = parts[3] if parts[3] else None
+                    priority = parts[4] if parts[4] else None
+                    version = parts[5] if parts[5] else None
+                    abstract = parts[6] if len(parts) > 6 else None
+                else:
+                    # Partial - fields may be empty/collapsed, last field is likely abstract
+                    severity = None
+                    priority = None
+                    version = None
+                    abstract = parts[-1] if len(parts) > 3 else None
+
                 return EtrackInfo(
                     incident_no=incident_no,
-                    assignee=parts[1] if len(parts) > 1 else None,
-                    state=parts[2] if len(parts) > 2 else None,
+                    assignee=assignee,
+                    state=state,
                     severity=severity,
                     priority=priority,
                     abstract=abstract,
+                    version=version,
                 )
 
         return None
@@ -493,7 +522,7 @@ class EtrackExecutor:
             batch = incident_nos[i:i + batch_size]
             in_list = ','.join(batch)
             query = (
-                f"SELECT incident, assigned_to, state, severity, priority, abstract "
+                f"SELECT incident, assigned_to, state, severity, priority, version, abstract "
                 f"FROM incident WHERE incident IN ({in_list})"
             )
 
@@ -524,30 +553,58 @@ class EtrackExecutor:
                     continue
                 if line.startswith('---') or line.startswith('==='):
                     continue
+                if 'rows selected' in line.lower() or 'row selected' in line.lower():
+                    continue
 
-                parts = re.split(r'[\t|]+', line)
-                parts = [p.strip() for p in parts if p.strip()]
-                if len(parts) < 2:
+                # Parse the data line - use pipe split to preserve empty fields
+                if '|' in line:
+                    parts = [p.strip() for p in line.split('|')]
+                else:
+                    # Tab-separated
+                    parts = [p.strip() for p in line.split('\t')]
+
+                # Filter completely empty parts only at the ends
+                while parts and not parts[0]:
+                    parts.pop(0)
+                while parts and not parts[-1]:
+                    parts.pop()
+
+                if len(parts) < 3:
                     continue
 
                 incident_no = parts[0]
                 found_incidents.add(incident_no)
-                if len(parts) >= 6:
-                    severity = parts[3] if len(parts) > 3 else None
-                    priority = parts[4] if len(parts) > 4 else None
-                    abstract = parts[5] if len(parts) > 5 else None
-                else:
+
+                assignee = parts[1] if len(parts) > 1 else None
+                state = parts[2] if len(parts) > 2 else None
+
+                if len(parts) == 4:
+                    # Fallback format: incident, assigned_to, state, abstract
                     severity = None
                     priority = None
-                    abstract = parts[3] if len(parts) > 3 else None
+                    version = None
+                    abstract = parts[3]
+                elif len(parts) >= 7:
+                    # Full format: incident, assigned_to, state, severity, priority, found_in_ver, abstract
+                    severity = parts[3] if parts[3] else None
+                    priority = parts[4] if parts[4] else None
+                    version = parts[5] if parts[5] else None
+                    abstract = parts[6] if len(parts) > 6 else None
+                else:
+                    # Partial - fields may be empty/collapsed, last field is likely abstract
+                    severity = None
+                    priority = None
+                    version = None
+                    abstract = parts[-1] if len(parts) > 3 else None
 
                 results[incident_no] = EtrackInfo(
                     incident_no=incident_no,
-                    assignee=parts[1] if len(parts) > 1 else None,
-                    state=parts[2] if len(parts) > 2 else None,
+                    assignee=assignee,
+                    state=state,
                     severity=severity,
                     priority=priority,
                     abstract=abstract,
+                    version=version,
                 )
 
             for incident_no in batch:
@@ -619,7 +676,8 @@ class MockEtrackExecutor:
                 state='OPEN',
                 severity='3',
                 priority='3',
-                abstract='Mock incident'
+                abstract='Mock incident',
+                version='10.5'
             )
         return None
 
