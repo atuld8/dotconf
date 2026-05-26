@@ -499,6 +499,16 @@ def resolve_field_name(name):
     """
     normalized = name.strip().lower().replace(' ', '').replace('-', '').replace('_', '')
 
+    # Handle singular to plural aliases
+    SINGULAR_TO_PLURAL = {
+        'component': 'components',
+        'label': 'labels',
+        'fixversion': 'fixversions',
+        'affectsversion': 'affectsversions',
+    }
+    if normalized in SINGULAR_TO_PLURAL:
+        normalized = SINGULAR_TO_PLURAL[normalized]
+
     # Check short options first
     if normalized in SHORT_OPTIONS:
         normalized = SHORT_OPTIONS[normalized]
@@ -715,10 +725,68 @@ def perform_transition(client, issue_key, target_status, resolution=None, commen
         return False
 
 
+class ShortLongHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Custom formatter that shows both short and long options in usage.
+    
+    Compatible with Python 3.9 (_format_actions_usage) and 
+    Python 3.14+ (_get_actions_usage_parts).
+    """
+    
+    def _build_usage_parts(self, actions):
+        """Build usage parts showing both short and long options."""
+        parts = []
+        for action in actions:
+            if action.option_strings:
+                opts = action.option_strings
+                if len(opts) == 2:
+                    # Has both short and long - show as [-s/--summary VALUE]
+                    # Short options start with single -, long with --
+                    # If both start with --, pick shorter one first
+                    if opts[0].startswith('--') and opts[1].startswith('--'):
+                        # Both are long options, shorter one first
+                        if len(opts[0]) <= len(opts[1]):
+                            short, long_opt = opts[0], opts[1]
+                        else:
+                            short, long_opt = opts[1], opts[0]
+                    elif opts[0].startswith('--'):
+                        short, long_opt = opts[1], opts[0]
+                    else:
+                        short, long_opt = opts[0], opts[1]
+                    if action.nargs == 0 or action.const is not None:
+                        # Flag (store_true/store_false)
+                        parts.append('[{}/{}]'.format(short, long_opt))
+                    else:
+                        metavar = action.metavar or action.dest.upper()
+                        parts.append('[{}/{} {}]'.format(short, long_opt, metavar))
+                else:
+                    # Only one option
+                    opt = opts[0]
+                    if action.nargs == 0 or action.const is not None:
+                        parts.append('[{}]'.format(opt))
+                    else:
+                        metavar = action.metavar or action.dest.upper()
+                        parts.append('[{} {}]'.format(opt, metavar))
+            elif not action.option_strings:
+                # Positional argument
+                if action.nargs == '?':
+                    parts.append('[{}]'.format(action.dest))
+                else:
+                    parts.append(action.dest)
+        return parts
+    
+    # Python 3.9 and earlier
+    def _format_actions_usage(self, actions, groups):
+        return ' '.join(self._build_usage_parts(actions))
+    
+    # Python 3.14+ (renamed method, returns list instead of string)
+    def _get_actions_usage_parts(self, actions, groups):
+        return self._build_usage_parts(actions)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Update Jira issue fields (FI, PVM, NBU, etc.)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=ShortLongHelpFormatter,
         epilog="""
 Examples:
   %(prog)s FI-12345 -s "New summary"
@@ -728,9 +796,9 @@ Examples:
   %(prog)s FI-12345 --cs "Working on fix" --ns "Deploy next week"
   %(prog)s FI-12345 --ar "Waiting for customer" --comment "Customer not responding"
   %(prog)s FI-12345 -s "Test" --dry-run
-  %(prog)s FI-12345 --list-options priority
-  %(prog)s FI-12345 --list-transitions
-  %(prog)s --list-fields
+  %(prog)s FI-12345 -lo priority
+  %(prog)s FI-12345 -lt
+  %(prog)s -lf
 """)
 
     parser.add_argument('issue_key', nargs='?', help='Issue key (e.g., FI-12345, PVM-5678, NBU-9999)')
