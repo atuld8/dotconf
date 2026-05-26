@@ -727,14 +727,20 @@ def perform_transition(client, issue_key, target_status, resolution=None, commen
 
 class ShortLongHelpFormatter(argparse.RawDescriptionHelpFormatter):
     """Custom formatter that shows both short and long options in usage.
-    
-    Compatible with Python 3.9 (_format_actions_usage) and 
+
+    Compatible with Python 3.9 (_format_actions_usage) and
     Python 3.14+ (_get_actions_usage_parts).
     """
-    
-    def _build_usage_parts(self, actions):
-        """Build usage parts showing both short and long options."""
-        parts = []
+
+    def _build_usage_parts(self, actions, return_pos_start=False):
+        """Build usage parts showing both short and long options.
+
+        If return_pos_start is True, returns (parts, pos_start) tuple
+        where pos_start is the index where positionals begin.
+        """
+        opt_parts = []
+        pos_parts = []
+
         for action in actions:
             if action.option_strings:
                 opts = action.option_strings
@@ -754,33 +760,37 @@ class ShortLongHelpFormatter(argparse.RawDescriptionHelpFormatter):
                         short, long_opt = opts[0], opts[1]
                     if action.nargs == 0 or action.const is not None:
                         # Flag (store_true/store_false)
-                        parts.append('[{}/{}]'.format(short, long_opt))
+                        opt_parts.append('[{}/{}]'.format(short, long_opt))
                     else:
                         metavar = action.metavar or action.dest.upper()
-                        parts.append('[{}/{} {}]'.format(short, long_opt, metavar))
+                        opt_parts.append('[{}/{} {}]'.format(short, long_opt, metavar))
                 else:
                     # Only one option
                     opt = opts[0]
                     if action.nargs == 0 or action.const is not None:
-                        parts.append('[{}]'.format(opt))
+                        opt_parts.append('[{}]'.format(opt))
                     else:
                         metavar = action.metavar or action.dest.upper()
-                        parts.append('[{} {}]'.format(opt, metavar))
-            elif not action.option_strings:
+                        opt_parts.append('[{} {}]'.format(opt, metavar))
+            else:
                 # Positional argument
                 if action.nargs == '?':
-                    parts.append('[{}]'.format(action.dest))
+                    pos_parts.append('[{}]'.format(action.dest))
                 else:
-                    parts.append(action.dest)
+                    pos_parts.append(action.dest)
+
+        parts = opt_parts + pos_parts
+        if return_pos_start:
+            return parts, len(opt_parts)
         return parts
-    
+
     # Python 3.9 and earlier
     def _format_actions_usage(self, actions, groups):
         return ' '.join(self._build_usage_parts(actions))
-    
-    # Python 3.14+ (renamed method, returns list instead of string)
+
+    # Python 3.14+ (renamed method, returns tuple (parts, pos_start))
     def _get_actions_usage_parts(self, actions, groups):
-        return self._build_usage_parts(actions)
+        return self._build_usage_parts(actions, return_pos_start=True)
 
 
 def main():
