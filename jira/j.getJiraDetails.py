@@ -337,8 +337,8 @@ def _extract_linked_fis(issue_data: Dict[str, Any]) -> List[str]:
     return sorted(fi_set, key=lambda value: int(value.split("-")[1]))
 
 
-def _extract_etrack_ids(issue: Dict[str, Any]) -> List[str]:
-    """Extract etrack IDs from various fields by ID and name.
+def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Extract etrack IDs from various fields with their sources.
 
     Checks the following sources:
     - customfield_33802: Etrack Incident
@@ -346,40 +346,52 @@ def _extract_etrack_ids(issue: Dict[str, Any]) -> List[str]:
     - Field named "NBU R&D Ticket" (or "NBU R&D Ticket:")
     - Field named "Etrack Incident (Internal)" (or "Etrack Incident (Internal):")
 
-    Filters out numbers < 100000 as real etrack IDs are typically 6-7 digits.
+    Returns:
+        Dict mapping etrack_id -> list of source field names
     """
-    candidates: List[str] = []
+    sources: Dict[str, List[str]] = {}
     fields = issue.get("fields", {}) if isinstance(issue.get("fields"), dict) else issue
 
-    # Check known customfield IDs
-    main_et = fields.get("customfield_33802")
-    if main_et:
-        candidates.extend(re.findall(r"\d+", str(main_et)))
+    def add_ids(raw_value: Any, source_name: str):
+        if raw_value:
+            for match in re.findall(r"\d+", str(raw_value)):
+                if int(match) >= 100000:  # Filter small numbers
+                    if match not in sources:
+                        sources[match] = []
+                    if source_name not in sources[match]:
+                        sources[match].append(source_name)
 
-    alt_et = fields.get("customfield_36508")
-    if alt_et:
-        candidates.extend(re.findall(r"\d+", str(alt_et)))
+    # Check known customfield IDs
+    add_ids(fields.get("customfield_33802"), "Etrack Incident")
+    add_ids(fields.get("customfield_36508"), "Etrack Ref")
 
     # Check by field name using names mapping
     names = issue.get("names") if isinstance(issue.get("names"), dict) else {}
-    name_patterns = [
-        "nbu r&d ticket",
-        "nbu r&d ticket:",
-        "etrack incident (internal)",
-        "etrack incident (internal):",
-    ]
+    name_patterns = {
+        "nbu r&d ticket": "NBU R&D Ticket",
+        "nbu r&d ticket:": "NBU R&D Ticket",
+        "etrack incident (internal)": "Etrack Incident (Internal)",
+        "etrack incident (internal):": "Etrack Incident (Internal)",
+    }
     for key, mapped_name in names.items():
         if not isinstance(mapped_name, str):
             continue
         normalized = mapped_name.strip().casefold()
-        if any(normalized == pat or normalized.startswith(pat.rstrip(":")) for pat in name_patterns):
-            value = fields.get(key)
-            if value:
-                candidates.extend(re.findall(r"\d+", str(value)))
+        for pattern, display_name in name_patterns.items():
+            if normalized == pattern or normalized.startswith(pattern.rstrip(":")):
+                add_ids(fields.get(key), display_name)
+                break
 
-    # Filter out small numbers (< 100000) as real etrack IDs are 6-7 digits
-    valid_ids = [c for c in candidates if int(c) >= 100000]
-    return sorted(set(valid_ids), key=int) if valid_ids else []
+    return sources
+
+
+def _extract_etrack_ids(issue: Dict[str, Any]) -> List[str]:
+    """Extract etrack IDs from various fields.
+
+    Filters out numbers < 100000 as real etrack IDs are typically 6-7 digits.
+    """
+    sources = _extract_etrack_ids_with_sources(issue)
+    return sorted(sources.keys(), key=int) if sources else []
 
 
 def _is_meaningful_text(value: str) -> bool:
@@ -1366,7 +1378,7 @@ def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = N
         "FI": issue.get("key", "-"),
         "Status": _opt_value(fields.get("status")),
         "Assignee": _opt_value(fields.get("assignee")),
-        "Etrack Incident": ", ".join(etrack_ids) if etrack_ids else "-",
+        "Etrack IDs": ", ".join(etrack_ids) if etrack_ids else "-",
         "Etrack Ref": _first_present_display_value(fields.get("customfield_36508")),
         "SFDC Case #": _extract_sfdc_case_number(issue),
         "SFDC Cases": sfdc_links,  # list of {label, url}
@@ -1431,7 +1443,7 @@ def _print_fi_search_results(raw_query: str, issues: List[Dict[str, Any]], outpu
                 item["FI"] if idx == 0 else "",
                 item["Status"] if idx == 0 else "",
                 item["Assignee"] if idx == 0 else "",
-                item["Etrack Incident"] if idx == 0 else "",
+                item["Etrack IDs"] if idx == 0 else "",
                 item["Etrack Ref"] if idx == 0 else "",
                 item["SFDC Case #"] if idx == 0 else "",
                 case_num,
@@ -1441,7 +1453,7 @@ def _print_fi_search_results(raw_query: str, issues: List[Dict[str, Any]], outpu
 
     _print_table(
         rows,
-        ["FI", "Status", "Assignee", "Etrack Incident", "Etrack Ref", "SFDC Case #", "SFDC Case", "SFDC URL", "Summary"],
+        ["FI", "Status", "Assignee", "Etrack IDs", "Etrack Ref", "SFDC Case #", "SFDC Case", "SFDC URL", "Summary"],
     )
 
 
@@ -1479,8 +1491,11 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
     _append_if_present(rows, "Etrack-Resolution", _field_value_by_any_name(issue, ["Etrack-Resolution", "Etrack Resolution"]))
     _append_if_present(rows, "FI RCA Category", _field_value_by_name(issue, "FI RCA Category"))
     _append_if_present(rows, "Action Taken", _field_value_by_name(issue, "Action Taken"))
-    if etrack_ids:
-        rows.append(["Etrack Incident", ", ".join(etrack_ids)])
+    # Show actual Etrack Incident field value (customfield_33802)
+    _append_if_present(rows, "Etrack Incident", fields.get("customfield_33802"))
+    # Show NBU R&D Ticket if different from Etrack Incident
+    nbu_rnd_value = _field_value_by_any_name(issue, ["NBU R&D Ticket", "NBU R&D Ticket:"])
+    _append_if_present(rows, "NBU R&D Ticket", nbu_rnd_value)
     _append_if_present(rows, "Etrack Ref", fields.get("customfield_36508"))
     _append_if_present(rows, "Case#", fields.get("customfield_11814"))
     if sfdc_case_links:
@@ -1521,18 +1536,19 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
             "FI RCA Category": 7,
             "Action Taken": 8,
             "Etrack Incident": 9,
-            "Etrack Ref": 10,
-            "Case#": 11,
-            "SalesForce Case Link": 12,
-            "Case Priority": 13,
-            "Customer": 14,
-            "Business Unit": 15,
-            "Assignee Manager": 16,
-            "Epic Link": 17,
-            "Sprint": 18,
-            "Watchers": 19,
-            "Watcher Groups": 20,
-            "Slack": 21,
+            "NBU R&D Ticket": 10,
+            "Etrack Ref": 11,
+            "Case#": 12,
+            "SalesForce Case Link": 13,
+            "Case Priority": 14,
+            "Customer": 15,
+            "Business Unit": 16,
+            "Assignee Manager": 17,
+            "Epic Link": 18,
+            "Sprint": 19,
+            "Watchers": 20,
+            "Watcher Groups": 21,
+            "Slack": 22,
             "Affects Version/s": 22,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
@@ -1602,6 +1618,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "FI RCA Category",
         "Action Taken",
         "Etrack Incident",
+        "NBU R&D Ticket",
         "Etrack Ref",
         "Case#",
         "SalesForce Case Link",
@@ -2283,7 +2300,8 @@ def main() -> int:
     status_context = _extract_current_status_and_next_steps(fields, comments)
     linked_fis = _extract_linked_fis(issue)
     linked_status: Optional[Dict[str, Dict[str, str]]] = None
-    etrack_ids = _extract_etrack_ids(issue)
+    etrack_sources = _extract_etrack_ids_with_sources(issue)
+    etrack_ids = sorted(etrack_sources.keys(), key=int) if etrack_sources else []
     sfdc_case_links = _extract_sfdc_case_links(issue)
     timeline_context = _extract_timeline_context(issue)
 
@@ -2559,8 +2577,11 @@ def main() -> int:
                 rows = []
                 for et in etrack_ids:
                     info = (etrack_info or {}).get(et, {})
+                    source_list = etrack_sources.get(et, [])
+                    source_str = ", ".join(source_list) if source_list else "-"
                     rows.append([
                         et,
+                        source_str,
                         info.get("state", "-"),
                         info.get("severity", "-"),
                         info.get("priority", "-"),
@@ -2568,7 +2589,7 @@ def main() -> int:
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "State", "Severity", "Priority", "Version", "Assignee", "Abstract"])
+                _print_table(rows, ["Incident", "Source Field", "State", "Severity", "Priority", "Version", "Assignee", "Abstract"])
 
             if args.show_etrack_details:
                 if sfdc_case_links:
