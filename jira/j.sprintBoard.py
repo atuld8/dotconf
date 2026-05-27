@@ -123,12 +123,41 @@ def _extract_attr_from_legacy_sprint(sprint_str, attr):
 
 
 def _parse_jira_datetime(value):
-    """Parse Jira datetime string and return display-friendly value."""
+    """Parse Jira datetime string and return display-friendly value.
+
+    Compatible with Python 3.6+ (doesn't use fromisoformat which requires 3.7+).
+    Handles formats like:
+        - 2024-01-15T10:30:00.000+0530
+        - 2024-01-15T10:30:00Z
+        - 2024-01-15T10:30:00+00:00
+    """
     if not value:
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return parsed.strftime('%Y-%m-%d %H:%M %z')
+        # Normalize timezone: replace Z with +00:00
+        val = value.replace('Z', '+00:00')
+
+        # Remove colon in timezone offset for strptime (Python 3.6 doesn't handle it well)
+        # Convert +05:30 to +0530
+        if len(val) > 6 and val[-3] == ':' and val[-6] in ('+', '-'):
+            val = val[:-3] + val[-2:]
+
+        # Try parsing with milliseconds
+        try:
+            if '.' in val:
+                # Format: 2024-01-15T10:30:00.000+0530
+                parsed = datetime.strptime(val, '%Y-%m-%dT%H:%M:%S.%f%z')
+            else:
+                # Format: 2024-01-15T10:30:00+0530
+                parsed = datetime.strptime(val, '%Y-%m-%dT%H:%M:%S%z')
+        except ValueError:
+            # Fallback: try without timezone
+            if '.' in val:
+                parsed = datetime.strptime(val[:23], '%Y-%m-%dT%H:%M:%S.%f')
+            else:
+                parsed = datetime.strptime(val[:19], '%Y-%m-%dT%H:%M:%S')
+
+        return parsed.strftime('%Y-%m-%d %H:%M %z').strip()
     except (ValueError, TypeError):
         return value
 
