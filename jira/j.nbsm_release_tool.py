@@ -97,13 +97,128 @@ def parse_env_multi_values(raw_value: str) -> List[str]:
 
 
 # =============================================================================
+# NETWORK RESILIENCE UTILITIES
+# =============================================================================
+
+class CircuitBreaker:
+    """Circuit breaker pattern to prevent hammering a failing service.
+
+    States:
+    - CLOSED: Normal operation, requests pass through
+    - OPEN: Service is down, requests fail immediately
+    - HALF_OPEN: Testing if service recovered
+    """
+
+    CLOSED = 'closed'
+    OPEN = 'open'
+    HALF_OPEN = 'half_open'
+
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60,
+                 half_open_max_calls: int = 3):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.half_open_max_calls = half_open_max_calls
+
+        self.state = self.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time: Optional[float] = None
+        self.half_open_calls = 0
+
+    def can_execute(self) -> bool:
+        """Check if request should be allowed."""
+        if self.state == self.CLOSED:
+            return True
+
+        if self.state == self.OPEN:
+            # Check if recovery timeout has passed
+            if self.last_failure_time and time.time() - self.last_failure_time >= self.recovery_timeout:
+                self.state = self.HALF_OPEN
+                self.half_open_calls = 0
+                return True
+            return False
+
+        if self.state == self.HALF_OPEN:
+            return self.half_open_calls < self.half_open_max_calls
+
+        return False
+
+    def record_success(self) -> None:
+        """Record a successful request."""
+        if self.state == self.HALF_OPEN:
+            self.success_count += 1
+            if self.success_count >= self.half_open_max_calls:
+                # Service recovered
+                self.state = self.CLOSED
+                self.failure_count = 0
+                self.success_count = 0
+        elif self.state == self.CLOSED:
+            # Reset failure count on success
+            self.failure_count = 0
+
+    def record_failure(self) -> None:
+        """Record a failed request."""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+
+        if self.state == self.HALF_OPEN:
+            # Service still failing, back to open
+            self.state = self.OPEN
+            self.success_count = 0
+        elif self.state == self.CLOSED:
+            if self.failure_count >= self.failure_threshold:
+                self.state = self.OPEN
+                print(f"[Circuit Breaker] OPEN - {self.failure_count} consecutive failures. "
+                      f"Will retry in {self.recovery_timeout}s", file=sys.stderr)
+
+    def get_status(self) -> str:
+        """Get current circuit breaker status."""
+        return f"state={self.state}, failures={self.failure_count}"
+
+
+def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0,
+                       max_delay: float = 30.0, exceptions: tuple = (Exception,)):
+    """Decorator for retrying functions with exponential backoff.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay cap
+        exceptions: Tuple of exception types to catch and retry
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                        print(f"[Retry] {func.__name__} failed (attempt {attempt}/{max_retries}): {e}. "
+                              f"Retrying in {delay:.1f}s...", file=sys.stderr)
+                        time.sleep(delay)
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+# =============================================================================
 # JIRA CLIENT
 # =============================================================================
 
 class JiraClient:
-    """Handles all Jira API interactions."""
+    """Handles all Jira API interactions with built-in resilience."""
 
-    def __init__(self, url: str = JIRA_URL, token: str = JIRA_API_TOKEN):
+    # Default timeouts (seconds) for different operation types
+    TIMEOUT_DEFAULT = 30
+    TIMEOUT_FETCH_FIELDS = 60  # Field list can be large
+    TIMEOUT_SEARCH = 60       # JQL searches can be slow
+    TIMEOUT_UPDATE = 30       # Updates should be quick
+
+    def __init__(self, url: str = JIRA_URL, token: str = JIRA_API_TOKEN,
+                 circuit_breaker: CircuitBreaker = None):
         self.url = url.rstrip('/')
         self.token = token
         self.headers = {
@@ -111,6 +226,7 @@ class JiraClient:
             'Content-Type': 'application/json'
         }
         self._field_cache: Optional[Dict[str, Dict]] = None
+        self._circuit_breaker = circuit_breaker or CircuitBreaker()
 
     def _format_request_error(self, method: str, url: str, timeout: int,
                               exc: Exception) -> str:
@@ -157,9 +273,17 @@ class JiraClient:
 
     def _request(self, method: str, endpoint: str, data: Optional[Dict] = None,
                  timeout: int = 30) -> requests.Response:
-        """Make an API request."""
+        """Make an API request with circuit breaker and retry logic."""
         if not HAS_REQUESTS:
             raise RuntimeError("requests library not installed. Run: pip install requests")
+
+        # Check circuit breaker
+        if not self._circuit_breaker.can_execute():
+            raise RuntimeError(
+                f"Jira circuit breaker is OPEN due to repeated failures. "
+                f"Status: {self._circuit_breaker.get_status()}. "
+                f"Will auto-retry in {self._circuit_breaker.recovery_timeout}s or restart the tool."
+            )
 
         url = f"{self.url}/rest/api/2/{endpoint}"
         max_retries = 5
@@ -198,6 +322,8 @@ class JiraClient:
                     time.sleep(wait)
                     continue
 
+                # Record success in circuit breaker
+                self._circuit_breaker.record_success()
                 return response
 
             except requests.exceptions.SSLError as exc:
@@ -211,6 +337,7 @@ class JiraClient:
                     )
                     time.sleep(wait)
                     continue
+                self._circuit_breaker.record_failure()
                 raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
 
             except (
@@ -230,24 +357,30 @@ class JiraClient:
                     )
                     time.sleep(wait)
                     continue
+                self._circuit_breaker.record_failure()
                 raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
 
             except requests.exceptions.RequestException as exc:
+                self._circuit_breaker.record_failure()
                 raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
 
             finally:
                 session.close()
 
         if last_exc:
+            self._circuit_breaker.record_failure()
             raise RuntimeError(self._format_request_error(method, url, timeout, last_exc)) from last_exc
         raise RuntimeError(f"Jira request failed for {method.upper()} {url} after retries")
 
     def get_all_fields(self) -> Dict[str, Dict]:
-        """Fetch all Jira fields and cache the mapping."""
+        """Fetch all Jira fields and cache the mapping.
+
+        Uses longer timeout since field list can be large.
+        """
         if self._field_cache is not None:
             return self._field_cache
 
-        response = self._request('GET', 'field')
+        response = self._request('GET', 'field', timeout=self.TIMEOUT_FETCH_FIELDS)
         response.raise_for_status()
 
         self._field_cache = {}
@@ -266,20 +399,176 @@ class JiraClient:
         field_info = fields.get(field_name.lower())
         return field_info['id'] if field_info else None
 
-    def get_issue(self, issue_key: str) -> Dict:
+    def get_issue(self, issue_key: str, timeout: int = None) -> Dict:
         """Get issue details."""
-        response = self._request('GET', f'issue/{issue_key}')
+        response = self._request('GET', f'issue/{issue_key}',
+                                 timeout=timeout or self.TIMEOUT_DEFAULT)
         response.raise_for_status()
         return response.json()
 
-    def get_issues(self, issue_keys: List[str]) -> List[Dict]:
-        """Get multiple issues."""
+    def get_issues(self, issue_keys: List[str], show_progress: bool = True,
+                   continue_on_error: bool = True, max_per_issue_retries: int = 2) -> List[Dict]:
+        """Get multiple issues with progress tracking and resilience.
+
+        Args:
+            issue_keys: List of Jira issue keys to fetch
+            show_progress: Whether to show progress indicator
+            continue_on_error: If True, continue fetching other issues even if one fails
+            max_per_issue_retries: Retries per individual issue (beyond the built-in request retries)
+
+        Returns:
+            List of issue dicts (may be shorter than input if continue_on_error=True and some failed)
+        """
         issues = []
-        for key in issue_keys:
+        failed_keys = []
+        total = len(issue_keys)
+
+        for idx, key in enumerate(issue_keys, 1):
+            if show_progress and total > 5:
+                # Show progress for larger batches
+                pct = (idx / total) * 100
+                print(f"  Fetching issues: {idx}/{total} ({pct:.0f}%) - {key}", end='\r')
+
+            last_error = None
+            for attempt in range(1, max_per_issue_retries + 1):
+                try:
+                    issues.append(self.get_issue(key))
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_per_issue_retries:
+                        delay = min(2 ** attempt, 10)
+                        print(f"\n  [Retry] {key} fetch failed (attempt {attempt}/{max_per_issue_retries}): "
+                              f"{e}. Retrying in {delay}s...", file=sys.stderr)
+                        time.sleep(delay)
+
+            if last_error:
+                failed_keys.append((key, str(last_error)))
+                if continue_on_error:
+                    print(f"\n  Warning: Failed to fetch {key}: {last_error}")
+                else:
+                    raise RuntimeError(f"Failed to fetch {key}: {last_error}")
+
+        if show_progress and total > 5:
+            print()  # Clear progress line
+
+        if failed_keys:
+            print(f"\n  [!] {len(failed_keys)}/{total} issues failed to fetch:")
+            for key, err in failed_keys[:5]:  # Show first 5 failures
+                print(f"      {key}: {err[:60]}...")
+            if len(failed_keys) > 5:
+                print(f"      ... and {len(failed_keys) - 5} more")
+
+        return issues
+
+    def get_issues_bulk(self, issue_keys: List[str], batch_size: int = 50,
+                        fields: List[str] = None, show_progress: bool = True) -> Tuple[List[Dict], List[str]]:
+        """Bulk fetch issues using JQL search - much faster than individual fetches.
+
+        Args:
+            issue_keys: List of Jira issue keys to fetch
+            batch_size: Number of issues per JQL query (max ~100, default 50 for safety)
+            fields: Specific fields to fetch (None = all fields)
+            show_progress: Whether to show progress indicator
+
+        Returns:
+            Tuple of (list of issue dicts, list of keys that were not found)
+        """
+        if not issue_keys:
+            return [], []
+
+        all_issues = []
+        not_found = set(issue_keys)  # Track which keys we haven't found yet
+        total_keys = len(issue_keys)
+
+        # Process in batches (JQL has limits on query length)
+        for batch_start in range(0, len(issue_keys), batch_size):
+            batch_keys = issue_keys[batch_start:batch_start + batch_size]
+            batch_num = (batch_start // batch_size) + 1
+            total_batches = (len(issue_keys) + batch_size - 1) // batch_size
+
+            if show_progress:
+                print(f"  Bulk fetching: batch {batch_num}/{total_batches} "
+                      f"({len(all_issues)}/{total_keys} fetched)", end='\r')
+
+            # Build JQL query: key in (NBU-123, NBU-456, ...)
+            keys_str = ', '.join(batch_keys)
+            jql = f"key in ({keys_str})"
+
+            # Build request data
+            data = {
+                'jql': jql,
+                'maxResults': batch_size,
+                'startAt': 0
+            }
+            if fields:
+                data['fields'] = fields
+
             try:
-                issues.append(self.get_issue(key))
+                response = self._request('POST', 'search', data=data,
+                                        timeout=self.TIMEOUT_SEARCH)
+                response.raise_for_status()
+                result = response.json()
+
+                batch_issues = result.get('issues', [])
+                all_issues.extend(batch_issues)
+
+                # Mark found keys
+                for issue in batch_issues:
+                    key = issue.get('key')
+                    if key in not_found:
+                        not_found.remove(key)
+
             except Exception as e:
-                print(f"  Warning: Failed to fetch {key}: {e}")
+                print(f"\n  Warning: Bulk fetch failed for batch {batch_num}: {e}")
+                print(f"  Falling back to individual fetch for {len(batch_keys)} issues...")
+                # Fallback to individual fetches for this batch
+                for key in batch_keys:
+                    try:
+                        issue = self.get_issue(key)
+                        all_issues.append(issue)
+                        not_found.discard(key)
+                    except Exception as e2:
+                        print(f"    Failed to fetch {key}: {e2}")
+
+        if show_progress:
+            print()  # Clear progress line
+
+        return all_issues, list(not_found)
+
+    def get_issues_fast(self, issue_keys: List[str], batch_size: int = 50,
+                        fields: List[str] = None, show_progress: bool = True,
+                        fallback_individual: bool = True) -> List[Dict]:
+        """Fast bulk fetch with optional individual fallback for missing issues.
+
+        This is the recommended method for fetching multiple issues.
+        Uses JQL bulk fetch (~10-20x faster than individual fetches).
+
+        Args:
+            issue_keys: List of Jira issue keys to fetch
+            batch_size: Number of issues per JQL query (default 50)
+            fields: Specific fields to fetch (None = all)
+            show_progress: Whether to show progress indicator
+            fallback_individual: If True, try individual fetch for keys not found in bulk
+
+        Returns:
+            List of issue dicts (may be shorter than input if some issues don't exist)
+        """
+        issues, not_found = self.get_issues_bulk(issue_keys, batch_size, fields, show_progress)
+
+        if not_found and fallback_individual:
+            print(f"  {len(not_found)} issues not found in bulk, trying individual fetch...")
+            for key in not_found:
+                try:
+                    issue = self.get_issue(key)
+                    issues.append(issue)
+                except Exception as e:
+                    print(f"    {key}: Not found or error - {e}")
+        elif not_found:
+            print(f"  Note: {len(not_found)} issues not found: {', '.join(not_found[:10])}"
+                  f"{'...' if len(not_found) > 10 else ''}")
+
         return issues
 
     def update_field(self, issue_key: str, field_name: str, value: str) -> bool:
@@ -675,28 +964,63 @@ class GitExtractor:
 
     DEFAULT_BRANCH = 'origin/master'
 
+    # Network-related error patterns in git output
+    NETWORK_ERROR_PATTERNS = [
+        'Could not resolve host',
+        'Connection refused',
+        'Connection timed out',
+        'Network is unreachable',
+        'unable to access',
+        'SSL certificate problem',
+        'Failed to connect',
+        'couldn\'t connect to server',
+        'The remote end hung up unexpectedly',
+    ]
+
     def __init__(self, repo_path: str, branch: str = None):
         self.repo_path = os.path.expanduser(repo_path)
         self.branch = branch or self.DEFAULT_BRANCH
         if not os.path.isdir(self.repo_path):
             raise ValueError(f"Repository not found: {self.repo_path}")
 
-    def _run_git(self, *args) -> str:
-        """Run a git command and return output."""
+    def _run_git(self, *args, timeout: int = 60) -> str:
+        """Run a git command and return output.
+
+        Args:
+            *args: Git command arguments
+            timeout: Command timeout in seconds (default 60)
+        """
         cmd = ['git', '-C', self.repo_path] + list(args)
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Git command timed out after {timeout}s: {' '.join(cmd)}")
+
         if result.returncode != 0:
-            raise RuntimeError(f"Git command failed: {result.stderr.decode('utf-8', errors='replace')}")
+            error_msg = result.stderr.decode('utf-8', errors='replace')
+            raise RuntimeError(f"Git command failed: {error_msg}")
         return result.stdout.decode('utf-8', errors='replace').strip()
 
-    def fetch_branch(self) -> None:
+    def _is_network_error(self, error_msg: str) -> bool:
+        """Check if error message indicates a network issue."""
+        error_lower = error_msg.lower()
+        return any(pattern.lower() in error_lower for pattern in self.NETWORK_ERROR_PATTERNS)
+
+    def fetch_branch(self, max_retries: int = 3) -> bool:
         """Fetch the configured branch from remote before any operations.
 
         This ensures we have the latest commits and tags from the remote.
+
+        Args:
+            max_retries: Number of retry attempts for network errors
+
+        Returns:
+            True if fetch succeeded, False if failed but can continue with local data
         """
         # Parse remote and branch from the full ref (e.g., 'origin/master' -> 'origin', 'master')
         if '/' in self.branch:
@@ -706,13 +1030,36 @@ class GitExtractor:
             branch_name = self.branch
 
         print(f"Fetching {remote}/{branch_name} from repository...")
-        try:
-            # Fetch the specific branch and tags
-            self._run_git('fetch', remote, branch_name, '--tags')
-            print(f"Fetch complete: {remote}/{branch_name}")
-        except RuntimeError as e:
-            print(f"Warning: Failed to fetch {remote}/{branch_name}: {e}")
-            print("Continuing with local data...")
+
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Fetch the specific branch and tags with timeout
+                self._run_git('fetch', remote, branch_name, '--tags', timeout=120)
+                print(f"Fetch complete: {remote}/{branch_name}")
+                return True
+            except RuntimeError as e:
+                last_error = e
+                error_str = str(e)
+
+                if self._is_network_error(error_str):
+                    if attempt < max_retries:
+                        wait = min(5 * attempt, 30)
+                        print(f"  [Retry] Network error during fetch (attempt {attempt}/{max_retries}): "
+                              f"{error_str[:80]}...", file=sys.stderr)
+                        print(f"  Retrying in {wait}s...", file=sys.stderr)
+                        time.sleep(wait)
+                        continue
+                    else:
+                        print(f"Warning: Network error fetching {remote}/{branch_name} "
+                              f"after {max_retries} attempts: {error_str}", file=sys.stderr)
+                else:
+                    # Non-network error, don't retry
+                    print(f"Warning: Failed to fetch {remote}/{branch_name}: {e}", file=sys.stderr)
+                    break
+
+        print("Continuing with local data (may be stale)...", file=sys.stderr)
+        return False
 
     def list_tags(self, pattern: str = None) -> List[str]:
         """List all tags, optionally filtered by pattern."""
@@ -976,8 +1323,8 @@ class ReleaseProcessor:
         return result
 
     def get_issue_details(self, jira_ids: List[str]) -> List[Dict]:
-        """Fetch details for multiple Jira issues."""
-        return self.jira.get_issues(jira_ids)
+        """Fetch details for multiple Jira issues using bulk fetch."""
+        return self.jira.get_issues_fast(jira_ids)
 
     def generate_report(self, jiras_by_tag: Dict[str, List[str]],
                         output_format: str = 'list', fetch_details: bool = True) -> str:
@@ -1202,7 +1549,7 @@ class ReleaseProcessor:
         defects_to_reassign = []
         if state == 'Done':
             print("\nFetching issue details for state transition...")
-            issues = self.jira.get_issues(all_jira_ids)
+            issues = self.jira.get_issues_fast(all_jira_ids)
             for issue in issues:
                 key = issue.get('key', '')
                 fields = issue.get('fields', {})
@@ -1625,35 +1972,35 @@ ENVIRONMENT VARIABLES
 
     # Common arguments
     def add_common_args(p):
-        p.add_argument('--repo', action='append', dest='repos',
+        p.add_argument('-r', '--repo', action='append', dest='repos',
                        help=f'Repository path (default: {DEFAULT_REPO})')
-        p.add_argument('--branch', default='origin/master',
+        p.add_argument('-b', '--branch', default='origin/master',
                        help='Git branch to fetch before operations (default: origin/master)')
 
     def add_range_args(p):
-        p.add_argument('--tag', help='Single tag (compare with predecessor)')
-        p.add_argument('--from', dest='from_tag', help='Starting tag')
-        p.add_argument('--to', dest='to_tag', help='Ending tag')
-        p.add_argument('--full-range', dest='full_range',
+        p.add_argument('-t', '--tag', help='Single tag (compare with predecessor)')
+        p.add_argument('-f', '--from', dest='from_tag', help='Starting tag')
+        p.add_argument('-T', '--to', dest='to_tag', help='Ending tag')
+        p.add_argument('-F', '--full-range', dest='full_range',
                        help='Version series (e.g., NBSM_2.9) - auto-resolve first to latest tag')
-        p.add_argument('--base', dest='base_ref',
+        p.add_argument('-B', '--base', dest='base_ref',
                        help='Base commit/tag for first build (what went INTO first tag)')
-        p.add_argument('--auto-base', action='store_true',
+        p.add_argument('-a', '--auto-base', action='store_true',
                        help='Auto-detect base from previous version (e.g., last tag of NBSM_2.7 for NBSM_2.8)')
-        p.add_argument('--walk-range', action='store_true',
+        p.add_argument('-w', '--walk-range', action='store_true',
                        help='Process all intermediate tags in range')
-        p.add_argument('--commits', type=int, help='Last N commits instead of tags')
-        p.add_argument('--since', help='Commits since date (YYYY-MM-DD)')
+        p.add_argument('-c', '--commits', type=int, help='Last N commits instead of tags')
+        p.add_argument('-s', '--since', help='Commits since date (YYYY-MM-DD)')
 
     # list-tags
     p_tags = subparsers.add_parser('list-tags',
         help='List available tags',
         description='List NBSM/NBSVRUP tags from the repository, optionally filtered by version or range.')
     add_common_args(p_tags)
-    p_tags.add_argument('--version', help='Filter by version (e.g., 2.9)')
-    p_tags.add_argument('--prefix', help='Filter by prefix (NBSM or NBSVRUP)')
-    p_tags.add_argument('--from', dest='from_tag', help='Starting tag for range')
-    p_tags.add_argument('--to', dest='to_tag', help='Ending tag for range')
+    p_tags.add_argument('-v', '--version', help='Filter by version (e.g., 2.9)')
+    p_tags.add_argument('-p', '--prefix', help='Filter by prefix (NBSM or NBSVRUP)')
+    p_tags.add_argument('-f', '--from', dest='from_tag', help='Starting tag for range')
+    p_tags.add_argument('-T', '--to', dest='to_tag', help='Ending tag for range')
 
     # extract-jiras
     p_extract = subparsers.add_parser('extract-jiras',
@@ -1661,7 +2008,7 @@ ENVIRONMENT VARIABLES
         description='Extract NBU-xxxxx Jira IDs from git commit messages between tags.')
     add_common_args(p_extract)
     add_range_args(p_extract)
-    p_extract.add_argument('--format', choices=['list', 'json'], default='list',
+    p_extract.add_argument('-o', '--format', choices=['list', 'json'], default='list',
                            help='Output format (default: list)')
 
     # report
@@ -1670,9 +2017,9 @@ ENVIRONMENT VARIABLES
         description='Generate a report showing Jira details for tickets found in git history.')
     add_common_args(p_report)
     add_range_args(p_report)
-    p_report.add_argument('--format', choices=['list', 'table', 'json', 'csv', 'markdown', 'club'],
+    p_report.add_argument('-o', '--format', choices=['list', 'table', 'json', 'csv', 'markdown', 'club'],
                           default='list', help='Output format (default: list)')
-    p_report.add_argument('--no-fetch', action='store_true',
+    p_report.add_argument('-N', '--no-fetch', action='store_true',
                           help='Skip fetching Jira details (just show IDs)')
 
     # update
@@ -1680,29 +2027,29 @@ ENVIRONMENT VARIABLES
         help='Update Jira tickets',
         description='Directly update specified Jira tickets with build ID, labels, assignee, component, watcher groups, and epic link.')
     p_update.add_argument('jiras', nargs='*', help='Jira IDs to update (e.g., NBU-12345 NBU-12346)')
-    p_update.add_argument('--build-id',
+    p_update.add_argument('-i', '--build-id',
                           help='Build ID for Solution field (e.g., NBSM_2.9_0010). Optional for metadata-only updates.')
-    p_update.add_argument('--labels', type=lambda s: s.split(','), default=[],
+    p_update.add_argument('-l', '--labels', type=lambda s: s.split(','), default=[],
                           help='Comma-separated labels to add (e.g., Verify,Reviewed)')
-    p_update.add_argument('--assignee', help='Assignee username')
-    p_update.add_argument('--project-key', help='Project key for component lookup (e.g., NBU)')
-    p_update.add_argument('--component', help='Component name to set (requires --project-key)')
-    p_update.add_argument('--watcher-group', type=lambda s: s.split(','),
+    p_update.add_argument('-A', '--assignee', help='Assignee username')
+    p_update.add_argument('-P', '--project-key', help='Project key for component lookup (e.g., NBU)')
+    p_update.add_argument('-C', '--component', help='Component name to set (requires -P/--project-key)')
+    p_update.add_argument('-W', '--watcher-group', type=lambda s: s.split(','),
                           help='Comma-separated watcher group names to set')
-    p_update.add_argument('--watcher-group-field', default='Watcher Groups',
+    p_update.add_argument('-G', '--watcher-group-field', default='Watcher Groups',
                           help='Watcher group field ID or name (default: Watcher Groups)')
-    p_update.add_argument('--epic-link', help='Epic key to link (e.g., NBU-99999)')
-    p_update.add_argument('--labels-from-env', action='store_true',
-                          help='Use JIRA_LABELS env var if --labels not provided')
-    p_update.add_argument('--metadata-from-env', action='store_true',
+    p_update.add_argument('-E', '--epic-link', help='Epic key to link (e.g., NBU-99999)')
+    p_update.add_argument('-L', '--labels-from-env', action='store_true',
+                          help='Use JIRA_LABELS env var if -l/--labels not provided')
+    p_update.add_argument('-M', '--metadata-from-env', action='store_true',
                           help='Fill missing labels/component/epic-link/watcher-group from env: JIRA_LABELS, JIRA_COMPONENT, JIRA_EPIC_LINK, JIRA_WATCHER_GROUP')
-    p_update.add_argument('--legacy-default-labels', action='store_true',
+    p_update.add_argument('-D', '--legacy-default-labels', action='store_true',
                           help='Use default label "NBServerMigrator" if no labels specified')
-    p_update.add_argument('--state', choices=['Done'],
+    p_update.add_argument('-S', '--state', choices=['Done'],
                           help='Transition issues to state (e.g., Done). Handles multi-step transitions.')
-    p_update.add_argument('--dry-run', action='store_true',
+    p_update.add_argument('-n', '--dry-run', action='store_true',
                           help='Preview changes without applying')
-    p_update.add_argument('--no-confirm', action='store_true',
+    p_update.add_argument('-y', '--no-confirm', action='store_true',
                           help='Skip confirmation prompt (use with caution)')
 
     # process (full pipeline)
@@ -1712,27 +2059,27 @@ ENVIRONMENT VARIABLES
 and update Jira tickets with build ID, labels, component, watcher groups, epic link, and state. This is the recommended command for release workflows.''')
     add_common_args(p_process)
     add_range_args(p_process)
-    p_process.add_argument('--labels', type=lambda s: s.split(','),
-                           help='Labels to add (comma-separated, e.g., Verify,Reviewed). If not provided with --labels-from-env or --legacy-default-labels, uses Verify as default.')
-    p_process.add_argument('--assignee', help='Assignee username')
-    p_process.add_argument('--project-key', help='Project key for component lookup (e.g., NBU)')
-    p_process.add_argument('--component', help='Component name to set (requires --project-key)')
-    p_process.add_argument('--watcher-group', type=lambda s: s.split(','),
+    p_process.add_argument('-l', '--labels', type=lambda s: s.split(','),
+                           help='Labels to add (comma-separated, e.g., Verify,Reviewed). If not provided with -L/--labels-from-env or -D/--legacy-default-labels, uses Verify as default.')
+    p_process.add_argument('-A', '--assignee', help='Assignee username')
+    p_process.add_argument('-P', '--project-key', help='Project key for component lookup (e.g., NBU)')
+    p_process.add_argument('-C', '--component', help='Component name to set (requires -P/--project-key)')
+    p_process.add_argument('-W', '--watcher-group', type=lambda s: s.split(','),
                           help='Comma-separated watcher group names to set')
-    p_process.add_argument('--watcher-group-field', default='Watcher Groups',
+    p_process.add_argument('-G', '--watcher-group-field', default='Watcher Groups',
                           help='Watcher group field ID or name (default: Watcher Groups)')
-    p_process.add_argument('--epic-link', help='Epic key to link (e.g., NBU-99999)')
-    p_process.add_argument('--labels-from-env', action='store_true',
-                          help='Use JIRA_LABELS env var instead of --labels')
-    p_process.add_argument('--legacy-default-labels', action='store_true',
-                          help='Use default label "NBServerMigrator" instead of --labels')
-    p_process.add_argument('--state', choices=['Done'],
+    p_process.add_argument('-E', '--epic-link', help='Epic key to link (e.g., NBU-99999)')
+    p_process.add_argument('-L', '--labels-from-env', action='store_true',
+                          help='Use JIRA_LABELS env var instead of -l/--labels')
+    p_process.add_argument('-D', '--legacy-default-labels', action='store_true',
+                          help='Use default label "NBServerMigrator" instead of -l/--labels')
+    p_process.add_argument('-S', '--state', choices=['Done'],
                            help='Transition issues to state (e.g., Done). Handles multi-step transitions.')
-    p_process.add_argument('--dry-run', action='store_true',
+    p_process.add_argument('-n', '--dry-run', action='store_true',
                            help='Preview changes without applying')
-    p_process.add_argument('--no-confirm', action='store_true',
+    p_process.add_argument('-y', '--no-confirm', action='store_true',
                            help='Skip confirmation prompt (use with caution)')
-    p_process.add_argument('--skip-report', action='store_true',
+    p_process.add_argument('-R', '--skip-report', action='store_true',
                            help='Skip report generation (faster)')
 
     # validate
@@ -1741,7 +2088,7 @@ and update Jira tickets with build ID, labels, component, watcher groups, epic l
         description='Pre-release validation: check that all Jiras are in Resolved/Closed status.')
     add_common_args(p_validate)
     add_range_args(p_validate)
-    p_validate.add_argument('--require-resolved', action='store_true',
+    p_validate.add_argument('-R', '--require-resolved', action='store_true',
                             help='Exit with error code if any Jira is not Resolved/Closed')
 
     # validate-properties
@@ -1751,10 +2098,10 @@ and update Jira tickets with build ID, labels, component, watcher groups, epic l
     add_common_args(p_validate_props)
     add_range_args(p_validate_props)
     p_validate_props.add_argument('keys', nargs='*', help='Jira IDs to validate (e.g., NBU-12345 NBU-12346)')
-    p_validate_props.add_argument('--properties', type=lambda s: [p.strip().lower() for p in s.split(',')],
+    p_validate_props.add_argument('-p', '--properties', type=lambda s: [p.strip().lower() for p in s.split(',')],
                                   default=['labels', 'component', 'assignee', 'solution', 'epic_link', 'watcher_group'],
                                   help='Comma-separated properties to check (default: labels,component,assignee,solution,epic_link,watcher_group)')
-    p_validate_props.add_argument('--format', choices=['list', 'table', 'json', 'summary'],
+    p_validate_props.add_argument('-o', '--format', choices=['list', 'table', 'json', 'summary'],
                                   default='table',
                                   help='Output format (default: table)')
 
