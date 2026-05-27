@@ -122,6 +122,39 @@ def _extract_attr_from_legacy_sprint(sprint_str, attr):
     return match.group(1).strip() if match else None
 
 
+def _safe_print(text):
+    """Print text safely, handling Unicode encoding errors for ASCII terminals.
+
+    Replaces problematic Unicode characters with ASCII equivalents.
+    """
+    # Common Unicode to ASCII replacements
+    replacements = {
+        '\u2011': '-',   # Non-breaking hyphen -> regular hyphen
+        '\u2010': '-',   # Hyphen -> regular hyphen
+        '\u2013': '-',   # En dash -> regular hyphen
+        '\u2014': '--',  # Em dash -> double hyphen
+        '\u2018': "'",   # Left single quote
+        '\u2019': "'",   # Right single quote (apostrophe)
+        '\u201c': '"',   # Left double quote
+        '\u201d': '"',   # Right double quote
+        '\u2026': '...', # Ellipsis
+        '\u00a0': ' ',   # Non-breaking space
+        '\u2022': '*',   # Bullet
+        '\u2023': '>',   # Triangular bullet
+        '\u00b7': '*',   # Middle dot
+    }
+
+    text_str = str(text)
+    for char, replacement in replacements.items():
+        text_str = text_str.replace(char, replacement)
+
+    try:
+        print(text_str)
+    except UnicodeEncodeError:
+        # Fallback: encode with errors replaced
+        print(text_str.encode(sys.stdout.encoding or 'ascii', errors='replace').decode())
+
+
 def _parse_jira_datetime(value):
     """Parse Jira datetime string and return display-friendly value.
 
@@ -538,7 +571,7 @@ def display_sprint_board(board_data, status_counts):
     print("\n" + "="*80)
     print("SPRINT BOARD")
     print("="*80)
-    print(table)
+    _safe_print(table)
     print()
 
 
@@ -619,7 +652,7 @@ def display_issue_details(issue_details_list, verbose=False):
 
     # Always print table so headers are visible under ISSUE DETAILS,
     # including verbose mode (-d -v) even when there are no rows.
-    print(table)
+    _safe_print(table)
 
     print()
 
