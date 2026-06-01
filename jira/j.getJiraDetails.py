@@ -362,16 +362,16 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Dict[str, List[st
                         sources[match].append(source_name)
 
     # Check known customfield IDs
-    add_ids(fields.get("customfield_33802"), "Etrack Incident")
-    add_ids(fields.get("customfield_36508"), "Etrack Ref")
+    add_ids(fields.get("customfield_33802"), "EI")
+    add_ids(fields.get("customfield_36508"), "ER")
 
     # Check by field name using names mapping
     names = issue.get("names") if isinstance(issue.get("names"), dict) else {}
     name_patterns = {
-        "nbu r&d ticket": "NBU R&D Ticket",
-        "nbu r&d ticket:": "NBU R&D Ticket",
-        "etrack incident (internal)": "Etrack Incident (Internal)",
-        "etrack incident (internal):": "Etrack Incident (Internal)",
+        "nbu r&d ticket": "RD",
+        "nbu r&d ticket:": "RD",
+        "etrack incident (internal)": "INT",
+        "etrack incident (internal):": "INT",
     }
     for key, mapped_name in names.items():
         if not isinstance(mapped_name, str):
@@ -2124,7 +2124,8 @@ def main() -> int:
         action="store_true",
         help=(
             "If etrack incident IDs are present, fetch and show etrack summary details "
-            "(hard override: enables etrack section)."
+            "(hard override: enables etrack section). "
+            "Source codes: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)."
         ),
     )
     parser.add_argument(
@@ -2589,7 +2590,8 @@ def main() -> int:
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "Source Field", "State", "Severity", "Priority", "Version", "Assignee", "Abstract"])
+                _print_table(rows, ["Incident", "Src", "State", "Severity", "Priority", "Version", "Assignee", "Abstract"])
+                print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
 
             if args.show_etrack_details:
                 if sfdc_case_links:
