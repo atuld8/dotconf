@@ -15,6 +15,13 @@ bind -x '"\C-Bk":cat ~/.keyfile'
 # HELP <HOTKEY> v pull dotconf
 bind -x '"\C-Bv":x.vimpull'
 
+
+# Exact prefix search
+bind '"\C-bb": history-search-backward'
+
+# Exact substring search
+bind '"\C-bg": reverse-search-history'
+
 # get pass
 # HELP <HOTKEY> p cp.pass
 bind -x '"\C-Bp":cp.pass'
