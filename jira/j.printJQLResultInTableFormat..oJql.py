@@ -48,7 +48,10 @@ headers = {
 
 # Set up the command line argument parser
 
-parser = argparse.ArgumentParser(description='Run a JQL query and display the results in a table format.')
+parser = argparse.ArgumentParser(
+    description='Run a JQL query and display the results in a table format.',
+    formatter_class=argparse.RawTextHelpFormatter
+)
 parser.add_argument(
     'jql',
     type=str,
@@ -74,10 +77,32 @@ parser.add_argument(
 parser.add_argument(
     "-p", "--profile",
     type=str,
-    choices=['default', 'pvm', 'fi'],
-    default='default',
-    help="Output profile: 'default' (existing columns), 'pvm' (security/patch focused), 'fi' (FI-focused columns). "
-         "When profile is default, auto-switches to fi if all keys are FI-* and to pvm if all keys are PVM-*"
+    choices=['default', 'pvm', 'fi', 'basic', 'nbsm', 'aging', 'release', 'triage'],
+    default='basic',
+    help="""Output profile for table columns:
+
+  basic   : Key, IssueType, Priority, Status, Assignee, Summary, Updated
+            Minimal universal view for any project
+
+  nbsm    : Key, IssueType, Priority, Status, Assignee, Epic, Labels, Summary, Runtime, Updated
+            Story/defect/sub-task tracking
+
+  aging   : Key, Priority, Status, Assignee, Runtime, Created, Updated, Summary
+            SLA/backlog tracking - highlights stale issues
+
+  release : Key, Priority, Status, FixVers, Components, Affects Version/s, Assignee, Summary
+            Release management and version planning
+
+  triage  : Key, IssueType, Priority, Severity, Components, Status, Assignee, Summary
+            Bug triage meetings
+
+  pvm     : Security/patch focused (excludes Runtime, Reporter, IssueType, Labels, Epic)
+
+  fi      : Field Issue columns (Case Priority, Customer Name, Etrack Incident, etc.)
+
+  default : Full columns with AUTO-SWITCH to 'fi' (FI-* keys) or 'pvm' (PVM-* keys)
+
+(default: basic)"""
 )
 
 parser.add_argument(
@@ -98,10 +123,76 @@ args = parser.parse_args()
 
 # Profile configurations: columns to exclude for each profile
 PROFILE_EXCLUDES = {
-    'default': ['CVSS', 'FixVers'],
-    'pvm': ['Runtime', 'Reporter', 'IssueType', 'Labels', 'Epic'],
-    'fi': []
+    'default': ['CVSS', 'FixVers', 'Components', 'Affects Version/s', 'Created', 'Updated'],
+    'pvm': ['Runtime', 'Reporter', 'IssueType', 'Labels', 'Epic', 'Components', 'Affects Version/s', 'Created', 'Updated'],
+    'fi': [],
+    'basic': ['Sr.', 'Runtime', 'Reporter', 'Severity', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Components', 'Affects Version/s', 'Created'],
+    'nbsm': ['Sr.', 'Reporter', 'Severity', 'FixVers', 'CVSS', 'Components', 'Affects Version/s', 'Created'],
+    'aging': ['Sr.', 'Reporter', 'Severity', 'IssueType', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Components', 'Affects Version/s'],
+    'release': ['Sr.', 'Runtime', 'Reporter', 'Severity', 'IssueType', 'Labels', 'Epic', 'CVSS', 'Created', 'Updated'],
+    'triage': ['Sr.', 'Runtime', 'Reporter', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Affects Version/s', 'Created', 'Updated'],
 }
+
+# Column order for basic profile (universal minimal view)
+BASIC_COLUMN_ORDER = [
+    'Key',
+    'IssueType',
+    'Priority',
+    'Status',
+    'Assignee',
+    'Summary',
+    'Updated',
+]
+
+# Column order for nbsm profile (story/defect/sub-task tracking)
+NBSM_COLUMN_ORDER = [
+    'Key',
+    'IssueType',
+    'Priority',
+    'Status',
+    'Assignee',
+    'Epic',
+    'Labels',
+    'Summary',
+    'Runtime',
+    'Updated',
+]
+
+# Column order for aging profile (SLA/backlog tracking)
+AGING_COLUMN_ORDER = [
+    'Key',
+    'Priority',
+    'Status',
+    'Assignee',
+    'Runtime',
+    'Created',
+    'Updated',
+    'Summary',
+]
+
+# Column order for release profile (release management)
+RELEASE_COLUMN_ORDER = [
+    'Key',
+    'Priority',
+    'Status',
+    'FixVers',
+    'Components',
+    'Affects Version/s',
+    'Assignee',
+    'Summary',
+]
+
+# Column order for triage profile (bug triage meetings)
+TRIAGE_COLUMN_ORDER = [
+    'Key',
+    'IssueType',
+    'Priority',
+    'Severity',
+    'Components',
+    'Status',
+    'Assignee',
+    'Summary',
+]
 
 FI_COLUMN_ORDER = [
     'Key',
@@ -608,6 +699,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
         components = extract_field_value(issue, 'components')  # Use 'components' as the field ID directly
         affected_versions = extract_field_value(issue, 'versions')
         updated = _format_updated_timestamp(issue['fields'].get('updated'))
+        created = _format_updated_timestamp(issue['fields'].get('created'))
 
         # Highlight Customer Sentiment if RED or YELLOW
         customer_sentiment = _extract_field_or_dash(issue, fi_field_map.get('Customer Sentiment'))
@@ -658,7 +750,11 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
             'Labels': labels,
             'FixVers': fix_versions,
             'Epic': epic_link,
-            'CVSS': cvss_score
+            'CVSS': cvss_score,
+            'Components': components,
+            'Affects Version/s': affected_versions,
+            'Created': created,
+            'Updated': updated,
         }
 
         # Add extra dynamic fields
@@ -682,10 +778,29 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
 
     # Use PrettyTable to print the DataFrame in a table format
     table = PrettyTable()
+
+    # Determine column order based on profile
     if profile == 'fi':
-        ordered_columns = [col for col in FI_COLUMN_ORDER if col in df.columns.tolist()]
+        column_order = FI_COLUMN_ORDER
+    elif profile == 'basic':
+        column_order = BASIC_COLUMN_ORDER
+    elif profile == 'nbsm':
+        column_order = NBSM_COLUMN_ORDER
+    elif profile == 'aging':
+        column_order = AGING_COLUMN_ORDER
+    elif profile == 'release':
+        column_order = RELEASE_COLUMN_ORDER
+    elif profile == 'triage':
+        column_order = TRIAGE_COLUMN_ORDER
+    else:
+        column_order = None
+
+    if column_order:
+        ordered_columns = [col for col in column_order if col in df.columns.tolist()]
         remaining_columns = [col for col in df.columns.tolist() if col not in ordered_columns]
-        table.field_names = ordered_columns + remaining_columns
+        final_columns = ordered_columns + remaining_columns
+        df = df[final_columns]  # Reorder DataFrame columns to match header order
+        table.field_names = final_columns
     else:
         table.field_names = df.columns.tolist()
 
