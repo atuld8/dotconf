@@ -700,6 +700,288 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
     return details
 
 
+def _normalize_for_comparison(value: str) -> str:
+    """Normalize a string for fuzzy comparison.
+
+    - Lowercase
+    - Remove common prefixes like 'NBU ', 'NetBackup '
+    - Strip whitespace and punctuation
+    - Remove email domain suffixes
+    """
+    if not value or value == "-":
+        return ""
+    text = value.strip().casefold()
+    # Remove email domain
+    text = re.sub(r"@[\w.-]+$", "", text)
+    # Remove common product prefixes
+    text = re.sub(r"^(nbu|netbackup|veritas)\s*", "", text, flags=re.IGNORECASE)
+    # Normalize dots/underscores to spaces for name matching
+    text = re.sub(r"[._]+", " ", text)
+    # Remove extra whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _extract_name_parts(value: str) -> Set[str]:
+    """Extract name parts for fuzzy assignee matching.
+
+    Handles formats like:
+    - "John Doe" -> {"john", "doe"}
+    - "John.Doe@company.com" -> {"john", "doe"}
+    - "jdoe" -> {"jdoe"}
+    - "Doe, John" -> {"john", "doe"}
+    """
+    if not value or value == "-":
+        return set()
+    text = _normalize_for_comparison(value)
+    # Split on space, comma, etc.
+    parts = re.split(r"[\s,]+", text)
+    return {p for p in parts if p and len(p) > 1}
+
+
+def _assignee_matches(fi_assignee: str, etrack_assignee: str) -> bool:
+    """Check if FI assignee matches etrack assignee (fuzzy match).
+
+    Handles different formats:
+    - FI: "John Doe", etrack: "jdoe"
+    - FI: "John Doe", etrack: "John.Doe@veritas.com"
+    - FI: "John Doe", etrack: "Doe, John"
+    """
+    fi_norm = _normalize_for_comparison(fi_assignee)
+    et_norm = _normalize_for_comparison(etrack_assignee)
+
+    # Exact match after normalization
+    if fi_norm == et_norm:
+        return True
+
+    # Check if one contains the other
+    if fi_norm and et_norm:
+        if fi_norm in et_norm or et_norm in fi_norm:
+            return True
+
+    # Check name parts overlap
+    fi_parts = _extract_name_parts(fi_assignee)
+    et_parts = _extract_name_parts(etrack_assignee)
+
+    if fi_parts and et_parts:
+        # If any significant overlap in name parts
+        overlap = fi_parts & et_parts
+        if overlap:
+            # At least one meaningful part matches (like last name)
+            return True
+
+        # Check if initials match (e.g., "jdoe" contains "j" from "john" and "doe")
+        et_joined = "".join(sorted(et_parts))
+        fi_initials = "".join(p[0] for p in sorted(fi_parts))
+        if len(et_parts) == 1 and len(fi_parts) >= 2:
+            # e.g., "jdoe" vs {"john", "doe"}
+            et_single = list(et_parts)[0]
+            if all(p[0] in et_single or p in et_single for p in fi_parts):
+                return True
+
+    return False
+
+
+def _version_matches(fi_version: str, etrack_version: str) -> bool:
+    """Check if FI version matches etrack version (exact match).
+
+    Only exact version matches are considered equal.
+    Strips product prefixes like 'NBU ', 'NetBackup ' before comparing.
+
+    Examples:
+    - "11.1" vs "11.1" -> True
+    - "11.1" vs "11.1.1" -> False
+    - "NBU 11.2" vs "11.2" -> True (after stripping prefix)
+    """
+    if not fi_version or fi_version == "-":
+        fi_norm = ""
+    else:
+        fi_norm = fi_version.strip().casefold()
+        # Remove common product prefixes but preserve version numbers exactly
+        fi_norm = re.sub(r"^(nbu|netbackup|veritas)\s*", "", fi_norm, flags=re.IGNORECASE)
+        fi_norm = re.sub(r"\s+", " ", fi_norm).strip()
+
+    if not etrack_version or etrack_version == "-":
+        et_norm = ""
+    else:
+        et_norm = etrack_version.strip().casefold()
+        et_norm = re.sub(r"^(nbu|netbackup|veritas)\s*", "", et_norm, flags=re.IGNORECASE)
+        et_norm = re.sub(r"\s+", " ", et_norm).strip()
+
+    # Both empty or both equal after normalization
+    if fi_norm == et_norm:
+        return True
+
+    # Extract version numbers and compare exactly
+    fi_versions = re.findall(r"\d+(?:\.\d+)*", fi_norm)
+    et_versions = re.findall(r"\d+(?:\.\d+)*", et_norm)
+
+    if not fi_versions or not et_versions:
+        return False
+
+    # Only exact match - no fuzzy/prefix matching
+    for fv in fi_versions:
+        for ev in et_versions:
+            if fv == ev:
+                return True
+
+    return False
+
+
+def _component_matches(fi_component: str, etrack_component: str) -> bool:
+    """Check if FI component matches etrack component (fuzzy match).
+
+    Handles formats:
+    - FI: "Backup", etrack: "NBU-Backup"
+    - FI: "Media Manager", etrack: "media-manager"
+    """
+    fi_norm = _normalize_for_comparison(fi_component)
+    et_norm = _normalize_for_comparison(etrack_component)
+
+    if not fi_norm or not et_norm:
+        return fi_norm == et_norm
+
+    # Exact match
+    if fi_norm == et_norm:
+        return True
+
+    # Check containment
+    if fi_norm in et_norm or et_norm in fi_norm:
+        return True
+
+    # Remove hyphens and check
+    fi_clean = re.sub(r"[-_]", " ", fi_norm).strip()
+    et_clean = re.sub(r"[-_]", " ", et_norm).strip()
+
+    if fi_clean == et_clean:
+        return True
+    if fi_clean in et_clean or et_clean in fi_clean:
+        return True
+
+    return False
+
+
+def _compare_etrack_fi_values(
+    summary_rows: List[List[str]],
+    etrack_info: Dict[str, Dict[str, str]],
+    etrack_ids: List[str],
+) -> List[Dict[str, Any]]:
+    """Compare etrack values vs FI values for component, version, assignee.
+
+    Returns a list of comparison results, one per etrack ID:
+    [
+        {
+            "fi_id": "FI-12345",
+            "etrack_id": "12345678",
+            "comparisons": [
+                {"field": "Component", "fi_value": "X", "etrack_value": "Y", "match": False},
+                ...
+            ]
+        }
+    ]
+    """
+    # Extract FI ID and values from summary_rows
+    fi_id = "-"
+    fi_values: Dict[str, str] = {}
+    for label, value in summary_rows:
+        if label == "Issue":
+            fi_id = value
+        elif label == "Components":
+            fi_values["component"] = value
+        elif label in ("Affects Version/s", "Affects Versions"):
+            fi_values["version"] = value
+        elif label == "Assignee":
+            fi_values["assignee"] = value
+
+    results = []
+    for et_id in etrack_ids:
+        info = etrack_info.get(et_id, {})
+        comparisons = []
+
+        # Component comparison
+        fi_comp = fi_values.get("component", "-")
+        et_comp = info.get("component", "-")
+        comp_match = _component_matches(fi_comp, et_comp)
+        comparisons.append({
+            "field": "Component",
+            "fi_value": fi_comp,
+            "etrack_value": et_comp,
+            "match": comp_match,
+        })
+
+        # Version comparison
+        fi_ver = fi_values.get("version", "-")
+        et_ver = info.get("version", "-")
+        ver_match = _version_matches(fi_ver, et_ver)
+        comparisons.append({
+            "field": "Version",
+            "fi_value": fi_ver,
+            "etrack_value": et_ver,
+            "match": ver_match,
+        })
+
+        # Assignee comparison
+        fi_assignee = fi_values.get("assignee", "-")
+        et_assignee = info.get("assignee", "-")
+        assignee_match = _assignee_matches(fi_assignee, et_assignee)
+        comparisons.append({
+            "field": "Assignee",
+            "fi_value": fi_assignee,
+            "etrack_value": et_assignee,
+            "match": assignee_match,
+        })
+
+        results.append({
+            "fi_id": fi_id,
+            "etrack_id": et_id,
+            "comparisons": comparisons,
+        })
+
+    return results
+
+
+def _print_etrack_fi_comparison(
+    comparison_results: List[Dict[str, Any]],
+    show_all: bool = False,
+) -> bool:
+    """Print comparison table for etrack vs FI mismatches.
+
+    Args:
+        comparison_results: Output from _compare_etrack_fi_values
+        show_all: If True, show all comparisons. If False, only show mismatches.
+
+    Returns:
+        True if any mismatches were found, False otherwise.
+    """
+    has_mismatch = False
+    rows = []
+
+    for result in comparison_results:
+        fi_id = result.get("fi_id", "-")
+        et_id = result["etrack_id"]
+        for comp in result["comparisons"]:
+            if not comp["match"]:
+                has_mismatch = True
+            if show_all or not comp["match"]:
+                status = "[OK]" if comp["match"] else "[MISMATCH]"
+                rows.append([
+                    fi_id,
+                    et_id,
+                    comp["field"],
+                    comp["fi_value"] if comp["fi_value"] else "-",
+                    comp["etrack_value"] if comp["etrack_value"] else "-",
+                    status,
+                ])
+
+    if rows:
+        print("\n  * FI vs Etrack comparison:")
+        _print_table(rows, ["FI", "Etrack", "Field", "FI Value", "Etrack Value", "Status"])
+    elif has_mismatch:
+        print("\n  * FI vs Etrack comparison: All fields match")
+
+    return has_mismatch
+
+
 class JiraClient:
     def __init__(self):
         load_dotenv()
@@ -815,7 +1097,7 @@ class JiraClient:
             "jql": jql,
             "maxResults": max_results,
             "fields": "*all",   # return all fields including custom fields
-            "expand": "names",  # include field-id→display-name mapping per issue
+            "expand": "names",  # include field-id->display-name mapping per issue
         }
         response = self._get(url, params=params)
         if response.status_code != 200:
@@ -1257,7 +1539,7 @@ def _build_fi_search_jql(jira: JiraClient, raw_query: str) -> str:
             fi_values = ", ".join(f'"{_jql_escape(k)}"' for k in sorted(set(fi_keys)))
             clauses.append(f"key in ({fi_values})")
 
-    # --- Numeric tokens → eTrack Incident (cf[33802]) ---
+    # --- Numeric tokens -> eTrack Incident (cf[33802]) ---
     # cf[33802] = Etrack Incident : multi-value numeric field; use "in (v)" to match any entry
     # cf[36508] = Etrack Ref      : text field, only supports ~
     # cf[11814] = Case#           : text field, only supports ~
@@ -1999,6 +2281,23 @@ def _build_json_output(
                 detail.update(etrack_info.get(etrack_id, {}))
             payload["etrack_details"].append(detail)
 
+        # Add FI vs Etrack comparison for mismatches
+        if etrack_info and etrack_ids:
+            comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids)
+            mismatches = []
+            for result in comparison_results:
+                for comp in result["comparisons"]:
+                    if not comp["match"]:
+                        mismatches.append({
+                            "fi_id": result.get("fi_id", "-"),
+                            "etrack_id": result["etrack_id"],
+                            "field": comp["field"],
+                            "fi_value": comp["fi_value"],
+                            "etrack_value": comp["etrack_value"],
+                        })
+            if mismatches:
+                payload["etrack_fi_mismatches"] = mismatches
+
     if show_comments > 0:
         latest = comments[-show_comments:] if comments else []
         payload["comments"] = [
@@ -2597,6 +2896,11 @@ def main() -> int:
                     ])
                 _print_table(rows, ["Incident", "Src", "State", "Severity", "Priority", "Version", "Component", "Assignee", "Abstract"])
                 print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
+
+                # Show FI vs Etrack comparison for mismatches
+                if etrack_info:
+                    comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids)
+                    _print_etrack_fi_comparison(comparison_results, show_all=False)
 
             if args.show_etrack_details:
                 if sfdc_case_links:
