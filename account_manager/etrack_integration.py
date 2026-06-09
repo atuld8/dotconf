@@ -36,6 +36,7 @@ class EtrackInfo:
     priority: Optional[str]
     abstract: Optional[str]
     version: Optional[str]
+    component: Optional[str] = None
 
 
 class EtrackExecutor:
@@ -427,7 +428,7 @@ class EtrackExecutor:
             EtrackInfo object or None
         """
         query = (
-            f"SELECT incident, assigned_to, state, severity, priority, version, abstract "
+            f"SELECT incident, assigned_to, state, severity, priority, version, component, abstract "
             f"FROM incident WHERE incident = {incident_no}"
         )
         output = self._execute_command("esql", stdin_input=query)
@@ -475,18 +476,28 @@ class EtrackExecutor:
                     severity = None
                     priority = None
                     version = None
+                    component = None
                     abstract = parts[3]
-                elif len(parts) >= 7:
-                    # Full format: incident, assigned_to, state, severity, priority, found_in_ver, abstract
+                elif len(parts) >= 8:
+                    # Full format: incident, assigned_to, state, severity, priority, version, component, abstract
                     severity = parts[3] if parts[3] else None
                     priority = parts[4] if parts[4] else None
                     version = parts[5] if parts[5] else None
+                    component = parts[6] if parts[6] else None
+                    abstract = parts[7] if len(parts) > 7 else None
+                elif len(parts) >= 7:
+                    # Old format without component: incident, assigned_to, state, severity, priority, version, abstract
+                    severity = parts[3] if parts[3] else None
+                    priority = parts[4] if parts[4] else None
+                    version = parts[5] if parts[5] else None
+                    component = None
                     abstract = parts[6] if len(parts) > 6 else None
                 else:
                     # Partial - fields may be empty/collapsed, last field is likely abstract
                     severity = None
                     priority = None
                     version = None
+                    component = None
                     abstract = parts[-1] if len(parts) > 3 else None
 
                 return EtrackInfo(
@@ -497,6 +508,7 @@ class EtrackExecutor:
                     priority=priority,
                     abstract=abstract,
                     version=version,
+                    component=component,
                 )
 
         return None

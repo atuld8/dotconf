@@ -48,6 +48,14 @@ from typing import Any, Dict, List, Optional, Tuple
 # Ensure console output is UTF-8 safe
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
+# Add parent directory to path for account_manager imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from account_manager.etrack_integration import EtrackExecutor
+    ETRACK_AVAILABLE = True
+except ImportError:
+    ETRACK_AVAILABLE = False
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 else:
     import io
@@ -620,11 +628,105 @@ def show_field_options(client, issue_key, field_name):
     print()
 
 
-def perform_update(client, issue_key, updates, comment=None, dry_run=False, silent=False):
-    # type: (JiraUpdateClient, str, Dict[str, Any], Optional[str], bool, bool) -> bool
+def sync_etrack_to_jira(client, issue_key, etrack_id, sync_component=False, sync_affectsversion=False, silent=False):
+    # type: (JiraUpdateClient, str, str, bool, bool, bool) -> Tuple[Dict[str, Any], Optional[str]]
+    """
+    Fetch etrack info and return updates dict for mismatched fields only.
+
+    Returns:
+        Tuple of (field_updates_dict, sync_comment_string)
+        - field_updates: Dict of fields that differ from Jira current values
+        - sync_comment: Comment describing what was synced (None if nothing synced)
+    """
+    if not ETRACK_AVAILABLE:
+        raise RuntimeError("Etrack integration not available. Check account_manager.etrack_integration module.")
+
+    updates = {}  # type: Dict[str, Any]
+    sync_actions = []  # type: List[str]
+
+    # Fetch etrack info
+    executor = EtrackExecutor()
+    etrack_info = executor.get_etrack_info(etrack_id)
+
+    if not etrack_info:
+        raise RuntimeError("Could not fetch etrack info for incident: {}".format(etrack_id))
+
+    # Fetch current Jira issue values
+    issue_data = client.get_issue(issue_key)
+    fields = issue_data.get('fields', {})
+
+    # Extract current Jira values
+    current_components = [c.get('name', '') for c in (fields.get('components') or [])]
+    current_versions = [v.get('name', '') for v in (fields.get('versions') or [])]  # affects versions
+
+    if not silent:
+        print("\nEtrack {} info:".format(etrack_id))
+        print("  Component: {}".format(etrack_info.component or '(none)'))
+        print("  Version: {}".format(etrack_info.version or '(none)'))
+        print("\nJira {} current values:".format(issue_key))
+        print("  Components: {}".format(', '.join(current_components) if current_components else '(none)'))
+        print("  Affects Version/s: {}".format(', '.join(current_versions) if current_versions else '(none)'))
+
+    # Sync component if requested and value exists in etrack
+    if sync_component:
+        et_component = etrack_info.component
+        if et_component:
+            # Check if etrack component is already the only component in Jira
+            if current_components == [et_component]:
+                if not silent:
+                    print("\n  -> Component '{}' already set in Jira (skipping)".format(et_component))
+            else:
+                # Replace all components with etrack component
+                updates['components'] = et_component
+                if current_components:
+                    sync_actions.append("Component: {} (replaced {})".format(et_component, ', '.join(current_components)))
+                    if not silent:
+                        print("\n  -> Component '{}' will replace '{}' in Jira".format(et_component, ', '.join(current_components)))
+                else:
+                    sync_actions.append("Component: {}".format(et_component))
+                    if not silent:
+                        print("\n  -> Component '{}' will be set in Jira".format(et_component))
+        else:
+            if not silent:
+                print("\n  -> Etrack component is empty (skipping)")
+
+    # Sync affects version if requested and value exists in etrack
+    if sync_affectsversion:
+        et_version = etrack_info.version
+        if et_version:
+            # Check if etrack version is already the only version in Jira
+            if current_versions == [et_version]:
+                if not silent:
+                    print("  -> Affects Version '{}' already set in Jira (skipping)".format(et_version))
+            else:
+                # Replace all versions with etrack version
+                updates['affectsversions'] = et_version
+                if current_versions:
+                    sync_actions.append("Affects Version: {} (replaced {})".format(et_version, ', '.join(current_versions)))
+                    if not silent:
+                        print("  -> Affects Version '{}' will replace '{}' in Jira".format(et_version, ', '.join(current_versions)))
+                else:
+                    sync_actions.append("Affects Version: {}".format(et_version))
+                    if not silent:
+                        print("  -> Affects Version '{}' will be set in Jira".format(et_version))
+        else:
+            if not silent:
+                print("  -> Etrack version is empty (skipping)")
+
+    # Build sync comment if there were any updates
+    sync_comment = None  # type: Optional[str]
+    if sync_actions:
+        sync_comment = "Synced from Etrack {}: {}".format(etrack_id, ', '.join(sync_actions))
+
+    return (updates, sync_comment)
+
+
+def perform_update(client, issue_key, updates, comment=None, dry_run=False, silent=False, potential_comment=None):
+    # type: (JiraUpdateClient, str, Dict[str, Any], Optional[str], bool, bool, Optional[str]) -> bool
     """
     Perform the actual update.
     updates: dict of {field_name: value}
+    potential_comment: For dry-run only - show what comment would be added if -m was passed
     """
     if not updates and not comment:
         print("Nothing to update.", file=sys.stderr)
@@ -650,6 +752,9 @@ def perform_update(client, issue_key, updates, comment=None, dry_run=False, sile
         if comment:
             print("\n[DRY RUN] Would add comment:")
             print("  {}".format(comment[:200]))
+        elif potential_comment:
+            print("\n[DRY RUN] Potential comment (use -m to add):")
+            print("  {}".format(potential_comment[:200]))
         return True
 
     # Perform update
@@ -658,9 +763,9 @@ def perform_update(client, issue_key, updates, comment=None, dry_run=False, sile
         try:
             client.update_issue(issue_key, fields_data)
             if not silent:
-                print("\n✓ Updated {} successfully".format(issue_key))
+                print("\n[OK] Updated {} successfully".format(issue_key))
         except RuntimeError as e:
-            print("✗ Update failed: {}".format(e), file=sys.stderr)
+            print("[FAIL] Update failed: {}".format(e), file=sys.stderr)
             success = False
 
     # Add comment if provided
@@ -668,9 +773,9 @@ def perform_update(client, issue_key, updates, comment=None, dry_run=False, sile
         try:
             client.add_comment(issue_key, comment)
             if not silent:
-                print("✓ Comment added")
+                print("[OK] Comment added")
         except RuntimeError as e:
-            print("✗ Failed to add comment: {}".format(e), file=sys.stderr)
+            print("[FAIL] Failed to add comment: {}".format(e), file=sys.stderr)
             success = False
 
     return success
@@ -718,10 +823,10 @@ def perform_transition(client, issue_key, target_status, resolution=None, commen
 
     try:
         client.do_transition(issue_key, transition_id, fields_data, comment)
-        print("✓ Transitioned {} to '{}'".format(issue_key, matched.get('to', {}).get('name', target_status)))
+        print("[OK] Transitioned {} to '{}'".format(issue_key, matched.get('to', {}).get('name', target_status)))
         return True
     except RuntimeError as e:
-        print("✗ Transition failed: {}".format(e), file=sys.stderr)
+        print("[FAIL] Transition failed: {}".format(e), file=sys.stderr)
         return False
 
 
@@ -809,6 +914,12 @@ Examples:
   %(prog)s FI-12345 -lo priority
   %(prog)s FI-12345 -lt
   %(prog)s -lf
+
+  # Etrack sync examples:
+  %(prog)s FI-12345 -set 12345678 -sc             # Sync component (no comment)
+  %(prog)s FI-12345 -set 12345678 -sc -m          # Sync with auto-generated comment
+  %(prog)s FI-12345 -set 12345678 -sc -m "Note"   # Sync with custom + auto comment
+  %(prog)s FI-12345 -set 12345678 -sc --dry-run   # Preview sync changes (shows potential comment)
 """)
 
     parser.add_argument('issue_key', nargs='?', help='Issue key (e.g., FI-12345, PVM-5678, NBU-9999)')
@@ -851,6 +962,15 @@ Examples:
     fi_group.add_argument('--sol', '--solution', type=str, dest='solution', help='Solution')
     fi_group.add_argument('--ps', '--progressstatus', type=str, dest='progressstatus', help='Progress Status')
 
+    # Etrack sync options
+    sync_group = parser.add_argument_group('Etrack Sync Options')
+    sync_group.add_argument('-set', '--sync-with-et', type=str, dest='sync_with_et', metavar='ETRACK_ID',
+                            help='Etrack incident ID to sync from (required for -sc, -sav)')
+    sync_group.add_argument('-sc', '--sync-component', action='store_true', dest='sync_component',
+                            help='Sync component from etrack to Jira (requires -set)')
+    sync_group.add_argument('-sav', '--sync-affectsversion', action='store_true', dest='sync_affectsversion',
+                            help='Sync affects version from etrack to Jira (requires -set)')
+
     # JSON update
     parser.add_argument('--update', '-u', type=str, metavar='JSON',
                         help='JSON object with field updates: \'{"field": "value", ...}\'')
@@ -862,8 +982,8 @@ Examples:
                         help='Resolution (for closing transitions)')
 
     # Comment (explicit, separate from field updates)
-    parser.add_argument('--comment', '-m', type=str,
-                        help='Add a comment (explicit, separate from field updates)')
+    parser.add_argument('--comment', '-m', type=str, nargs='?', const='',
+                        help='Add a comment. With -set: pass -m alone for auto-generated sync comment, or -m "text" for custom')
 
     # Options
     parser.add_argument('--dry-run', '-n', action='store_true',
@@ -885,6 +1005,10 @@ Examples:
         parser.error("issue_key is required")
 
     issue_key = args.issue_key.upper()
+
+    # Validate etrack sync options: -set is required for -sc or -sav
+    if (args.sync_component or args.sync_affectsversion) and not args.sync_with_et:
+        parser.error("-set/--sync-with-et is required when using -sc or -sav")
 
     # Initialize client
     try:
@@ -915,6 +1039,35 @@ Examples:
 
     # Collect field updates
     updates = {}  # type: Dict[str, Any]
+    sync_comment = None  # type: Optional[str]
+
+    # Handle etrack sync if requested
+    if args.sync_with_et and (args.sync_component or args.sync_affectsversion):
+        try:
+            sync_updates, sync_comment = sync_etrack_to_jira(
+                client, issue_key, args.sync_with_et,
+                sync_component=args.sync_component,
+                sync_affectsversion=args.sync_affectsversion,
+                silent=args.silent
+            )
+            updates.update(sync_updates)
+        except RuntimeError as e:
+            print("Error: {}".format(e), file=sys.stderr)
+            return 1
+
+    # Combine user comment with sync comment (only if -m is passed)
+    final_comment = None  # type: Optional[str]
+    if args.comment is not None:  # -m was passed (could be empty string or with value)
+        if args.comment == '' and sync_comment:
+            # -m passed without value: use auto-generated sync comment
+            final_comment = sync_comment
+        elif args.comment and sync_comment:
+            # -m passed with value and sync_comment exists: combine them
+            final_comment = "{}\n\n{}".format(args.comment, sync_comment)
+        elif args.comment:
+            # -m passed with value, no sync_comment
+            final_comment = args.comment
+        # else: -m passed without value but no sync_comment -> final_comment stays None
 
     # Add updates from command-line arguments
     field_args = [
@@ -940,7 +1093,7 @@ Examples:
             return 1
 
     # Check if we have anything to do
-    if not updates and not args.comment:
+    if not updates and not final_comment:
         print("No updates specified. Use --help for usage.", file=sys.stderr)
         return 1
 
@@ -951,9 +1104,10 @@ Examples:
     # Perform update
     success = perform_update(
         client, issue_key, updates,
-        comment=args.comment,
+        comment=final_comment,
         dry_run=args.dry_run,
-        silent=args.silent
+        silent=args.silent,
+        potential_comment=sync_comment if not final_comment else None
     )
 
     return 0 if success else 1

@@ -651,6 +651,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                     "severity": "-",
                     "priority": "-",
                     "version": "-",
+                    "component": "-",
                     "abstract": f"Etrack module unavailable: {exc}",
                 }
             return details
@@ -665,6 +666,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "severity": "-",
                 "priority": "-",
                 "version": "-",
+                "component": "-",
                 "abstract": f"Unable to initialize Etrack executor: {exc}",
             }
         return details
@@ -681,6 +683,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "severity": info.severity or "-",
                 "priority": info.priority or "-",
                 "version": info.version or "-",
+                "component": info.component or "-",
                 "abstract": abstract,
             }
         else:
@@ -690,6 +693,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "severity": "-",
                 "priority": "-",
                 "version": "-",
+                "component": "-",
                 "abstract": "No etrack details found",
             }
 
@@ -2587,10 +2591,11 @@ def main() -> int:
                         info.get("severity", "-"),
                         info.get("priority", "-"),
                         info.get("version", "-"),
+                        info.get("component", "-"),
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "Src", "State", "Severity", "Priority", "Version", "Assignee", "Abstract"])
+                _print_table(rows, ["Incident", "Src", "State", "Severity", "Priority", "Version", "Component", "Assignee", "Abstract"])
                 print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
 
             if args.show_etrack_details:
