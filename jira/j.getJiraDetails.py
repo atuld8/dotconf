@@ -1102,7 +1102,14 @@ class JiraClient:
         response = self._get(url, params=params)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to search issues: {response.status_code} {response.text[:400]}")
-        return response.json().get("issues", [])
+        data = response.json()
+        issues = data.get("issues", [])
+        # Inject names mapping into each issue for _field_value_by_name() compatibility
+        names = data.get("names")
+        if names:
+            for issue in issues:
+                issue["names"] = names
+        return issues
 
     def get_field_key_by_name(self, display_name: str) -> Optional[str]:
         if self._fields_by_name is None:
@@ -1800,11 +1807,18 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
     _append_if_present(rows, "Slack", fields.get("customfield_24004"))
 
     if profile_type == "pvm":
+        # Re-fetch Progress Status with alternate names for PVM
+        progress_status = _field_value_by_any_name(issue, ["Progress Status", "PVM Progress Status", "Vulnerability Progress Status"])
+        if progress_status:
+            # Remove any existing Progress Status row and re-add with correct value
+            rows[:] = [r for r in rows if r[0] != "Progress Status"]
+            rows.append(["Progress Status", _format_selected_field_value(progress_status)])
         _append_if_present(rows, "Security Issue Watchers", _field_value_by_name(issue, "Security Issue Watchers"))
         _append_if_present(rows, "CVSS Score", _field_value_by_name(issue, "CVSS Score"))
         _append_if_present(rows, "Impact", _field_value_by_name(issue, "Impact"))
         _append_if_present(rows, "Source", _field_value_by_name(issue, "Source"))
         _append_if_present(rows, "Security Level", _field_value_by_name(issue, "Security Level"))
+        _append_if_present(rows, "Root Causes", _field_value_by_name(issue, "Root Causes"))
 
 
     versions_value = _field_value_by_name(issue, "Affects Version/s")
@@ -1840,17 +1854,20 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrac
         rows.sort(key=lambda row: label_order.get(row[0], 100))
     elif profile_type == "pvm":
         label_order = {
-            "Severity": 1,
-            "Security Level": 2,
-            "CVSS Score": 3,
-            "Impact": 4,
-            "Source": 5,
-            "Security Issue Watchers": 6,
-            "Watchers": 7,
-            "Watcher Groups": 8,
-            "Epic Link": 9,
-            "Sprint": 10,
-            "Affects Version/s": 11,
+            "Solution": 1,
+            "Progress Status": 2,
+            "Severity": 3,
+            "Security Level": 4,
+            "CVSS Score": 5,
+            "Impact": 6,
+            "Source": 7,
+            "Root Causes": 8,
+            "Security Issue Watchers": 9,
+            "Watchers": 10,
+            "Watcher Groups": 11,
+            "Epic Link": 12,
+            "Sprint": 13,
+            "Affects Version/s": 14,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
 
@@ -1925,6 +1942,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Impact",
         "Source",
         "Security Level",
+        "Root Causes",
     ]
 
     if output_format == "json":
@@ -1943,7 +1961,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         elif profile_type == "pvm":
             print(
                 f"* Issue: {_summary_value(summary_rows, 'Issue')} | * Status: {_summary_value(summary_rows, 'Status')} | "
-                f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | * Security Level: {_summary_value(summary_rows, 'Security Level')} | "
+                f"* Assignee: {_summary_value(summary_rows, 'Assignee')} | * Progress Status: {_summary_value(summary_rows, 'Progress Status')} | "
+                f"* Security Level: {_summary_value(summary_rows, 'Security Level')} | "
                 f"* CVSS Score: {_summary_value(summary_rows, 'CVSS Score')} | "
                 f"* Fixed Version/s: {_summary_value(summary_rows, 'Fixed Version/s')} | "
                 f"* Resolved: {_summary_value(summary_rows, 'Resolved')}"
@@ -2037,14 +2056,14 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         if value == "-" and not (profile_type == "fi" and label == "Case Priority"):
             continue
 
-        if profile_type == "pvm" and label in {"Solution", "Progress Status"}:
+        if profile_type == "pvm" and label in {"Solution", "Progress Status", "Root Causes"}:
             formatted_value = value
         else:
             formatted_value = _compact_text(value, max_len=80)
 
         field_prefix = "* "
         part = f"{field_prefix}{label}: {formatted_value}"
-        if profile_type == "pvm" and label in {"Solution", "Progress Status"}:
+        if profile_type == "pvm" and label in {"Solution", "Progress Status", "Root Causes"}:
             pvm_long_parts.append(part)
         else:
             optional_parts.append(part)
@@ -2053,7 +2072,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         for part in optional_parts:
             print(part)
         print(separator)
-    elif pvm_long_parts:
+    if pvm_long_parts:
         for part in pvm_long_parts:
             print(part)
         print(separator)
