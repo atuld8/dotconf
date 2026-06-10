@@ -11,6 +11,8 @@ Features:
 - Validate dropdown values before submitting
 - Support both single-field and JSON batch updates
 - Short option names for quick access
+- Sync fields from linked etrack (auto-fetch or explicit ID)
+- Transform etrack values via mapping file before applying
 
 Environment variables expected:
 - JIRA_SERVER_NAME
@@ -33,6 +35,36 @@ Usage Examples:
 
   # Dry run
   j.updateJiraDetails.py FI-12345 -s "Test" --dry-run
+
+  # Etrack sync (auto-fetch etrack ID from FI linked fields)
+  j.updateJiraDetails.py FI-12345 -set -sc              # Sync component
+  j.updateJiraDetails.py FI-12345 -set -sc -sav         # Sync component & version
+  j.updateJiraDetails.py FI-12345 -set -sc -mf map.json # Sync with value mapping
+
+  # Etrack sync (explicit etrack ID)
+  j.updateJiraDetails.py FI-12345 -set 12345678 -sc -sav
+
+Etrack Sync Options:
+  -set [ID]  --sync-with-et   Etrack ID (or auto-fetch if omitted)
+  -sc        --sync-component Sync component from etrack
+  -sav       --sync-affectsversion  Sync affects version from etrack
+  -mf FILE   --mapping-file   JSON file with etrack_mapping section
+
+Mapping File Format (JSON):
+  {
+    "fi_mapping": {
+      "component": {"CurrentFIValue": "NewValue"},
+      "version": {"6.1": "11.1"}
+    },
+    "etrack_mapping": {
+      "component": {"EtrackValue": "TargetJiraValue"},
+      "version": {"EtrackVer": "JiraVer"}
+    }
+  }
+
+  Sections:
+    fi_mapping     - Used by j.validateAndSyncFIs.py -mo mode
+    etrack_mapping - Used by -set -mf: transform etrack values before setting
 """
 
 from __future__ import print_function
@@ -628,6 +660,101 @@ def show_field_options(client, issue_key, field_name):
     print()
 
 
+def load_etrack_mappings(filepath, silent=False):
+    # type: (str, bool) -> Dict[str, Dict[str, str]]
+    """
+    Load etrack-to-jira value mappings from a JSON file.
+
+    Reads the 'etrack_mapping' section from the mapping file.
+    Used to transform etrack values before setting them in Jira.
+
+    Args:
+        filepath: Path to JSON mapping file
+        silent: Suppress warning messages
+
+    Returns:
+        Dict with 'component' and 'version' mappings (lowercase keys)
+
+    File format:
+    {
+        "fi_mapping": {...},
+        "etrack_mapping": {
+            "component": {"EtrackValue": "TargetJiraValue"},
+            "version": {"EtrackVer": "JiraVer"}
+        }
+    }
+    """
+    mappings = {"component": {}, "version": {}}  # type: Dict[str, Dict[str, str]]
+
+    if not filepath:
+        return mappings
+
+    expanded_path = os.path.expanduser(filepath)
+    if not os.path.isfile(expanded_path):
+        if not silent:
+            print("Warning: Mapping file not found: {}".format(expanded_path), file=sys.stderr)
+        return mappings
+
+    try:
+        with open(expanded_path, 'r') as f:
+            data = json.load(f)
+
+        section_data = data.get('etrack_mapping', {})
+        if not section_data:
+            if not silent:
+                print("Warning: No 'etrack_mapping' section in mapping file", file=sys.stderr)
+            return mappings
+
+        # Normalize keys to lowercase for case-insensitive matching
+        if "component" in section_data:
+            mappings["component"] = {
+                k.lower(): v for k, v in section_data["component"].items()
+            }
+        if "version" in section_data:
+            mappings["version"] = {
+                k.lower(): v for k, v in section_data["version"].items()
+            }
+
+        return mappings
+
+    except json.JSONDecodeError as e:
+        if not silent:
+            print("Warning: Invalid JSON in mapping file: {}".format(e), file=sys.stderr)
+        return mappings
+    except Exception as e:
+        if not silent:
+            print("Warning: Error loading mapping file: {}".format(e), file=sys.stderr)
+        return mappings
+
+
+def apply_etrack_mapping(value, mapping_type, mappings):
+    # type: (str, str, Dict[str, Dict[str, str]]) -> Tuple[str, bool]
+    """
+    Apply etrack value mapping if available.
+
+    Args:
+        value: Original etrack value
+        mapping_type: 'component' or 'version'
+        mappings: Loaded etrack_mapping dict
+
+    Returns:
+        Tuple of (mapped_value, was_mapped)
+    """
+    if not value:
+        return value, False
+
+    type_mappings = mappings.get(mapping_type, {})
+    if not type_mappings:
+        return value, False
+
+    # Try exact match (case-insensitive)
+    normalized = value.lower().strip()
+    if normalized in type_mappings:
+        return type_mappings[normalized], True
+
+    return value, False
+
+
 def extract_validated_etrack_id(client, issue_key, silent=False):
     # type: (JiraUpdateClient, str, bool) -> str
     """
@@ -715,10 +842,20 @@ def extract_validated_etrack_id(client, issue_key, silent=False):
     )
 
 
-def sync_etrack_to_jira(client, issue_key, etrack_id, sync_component=False, sync_affectsversion=False, silent=False):
-    # type: (JiraUpdateClient, str, str, bool, bool, bool) -> Tuple[Dict[str, Any], Optional[str]]
+def sync_etrack_to_jira(client, issue_key, etrack_id, sync_component=False, sync_affectsversion=False, silent=False, etrack_mappings=None):
+    # type: (JiraUpdateClient, str, str, bool, bool, bool, Optional[Dict[str, Dict[str, str]]]) -> Tuple[Dict[str, Any], Optional[str]]
     """
     Fetch etrack info and return updates dict for mismatched fields only.
+
+    Args:
+        client: JiraUpdateClient instance
+        issue_key: Jira issue key (e.g., FI-12345)
+        etrack_id: Etrack incident ID to sync from
+        sync_component: Sync component field
+        sync_affectsversion: Sync affects version field
+        silent: Suppress output messages
+        etrack_mappings: Optional dict to transform etrack values before setting
+                         Format: {"component": {"EtrackVal": "JiraVal"}, "version": {...}}
 
     Returns:
         Tuple of (field_updates_dict, sync_comment_string)
@@ -754,25 +891,44 @@ def sync_etrack_to_jira(client, issue_key, etrack_id, sync_component=False, sync
         print("  Components: {}".format(', '.join(current_components) if current_components else '(none)'))
         print("  Affects Version/s: {}".format(', '.join(current_versions) if current_versions else '(none)'))
 
+    # Initialize mappings if not provided
+    if etrack_mappings is None:
+        etrack_mappings = {"component": {}, "version": {}}
+
     # Sync component if requested and value exists in etrack
     if sync_component:
         et_component = etrack_info.component
         if et_component:
-            # Check if etrack component is already the only component in Jira
-            if current_components == [et_component]:
+            # Apply mapping if available
+            mapped_component, was_mapped = apply_etrack_mapping(et_component, "component", etrack_mappings)
+            target_component = mapped_component
+
+            # Check if target component is already the only component in Jira
+            if current_components == [target_component]:
                 if not silent:
-                    print("\n  -> Component '{}' already set in Jira (skipping)".format(et_component))
+                    print("\n  -> Component '{}' already set in Jira (skipping)".format(target_component))
             else:
-                # Replace all components with etrack component
-                updates['components'] = et_component
-                if current_components:
-                    sync_actions.append("Component: {} (replaced {})".format(et_component, ', '.join(current_components)))
-                    if not silent:
-                        print("\n  -> Component '{}' will replace '{}' in Jira".format(et_component, ', '.join(current_components)))
+                # Replace all components with target component
+                updates['components'] = target_component
+                if was_mapped:
+                    mapping_note = " (mapped from '{}')".format(et_component)
                 else:
-                    sync_actions.append("Component: {}".format(et_component))
+                    mapping_note = ""
+                if current_components:
+                    sync_actions.append("Component: {}{} (replaced {})".format(target_component, mapping_note, ', '.join(current_components)))
                     if not silent:
-                        print("\n  -> Component '{}' will be set in Jira".format(et_component))
+                        if was_mapped:
+                            print("\n  -> Component '{}' (mapped from etrack '{}') will replace '{}' in Jira".format(
+                                target_component, et_component, ', '.join(current_components)))
+                        else:
+                            print("\n  -> Component '{}' will replace '{}' in Jira".format(target_component, ', '.join(current_components)))
+                else:
+                    sync_actions.append("Component: {}{}".format(target_component, mapping_note))
+                    if not silent:
+                        if was_mapped:
+                            print("\n  -> Component '{}' (mapped from etrack '{}') will be set in Jira".format(target_component, et_component))
+                        else:
+                            print("\n  -> Component '{}' will be set in Jira".format(target_component))
         else:
             if not silent:
                 print("\n  -> Etrack component is empty (skipping)")
@@ -781,21 +937,36 @@ def sync_etrack_to_jira(client, issue_key, etrack_id, sync_component=False, sync
     if sync_affectsversion:
         et_version = etrack_info.version
         if et_version:
-            # Check if etrack version is already the only version in Jira
-            if current_versions == [et_version]:
+            # Apply mapping if available
+            mapped_version, was_mapped = apply_etrack_mapping(et_version, "version", etrack_mappings)
+            target_version = mapped_version
+
+            # Check if target version is already the only version in Jira
+            if current_versions == [target_version]:
                 if not silent:
-                    print("  -> Affects Version '{}' already set in Jira (skipping)".format(et_version))
+                    print("  -> Affects Version '{}' already set in Jira (skipping)".format(target_version))
             else:
-                # Replace all versions with etrack version
-                updates['affectsversions'] = et_version
-                if current_versions:
-                    sync_actions.append("Affects Version: {} (replaced {})".format(et_version, ', '.join(current_versions)))
-                    if not silent:
-                        print("  -> Affects Version '{}' will replace '{}' in Jira".format(et_version, ', '.join(current_versions)))
+                # Replace all versions with target version
+                updates['affectsversions'] = target_version
+                if was_mapped:
+                    mapping_note = " (mapped from '{}')".format(et_version)
                 else:
-                    sync_actions.append("Affects Version: {}".format(et_version))
+                    mapping_note = ""
+                if current_versions:
+                    sync_actions.append("Affects Version: {}{} (replaced {})".format(target_version, mapping_note, ', '.join(current_versions)))
                     if not silent:
-                        print("  -> Affects Version '{}' will be set in Jira".format(et_version))
+                        if was_mapped:
+                            print("  -> Affects Version '{}' (mapped from etrack '{}') will replace '{}' in Jira".format(
+                                target_version, et_version, ', '.join(current_versions)))
+                        else:
+                            print("  -> Affects Version '{}' will replace '{}' in Jira".format(target_version, ', '.join(current_versions)))
+                else:
+                    sync_actions.append("Affects Version: {}{}".format(target_version, mapping_note))
+                    if not silent:
+                        if was_mapped:
+                            print("  -> Affects Version '{}' (mapped from etrack '{}') will be set in Jira".format(target_version, et_version))
+                        else:
+                            print("  -> Affects Version '{}' will be set in Jira".format(target_version))
         else:
             if not silent:
                 print("  -> Etrack version is empty (skipping)")
@@ -1009,6 +1180,7 @@ Examples:
   %(prog)s FI-12345 -set -sc -m                   # Auto-fetch, sync with auto-generated comment
   %(prog)s FI-12345 -set 12345678 -sc -m "Note"   # Explicit ID, sync with custom + auto comment
   %(prog)s FI-12345 -set -sc --dry-run            # Preview auto-fetch sync (shows potential comment)
+  %(prog)s FI-12345 -set -sc -mf mapping.json     # Sync with etrack value mapping
 """)
 
     parser.add_argument('issue_key', nargs='?', help='Issue key (e.g., FI-12345, PVM-5678, NBU-9999)')
@@ -1059,6 +1231,8 @@ Examples:
                             help='Sync component from etrack to Jira (requires -set)')
     sync_group.add_argument('-sav', '--sync-affectsversion', action='store_true', dest='sync_affectsversion',
                             help='Sync affects version from etrack to Jira (requires -set)')
+    sync_group.add_argument('-mf', '--mapping-file', type=str, dest='mapping_file', metavar='FILE',
+                            help='JSON mapping file with etrack_mapping section to transform etrack values')
 
     # JSON update
     parser.add_argument('--update', '-u', type=str, metavar='JSON',
@@ -1140,12 +1314,25 @@ Examples:
             except RuntimeError as e:
                 print("Error: {}".format(e), file=sys.stderr)
                 return 1
+
+        # Load etrack mappings if specified
+        etrack_mappings = None  # type: Optional[Dict[str, Dict[str, str]]]
+        if args.mapping_file:
+            etrack_mappings = load_etrack_mappings(args.mapping_file, silent=args.silent)
+            if etrack_mappings and (etrack_mappings.get('component') or etrack_mappings.get('version')):
+                if not args.silent:
+                    print("Loaded etrack mappings: {} component, {} version".format(
+                        len(etrack_mappings.get('component', {})),
+                        len(etrack_mappings.get('version', {}))
+                    ))
+
         try:
             sync_updates, sync_comment = sync_etrack_to_jira(
                 client, issue_key, etrack_id_to_use,
                 sync_component=args.sync_component,
                 sync_affectsversion=args.sync_affectsversion,
-                silent=args.silent
+                silent=args.silent,
+                etrack_mappings=etrack_mappings
             )
             updates.update(sync_updates)
         except RuntimeError as e:

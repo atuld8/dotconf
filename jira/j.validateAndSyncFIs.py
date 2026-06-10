@@ -43,22 +43,36 @@ Short Options:
   -nr  --no-report        Skip report generation
   -sc  --sync-component   Sync only component
   -sv  --sync-version     Sync only version
-  -mf  --mapping-file     Value mapping JSON file
-  -mo  --mapping-only     Apply mappings without etrack
+  -mf  --mapping-file     Value mapping JSON file (uses fi_mapping section)
+  -mo  --mapping-only     Apply fi_mapping without etrack comparison
   -p   --parallel         Enable parallel processing
   -w   --workers          Number of parallel workers (default: 4)
 
 Mapping File Format (JSON):
   {
-    "component": {
-      "nb-core-security-infra": "CORE_SECURITY",
-      "old-comp": "NEW_COMP"
+    "fi_mapping": {
+      "component": {
+        "CurrentFIValue": "NewValue",
+        "old-comp": "NEW_COMP"
+      },
+      "version": {
+        "6.1": "11.1",
+        "6.2": "11.2"
+      }
     },
-    "version": {
-      "6.1": "11.1",
-      "6.2": "11.2"
+    "etrack_mapping": {
+      "component": {
+        "EtrackValue": "TargetJiraValue"
+      },
+      "version": {
+        "EtrackVer": "JiraVer"
+      }
     }
   }
+
+  Sections:
+    fi_mapping     - Used by -mo mode: map current FI values to new values
+    etrack_mapping - Used by j.updateJiraDetails.py -set -mf: map etrack values before setting
 """
 
 from __future__ import print_function
@@ -109,23 +123,25 @@ class ResultCategory:
 # FI Extraction
 # ---------------------------------------------------------------------------
 
-def load_mappings(filepath: str) -> Dict[str, Dict[str, str]]:
+def load_mappings(filepath: str, section: str = 'fi_mapping') -> Dict[str, Dict[str, str]]:
     """Load value mappings from a JSON file.
 
     Args:
         filepath: Path to JSON mapping file
+        section: Which section to load ('fi_mapping' or 'etrack_mapping')
 
     Returns:
         Dict with 'component' and 'version' mappings
 
     File format:
     {
-        "component": {
-            "source_value": "target_value",
-            "nb-core-security-infra": "CORE_SECURITY"
+        "fi_mapping": {
+            "component": {"CurrentFIValue": "NewValue"},
+            "version": {"6.1": "11.1"}
         },
-        "version": {
-            "6.1": "11.1"
+        "etrack_mapping": {
+            "component": {"EtrackValue": "TargetJiraValue"},
+            "version": {"EtrackVer": "JiraVer"}
         }
     }
     """
@@ -143,14 +159,20 @@ def load_mappings(filepath: str) -> Dict[str, Dict[str, str]]:
         with open(expanded_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
+        # Get the appropriate section
+        section_data = data.get(section, {})
+        if not section_data:
+            print(f"Warning: Section '{section}' not found in mapping file", file=sys.stderr)
+            return mappings
+
         # Normalize keys to lowercase for case-insensitive matching
-        if "component" in data:
+        if "component" in section_data:
             mappings["component"] = {
-                k.lower(): v for k, v in data["component"].items()
+                k.lower(): v for k, v in section_data["component"].items()
             }
-        if "version" in data:
+        if "version" in section_data:
             mappings["version"] = {
-                k.lower(): v for k, v in data["version"].items()
+                k.lower(): v for k, v in section_data["version"].items()
             }
 
         return mappings

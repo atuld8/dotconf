@@ -748,7 +748,7 @@ def extract_field_value(field_value: Any) -> str:
             val = extract_field_value(item)
             if val and val != "-":
                 values.append(val)
-        return ", ".join(values) if values else "-"
+        return "; ".join(values) if values else "-"
 
     return str(field_value)
 
@@ -893,7 +893,7 @@ def extract_etracks(fields: Dict[str, Any], etrack_field_id: str, alt_etrack_fie
         etracks.extend(re.findall(r'\d+', str(alt_et)))
 
     unique_etracks = sorted(set(etracks), key=int)
-    return ", ".join(unique_etracks) if unique_etracks else "-"
+    return "; ".join(unique_etracks) if unique_etracks else "-"
 
 
 # ---------------------------------------------------------------------------
@@ -1154,7 +1154,7 @@ class FIReport:
                 filter_patterns=['*-managers', '*-directors']
             )
             manager_groups_list = groups if groups else []
-            manager_groups = ", ".join(sorted(groups)) if groups else "-"
+            manager_groups = "; ".join(sorted(groups)) if groups else "-"
 
         # Dates
         created = normalize_timestamp(fields.get('created'))
@@ -1168,10 +1168,10 @@ class FIReport:
 
         # Components and Versions
         components_list = extract_list_values(fields.get('components'))
-        components = ", ".join(components_list) if components_list else "-"
+        components = "; ".join(components_list) if components_list else "-"
 
         versions_list = extract_list_values(fields.get('versions'))
-        versions = ", ".join(versions_list) if versions_list else "-"
+        versions = "; ".join(versions_list) if versions_list else "-"
 
         # Business Unit
         bu_field = self.KNOWN_FIELDS.get('business_unit')
