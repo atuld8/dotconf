@@ -28,59 +28,59 @@ QUICK START EXAMPLES
 ================================================================================
 
   List Fields:
-    j.manageSecurityIssueWatchers.py -W
+    j.manageWatchers.py -W
 
   List Watchers:
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -l              # SIW (default)
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -l -w IW        # Issue Watchers
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -l -w W         # built-in watchers
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -l -w all       # all fields
+    j.manageWatchers.py -j PROJ-1234 -l              # SIW (default)
+    j.manageWatchers.py -j PROJ-1234 -l -w IW        # Issue Watchers
+    j.manageWatchers.py -j PROJ-1234 -l -w W         # built-in watchers
+    j.manageWatchers.py -j PROJ-1234 -l -w all       # all fields
 
   Add Watchers:
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -a user1 user2
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -a user1 -w IW
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -A users.txt    # from file
+    j.manageWatchers.py -j PROJ-1234 -a user1 user2
+    j.manageWatchers.py -j PROJ-1234 -a user1 -w IW
+    j.manageWatchers.py -j PROJ-1234 -A users.txt    # from file
 
   Remove Watchers:
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -r user1 user2
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -R users.txt    # from file
+    j.manageWatchers.py -j PROJ-1234 -r user1 user2
+    j.manageWatchers.py -j PROJ-1234 -R users.txt    # from file
 
   Set Watchers (replace all):
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -s user1 user2 user3
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -S team.txt     # from file
+    j.manageWatchers.py -j PROJ-1234 -s user1 user2 user3
+    j.manageWatchers.py -j PROJ-1234 -S team.txt     # from file
 
 ================================================================================
 BULK OPERATIONS
 ================================================================================
 
   Multiple Issues:
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 PROJ-5678 PROJ-9999 -a user1
+    j.manageWatchers.py -j PROJ-1234 PROJ-5678 PROJ-9999 -a user1
 
   Issues from File:
-    j.manageSecurityIssueWatchers.py -f issues.txt -a user1
+    j.manageWatchers.py -f issues.txt -a user1
 
   Issues from JQL:
-    j.manageSecurityIssueWatchers.py -q "project = PROJ AND status = Open" -a user1
+    j.manageWatchers.py -q "project = PROJ AND status = Open" -a user1
 
   Pipe Issues:
-    echo "PROJ-1234" | j.manageSecurityIssueWatchers.py -a user1
+    echo "PROJ-1234" | j.manageWatchers.py -a user1
 
 ================================================================================
 OUTPUT OPTIONS
 ================================================================================
 
   Export to CSV:
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -l -o watchers.csv
+    j.manageWatchers.py -j PROJ-1234 -l -o watchers.csv
 
   Row Format (one issue per block):
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -l --row
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -l -w all --row
+    j.manageWatchers.py -j PROJ-1234 -l --row
+    j.manageWatchers.py -j PROJ-1234 -l -w all --row
 
   Quiet Mode (less verbose):
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -a user1 -Q
+    j.manageWatchers.py -j PROJ-1234 -a user1 -Q
 
   Dry Run (preview without changes):
-    j.manageSecurityIssueWatchers.py -j PROJ-1234 -a user1 -d
+    j.manageWatchers.py -j PROJ-1234 -a user1 -d
 
 ================================================================================
 ENVIRONMENT VARIABLES

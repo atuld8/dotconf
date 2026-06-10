@@ -12,6 +12,9 @@ Features:
 - Generate categorized success/failure reports (JSON + text)
 - Mapping-only mode: apply value translations without etrack comparison
 
+Note: Report outputs use semicolon (;) as separator for multi-value fields
+      for Excel compatibility.
+
 Usage:
   # From file
   j.validateAndSyncFIs.py ~/op/dump.validate.fi
@@ -1007,7 +1010,7 @@ def generate_reports(
             f.write("#" + "=" * 70 + "\n\n")
             for entry in results[ResultCategory.SKIP_NO_MISMATCH]:
                 etrack_ids = entry.get("etrack_ids", [])
-                f.write(f"{entry['fi_id']} (etracks: {', '.join(etrack_ids)})\n")
+                f.write(f"{entry['fi_id']} (etracks: {'; '.join(etrack_ids)})\n")
         report_files["skipped"] = skip_file
 
     return report_files
@@ -1021,6 +1024,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Batch validate FI issues against linked etrack and sync mismatched fields.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        usage="%(prog)s [-h] [-sc/--sync-component] [-sv/--sync-version] [-n/--dry-run]\n"
+              "                       [-d/--delay DELAY] [-o/--output-dir DIR] [-v/--verbose]\n"
+              "                       [-nr/--no-report] [-mf/--mapping-file FILE] [-mo/--mapping-only]\n"
+              "                       [-p/--parallel] [-w/--workers N] [input]",
         epilog="""
 Examples:
   # From file
@@ -1046,15 +1053,29 @@ Examples:
 
 Mapping File Format (JSON):
   {
-    "component": {
-      "nb-core-security-infra": "CORE_SECURITY",
-      "ita-portal": "ITA_PORTAL_NEW"
+    "fi_mapping": {
+      "component": {
+        "nb-core-security-infra": "CORE_SECURITY",
+        "ita-portal": "ITA_PORTAL_NEW"
+      },
+      "version": {
+        "6.1": "11.1",
+        "6.2": "11.2"
+      }
     },
-    "version": {
-      "6.1": "11.1",
-      "6.2": "11.2"
+    "etrack_mapping": {
+      "component": {
+        "EtrackValue": "TargetJiraValue"
+      },
+      "version": {
+        "EtrackVer": "JiraVer"
+      }
     }
   }
+
+  Sections:
+    fi_mapping     - Used by -mo mode: map current FI values to new values
+    etrack_mapping - Used by j.updateJiraDetails.py -set -mf: map etrack values
 """
     )
 
@@ -1067,62 +1088,62 @@ Mapping File Format (JSON):
 
     sync_group = parser.add_argument_group('Sync Options')
     sync_group.add_argument(
-        '--sync-component', '-sc',
+        '-sc', '--sync-component',
         action='store_true',
         dest='sync_component_only',
         help='Sync only component field (not version)'
     )
     sync_group.add_argument(
-        '--sync-version', '-sv',
+        '-sv', '--sync-version',
         action='store_true',
         dest='sync_version_only',
         help='Sync only version field (not component)'
     )
 
     parser.add_argument(
-        '--dry-run', '-n',
+        '-n', '--dry-run',
         action='store_true',
         help='Preview changes without applying'
     )
     parser.add_argument(
-        '--delay', '-d',
+        '-d', '--delay',
         type=float,
         default=0.5,
         help='Delay between API calls in seconds (default: 0.5)'
     )
     parser.add_argument(
-        '--output-dir', '-o',
+        '-o', '--output-dir',
         default=os.path.expanduser('~/op'),
         help='Directory for report files (default: ~/op)'
     )
     parser.add_argument(
-        '--verbose', '-v',
+        '-v', '--verbose',
         action='store_true',
         help='Print progress for each FI'
     )
     parser.add_argument(
-        '--no-report', '-nr',
+        '-nr', '--no-report',
         action='store_true',
         help='Skip generating report files'
     )
     parser.add_argument(
-        '--mapping-file', '-mf',
+        '-mf', '--mapping-file',
         type=str,
         metavar='FILE',
         help='JSON file with component/version value mappings (see doc for format)'
     )
     parser.add_argument(
-        '--mapping-only', '-mo',
+        '-mo', '--mapping-only',
         action='store_true',
         help='Apply mappings to FI values directly without etrack comparison'
     )
     parser.add_argument(
-        '--parallel', '-p',
+        '-p', '--parallel',
         action='store_true',
         help='Enable parallel processing for faster execution'
     )
     parser.add_argument(
-        '--workers', '-w',
+        '-w', '--workers',
         type=int,
         default=4,
         metavar='N',

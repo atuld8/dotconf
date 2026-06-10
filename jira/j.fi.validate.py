@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 FI Validator - Validate FI tickets against group-based version/component rules.
 
 Validates FI tickets using group-based configuration:
@@ -13,8 +13,11 @@ Input Methods:
 - Stdin (pipe FI IDs or JQL)
 
 Output:
-- Console table with validation results
-- Optional CSV export via -o/--output
+- Console table with validation results (compact codes)
+- Optional CSV export via -o/--output (human-readable validation notes)
+
+Note: Multi-value fields (Component/s, Affects Version/s, Manager Groups)
+use semicolon (;) as separator for Excel compatibility.
 
 Configuration File Format (INI-style):
     [GroupName:components]
@@ -37,7 +40,7 @@ Environment variables expected:
 
 Examples:
     # Build groups config from FI data (creates Unknown groups)
-    j.fi.validate.py -j "project = FI AND 'Business Unit' = NBU" \\
+    j.fi.validate.py -j "project = FI AND 'Business Unit' = NBU" \
         --build-groups groups.ini
 
     # Update existing config (merges, new items go to Unknown)
@@ -49,7 +52,7 @@ Examples:
     # Show only invalid FIs
     j.fi.validate.py -j "project = FI" -g groups.ini --errors-only
 
-    # Export results to CSV
+    # Export results to CSV (with human-readable validation notes)
     j.fi.validate.py -j "project = FI" -g groups.ini -o report.csv
 """
 
@@ -1448,6 +1451,8 @@ def print_validation_legend():
     print("  NoComp         - No component specified")
     print("  NoVer          - No version specified")
     print("  OK             - Valid")
+    print("")
+    print("  Note: CSV export (-o) uses human-readable messages instead of codes.")
 
 
 def print_detailed_failures(records: List[Dict]):
@@ -1481,8 +1486,68 @@ def print_not_found(not_found: List[str]):
         print(f"  - {key}")
 
 
+def humanize_validation_notes(compact_notes: str) -> str:
+    """Convert compact validation codes to human-readable format for CSV export.
+    
+    Transformations:
+    - HasN/A alone -> (empty, skip)
+    - HasN/A; X -> just X (suppress HasN/A prefix)
+    - NoVer -> "No version specified"
+    - NoComp -> "No component specified"
+    - BadComp:X -> "Bad component: X"
+    - BadVer:Y -> "Bad version: Y"
+    - V:Y/C:X -> "Version Y invalid for component X"
+    - Unassigned:X -> "Component X needs group assignment"
+    - IgnVer:Y, IgnV:Y/C:X -> (skip, warnings)
+    - OK -> "OK"
+    
+    Multi-line output uses literal newlines for Excel compatibility.
+    """
+    if not compact_notes or compact_notes == "OK":
+        return "OK"
+    
+    codes = [c.strip() for c in compact_notes.split(';')]
+    messages = []
+    
+    for code in codes:
+        # Skip warnings and informational codes
+        if code == 'HasN/A' or code.startswith('IgnVer:') or code.startswith('IgnV:'):
+            continue
+        
+        if code == 'NoVer':
+            messages.append("No version specified")
+        elif code == 'NoComp':
+            messages.append("No component specified")
+        elif code.startswith('BadComp:'):
+            comp = code[8:]  # After "BadComp:"
+            messages.append(f"Bad component: {comp}")
+        elif code.startswith('BadVer:'):
+            ver = code[7:]  # After "BadVer:"
+            messages.append(f"Bad version: {ver}")
+        elif code.startswith('V:') and '/C:' in code:
+            # V:10.3.0.1/C:alta-services
+            parts = code.split('/C:')
+            ver = parts[0][2:]  # After "V:"
+            comp = parts[1] if len(parts) > 1 else "?"
+            messages.append(f"Version {ver} invalid for component {comp}")
+        elif code.startswith('Unassigned:'):
+            comp = code[11:]  # After "Unassigned:"
+            messages.append(f"Component {comp} needs group assignment")
+        else:
+            # Keep unknown codes as-is
+            messages.append(code)
+    
+    if not messages:
+        return "OK"
+    
+    return "\n".join(messages)
+
+
 def export_csv(records: List[Dict], output_path: str, columns: List[str] = None):
-    """Export records to CSV file."""
+    """Export records to CSV file.
+    
+    Transforms 'Validation Notes' to human-readable format with multi-line support.
+    """
     if not records:
         print("No records to export.", file=sys.stderr)
         return
@@ -1497,7 +1562,14 @@ def export_csv(records: List[Dict], output_path: str, columns: List[str] = None)
         writer = csv.DictWriter(f, fieldnames=available_columns, extrasaction='ignore')
         writer.writeheader()
         for record in records:
-            writer.writerow({col: record.get(col, "") for col in available_columns})
+            row = {}
+            for col in available_columns:
+                val = record.get(col, "")
+                # Transform Validation Notes to human-readable format
+                if col == 'Validation Notes':
+                    val = humanize_validation_notes(val)
+                row[col] = val
+            writer.writerow(row)
 
     print(f"Exported {len(records)} records to {output_path}", file=sys.stderr)
 
@@ -1641,7 +1713,7 @@ def parse_args():
     # Output options
     output_group = parser.add_argument_group('Output Options')
     output_group.add_argument('-o', '--output', type=str,
-                              help='Export results to CSV file')
+                              help='Export results to CSV file (uses human-readable validation notes)')
     output_group.add_argument('-s', '--no-summary', action='store_true',
                               help='Skip printing summary')
     output_group.add_argument('-S', '--show', type=str, choices=['all', 'valid', 'invalid'],
