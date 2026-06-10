@@ -843,17 +843,17 @@ def process_fi_batch(
                     if verbose:
                         msg = _format_verbose_result(category, entry, dry_run, mapping_only)
                         with _print_lock:
-                            print(f"[{completed}/{total}] {fi_id}... {msg}")
+                            print(f"[{completed}/{total}] {fi_id} ... {msg}")
                 except Exception as e:
                     results[ResultCategory.FAIL_FETCH].append({"fi_id": fi_id, "error": str(e)})
                     if verbose:
                         with _print_lock:
-                            print(f"[{completed}/{total}] {fi_id}... [ERROR] {e}")
+                            print(f"[{completed}/{total}] {fi_id} ... [ERROR] {e}")
     else:
         # Sequential processing (original behavior)
         for idx, fi_id in enumerate(fi_ids, 1):
             if verbose:
-                print(f"[{idx}/{total}] Processing {fi_id}...", end=" ", flush=True)
+                print(f"[{idx}/{total}] Processing {fi_id} ...", end=" ", flush=True)
 
             category, entry = _process_single_fi(
                 fi_id, sync_component, sync_version,
