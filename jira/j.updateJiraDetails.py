@@ -628,6 +628,93 @@ def show_field_options(client, issue_key, field_name):
     print()
 
 
+def extract_validated_etrack_id(client, issue_key, silent=False):
+    # type: (JiraUpdateClient, str, bool) -> str
+    """
+    Extract and validate a single etrack ID from FI's linked etrack fields.
+
+    Checks 4 source fields:
+    - EI = Etrack Incident (customfield_33802)
+    - ER = Etrack Ref (customfield_36508)
+    - RD = NBU R&D Ticket (named field)
+    - INT = Etrack Incident (Internal) (named field)
+
+    Raises:
+        RuntimeError: If no etrack ID found, or multiple distinct IDs from different sources
+
+    Returns:
+        The single validated etrack ID string
+    """
+    import re
+
+    # Fetch issue (names already expanded by default)
+    issue_data = client.get_issue(issue_key)
+    fields = issue_data.get('fields', {})
+    names = issue_data.get('names', {})
+
+    # Build sources dict: etrack_id -> [source_codes]
+    sources = {}  # type: Dict[str, List[str]]
+
+    def add_ids(raw_value, source_name):
+        # type: (Any, str) -> None
+        if raw_value:
+            for match in re.findall(r"\d+", str(raw_value)):
+                if int(match) >= 100000:  # Filter small numbers
+                    if match not in sources:
+                        sources[match] = []
+                    if source_name not in sources[match]:
+                        sources[match].append(source_name)
+
+    # Check known customfield IDs
+    add_ids(fields.get("customfield_33802"), "EI")
+    add_ids(fields.get("customfield_36508"), "ER")
+
+    # Check by field name using names mapping
+    name_patterns = {
+        "nbu r&d ticket": "RD",
+        "nbu r&d ticket:": "RD",
+        "etrack incident (internal)": "INT",
+        "etrack incident (internal):": "INT",
+    }
+    for key, mapped_name in names.items():
+        if not isinstance(mapped_name, str):
+            continue
+        normalized = mapped_name.strip().casefold()
+        for pattern, display_name in name_patterns.items():
+            if normalized == pattern or normalized.startswith(pattern.rstrip(":")):
+                add_ids(fields.get(key), display_name)
+                break
+
+    # Validation
+    if not sources:
+        raise RuntimeError(
+            "No etrack ID found in {}.\n"
+            "Checked fields: Etrack Incident (EI), Etrack Ref (ER), "
+            "NBU R&D Ticket (RD), Etrack Incident Internal (INT)".format(issue_key)
+        )
+
+    unique_ids = list(sources.keys())
+
+    if len(unique_ids) == 1:
+        etrack_id = unique_ids[0]
+        source_list = sources[etrack_id]
+        if not silent:
+            print("Auto-detected etrack ID: {} (from: {})".format(etrack_id, ', '.join(source_list)))
+        return etrack_id
+
+    # Multiple distinct etrack IDs found
+    details = []
+    for eid, src_list in sorted(sources.items(), key=lambda x: int(x[0])):
+        details.append("{} (from {})".format(eid, ', '.join(src_list)))
+
+    raise RuntimeError(
+        "Multiple distinct etrack IDs found in {} from different sources:\n  {}\n"
+        "Please specify one explicitly with: -set <etrack_id>".format(
+            issue_key, '\n  '.join(details)
+        )
+    )
+
+
 def sync_etrack_to_jira(client, issue_key, etrack_id, sync_component=False, sync_affectsversion=False, silent=False):
     # type: (JiraUpdateClient, str, str, bool, bool, bool) -> Tuple[Dict[str, Any], Optional[str]]
     """
@@ -916,10 +1003,12 @@ Examples:
   %(prog)s -lf
 
   # Etrack sync examples:
-  %(prog)s FI-12345 -set 12345678 -sc             # Sync component (no comment)
-  %(prog)s FI-12345 -set 12345678 -sc -m          # Sync with auto-generated comment
-  %(prog)s FI-12345 -set 12345678 -sc -m "Note"   # Sync with custom + auto comment
-  %(prog)s FI-12345 -set 12345678 -sc --dry-run   # Preview sync changes (shows potential comment)
+  %(prog)s FI-12345 -set 12345678 -sc             # Sync component with explicit etrack ID
+  %(prog)s FI-12345 -set -sc                      # Auto-fetch etrack from FI linked fields
+  %(prog)s FI-12345 -set -sc -sav                 # Auto-fetch and sync both component & version
+  %(prog)s FI-12345 -set -sc -m                   # Auto-fetch, sync with auto-generated comment
+  %(prog)s FI-12345 -set 12345678 -sc -m "Note"   # Explicit ID, sync with custom + auto comment
+  %(prog)s FI-12345 -set -sc --dry-run            # Preview auto-fetch sync (shows potential comment)
 """)
 
     parser.add_argument('issue_key', nargs='?', help='Issue key (e.g., FI-12345, PVM-5678, NBU-9999)')
@@ -964,8 +1053,8 @@ Examples:
 
     # Etrack sync options
     sync_group = parser.add_argument_group('Etrack Sync Options')
-    sync_group.add_argument('-set', '--sync-with-et', type=str, dest='sync_with_et', metavar='ETRACK_ID',
-                            help='Etrack incident ID to sync from (required for -sc, -sav)')
+    sync_group.add_argument('-set', '--sync-with-et', nargs='?', const='auto', dest='sync_with_et', metavar='ETRACK_ID',
+                            help='Etrack ID to sync from. If omitted, auto-fetch from FI linked etracks (requires -sc or -sav)')
     sync_group.add_argument('-sc', '--sync-component', action='store_true', dest='sync_component',
                             help='Sync component from etrack to Jira (requires -set)')
     sync_group.add_argument('-sav', '--sync-affectsversion', action='store_true', dest='sync_affectsversion',
@@ -1043,9 +1132,17 @@ Examples:
 
     # Handle etrack sync if requested
     if args.sync_with_et and (args.sync_component or args.sync_affectsversion):
+        # Resolve etrack ID (explicit or auto-fetch)
+        etrack_id_to_use = args.sync_with_et
+        if etrack_id_to_use == 'auto':
+            try:
+                etrack_id_to_use = extract_validated_etrack_id(client, issue_key, silent=args.silent)
+            except RuntimeError as e:
+                print("Error: {}".format(e), file=sys.stderr)
+                return 1
         try:
             sync_updates, sync_comment = sync_etrack_to_jira(
-                client, issue_key, args.sync_with_et,
+                client, issue_key, etrack_id_to_use,
                 sync_component=args.sync_component,
                 sync_affectsversion=args.sync_affectsversion,
                 silent=args.silent
