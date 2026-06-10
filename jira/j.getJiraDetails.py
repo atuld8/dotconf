@@ -828,8 +828,13 @@ def _version_matches(fi_version: str, etrack_version: str) -> bool:
     return False
 
 
-def _component_matches(fi_component: str, etrack_component: str) -> bool:
-    """Check if FI component matches etrack component (fuzzy match).
+def _component_matches(fi_component: str, etrack_component: str, fuzzy: bool = False) -> bool:
+    """Check if FI component matches etrack component.
+
+    Args:
+        fi_component: FI component value
+        etrack_component: Etrack component value
+        fuzzy: If True, use loose matching (containment). If False (default), strict match.
 
     Handles formats:
     - FI: "Backup", etrack: "NBU-Backup"
@@ -841,22 +846,23 @@ def _component_matches(fi_component: str, etrack_component: str) -> bool:
     if not fi_norm or not et_norm:
         return fi_norm == et_norm
 
-    # Exact match
+    # Exact match (always checked)
     if fi_norm == et_norm:
         return True
 
-    # Check containment
-    if fi_norm in et_norm or et_norm in fi_norm:
-        return True
-
-    # Remove hyphens and check
-    fi_clean = re.sub(r"[-_]", " ", fi_norm).strip()
-    et_clean = re.sub(r"[-_]", " ", et_norm).strip()
+    # Remove hyphens/underscores and check exact match
+    fi_clean = re.sub(r"[-_]", "", fi_norm).strip()
+    et_clean = re.sub(r"[-_]", "", et_norm).strip()
 
     if fi_clean == et_clean:
         return True
-    if fi_clean in et_clean or et_clean in fi_clean:
-        return True
+
+    # Fuzzy matching: check containment (loose match)
+    if fuzzy:
+        if fi_norm in et_norm or et_norm in fi_norm:
+            return True
+        if fi_clean in et_clean or et_clean in fi_clean:
+            return True
 
     return False
 
@@ -865,8 +871,15 @@ def _compare_etrack_fi_values(
     summary_rows: List[List[str]],
     etrack_info: Dict[str, Dict[str, str]],
     etrack_ids: List[str],
+    fuzzy_match: bool = False,
 ) -> List[Dict[str, Any]]:
     """Compare etrack values vs FI values for component, version, assignee.
+
+    Args:
+        summary_rows: Summary rows from FI
+        etrack_info: Etrack details keyed by etrack ID
+        etrack_ids: List of etrack IDs to compare
+        fuzzy_match: If True, use loose matching for components. Default is strict.
 
     Returns a list of comparison results, one per etrack ID:
     [
@@ -901,7 +914,7 @@ def _compare_etrack_fi_values(
         # Component comparison
         fi_comp = fi_values.get("component", "-")
         et_comp = info.get("component", "-")
-        comp_match = _component_matches(fi_comp, et_comp)
+        comp_match = _component_matches(fi_comp, et_comp, fuzzy=fuzzy_match)
         comparisons.append({
             "field": "Component",
             "fi_value": fi_comp,
@@ -2266,6 +2279,7 @@ def _build_json_output(
     include_field_issues_for_customer_section: bool,
     customer_field_issues_headers: Optional[List[str]] = None,
     customer_field_issues_meta: Optional[Dict[str, Any]] = None,
+    fuzzy_match: bool = False,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "profile": profile_type,
@@ -2302,7 +2316,7 @@ def _build_json_output(
 
         # Add FI vs Etrack comparison for mismatches
         if etrack_info and etrack_ids:
-            comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids)
+            comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids, fuzzy_match=fuzzy_match)
             mismatches = []
             for result in comparison_results:
                 for comp in result["comparisons"]:
@@ -2448,6 +2462,15 @@ def main() -> int:
             "If etrack incident IDs are present, fetch and show etrack summary details "
             "(hard override: enables etrack section). "
             "Source codes: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)."
+        ),
+    )
+    parser.add_argument(
+        "-fm",
+        "--fuzzy-match",
+        action="store_true",
+        help=(
+            "Use fuzzy matching for FI vs Etrack component comparison (containment-based). "
+            "Default is strict matching (exact match after normalization)."
         ),
     )
     parser.add_argument(
@@ -2732,6 +2755,7 @@ def main() -> int:
             include_field_issues_for_customer_section="customer-field-issues" in enabled_sections,
             customer_field_issues_headers=customer_field_issues_headers,
             customer_field_issues_meta=customer_field_issues_meta,
+            fuzzy_match=args.fuzzy_match,
         )
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
@@ -2918,7 +2942,7 @@ def main() -> int:
 
                 # Show FI vs Etrack comparison for mismatches
                 if etrack_info:
-                    comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids)
+                    comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids, fuzzy_match=args.fuzzy_match)
                     _print_etrack_fi_comparison(comparison_results, show_all=False)
 
             if args.show_etrack_details:

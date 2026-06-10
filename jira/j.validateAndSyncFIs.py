@@ -48,6 +48,7 @@ Short Options:
   -sv  --sync-version     Sync only version
   -mf  --mapping-file     Value mapping JSON file (uses fi_mapping section)
   -mo  --mapping-only     Apply fi_mapping without etrack comparison
+  -fm  --fuzzy-match      Use fuzzy matching for component comparison (default: strict)
   -p   --parallel         Enable parallel processing
   -w   --workers          Number of parallel workers (default: 4)
 
@@ -100,6 +101,9 @@ if hasattr(sys.stdout, 'reconfigure'):
 # Path to jira scripts (same directory as this script)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 GET_DETAILS_SCRIPT = os.path.join(SCRIPT_DIR, 'j.getJiraDetails.py')
+
+# Module-level flag for fuzzy matching (set from main, used by fetch_fi_details)
+_fuzzy_match_enabled = False
 UPDATE_SCRIPT = os.path.join(SCRIPT_DIR, 'j.updateJiraDetails.py')
 
 # Global mappings (loaded from file)
@@ -269,6 +273,8 @@ def fetch_fi_details(fi_id: str, timeout: int = 60, with_etrack: bool = True) ->
     cmd = ['python3', GET_DETAILS_SCRIPT, fi_id, '--format', 'json']
     if with_etrack:
         cmd.insert(3, '-e')  # Insert after fi_id
+    if _fuzzy_match_enabled:
+        cmd.append('--fuzzy-match')
 
     try:
         # Use shell to inherit environment (for JIRA_SERVER_NAME, JIRA_ACC_TOKEN)
@@ -1138,6 +1144,11 @@ Mapping File Format (JSON):
         help='Apply mappings to FI values directly without etrack comparison'
     )
     parser.add_argument(
+        '-fm', '--fuzzy-match',
+        action='store_true',
+        help='Use fuzzy matching for FI vs Etrack component comparison (containment-based). Default is strict.'
+    )
+    parser.add_argument(
         '-p', '--parallel',
         action='store_true',
         help='Enable parallel processing for faster execution'
@@ -1151,6 +1162,10 @@ Mapping File Format (JSON):
     )
 
     args = parser.parse_args()
+
+    # Set module-level fuzzy match flag for subprocess calls
+    global _fuzzy_match_enabled
+    _fuzzy_match_enabled = args.fuzzy_match
 
     # Determine which fields to sync
     # If neither --sync-component nor --sync-version specified, sync both

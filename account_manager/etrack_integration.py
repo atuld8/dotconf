@@ -452,12 +452,21 @@ class EtrackExecutor:
             if 'rows selected' in line.lower() or 'row selected' in line.lower():
                 continue
 
-            # Parse the data line - use pipe split to preserve empty fields
-            if '|' in line:
-                parts = [p.strip() for p in line.split('|')]
-            else:
+            # Parse the data line - prioritize tabs/spaces over pipes
+            # (pipes often appear in abstract field as part of data)
+            if '\t' in line:
                 # Tab-separated - split on tabs, preserving empty fields
                 parts = [p.strip() for p in line.split('\t')]
+            elif re.search(r'\s{2,}', line):
+                # Whitespace-separated (fixed-width columns) - split on 2+ spaces
+                # This is common in esql output when columns have varying widths
+                parts = [p.strip() for p in re.split(r'\s{2,}', line)]
+            elif '|' in line and line.count('|') >= 3:
+                # Pipe-separated (only if multiple pipes suggest real separators)
+                parts = [p.strip() for p in line.split('|')]
+            else:
+                # Single space separated (unlikely but fallback)
+                parts = [p.strip() for p in line.split()]
 
             # Filter completely empty parts only at the ends
             while parts and not parts[0]:
@@ -534,7 +543,7 @@ class EtrackExecutor:
             batch = incident_nos[i:i + batch_size]
             in_list = ','.join(batch)
             query = (
-                f"SELECT incident, assigned_to, state, severity, priority, version, abstract "
+                f"SELECT incident, assigned_to, state, severity, priority, version, component, abstract "
                 f"FROM incident WHERE incident IN ({in_list})"
             )
 
@@ -568,12 +577,20 @@ class EtrackExecutor:
                 if 'rows selected' in line.lower() or 'row selected' in line.lower():
                     continue
 
-                # Parse the data line - use pipe split to preserve empty fields
-                if '|' in line:
-                    parts = [p.strip() for p in line.split('|')]
-                else:
+                # Parse the data line - prioritize tabs/spaces over pipes
+                # (pipes often appear in abstract field as part of data)
+                if '\t' in line:
                     # Tab-separated
                     parts = [p.strip() for p in line.split('\t')]
+                elif re.search(r'\s{2,}', line):
+                    # Whitespace-separated (fixed-width columns) - split on 2+ spaces
+                    parts = [p.strip() for p in re.split(r'\s{2,}', line)]
+                elif '|' in line and line.count('|') >= 3:
+                    # Pipe-separated (only if multiple pipes suggest real separators)
+                    parts = [p.strip() for p in line.split('|')]
+                else:
+                    # Single space separated (unlikely but fallback)
+                    parts = [p.strip() for p in line.split()]
 
                 # Filter completely empty parts only at the ends
                 while parts and not parts[0]:
@@ -595,18 +612,28 @@ class EtrackExecutor:
                     severity = None
                     priority = None
                     version = None
+                    component = None
                     abstract = parts[3]
-                elif len(parts) >= 7:
-                    # Full format: incident, assigned_to, state, severity, priority, found_in_ver, abstract
+                elif len(parts) >= 8:
+                    # Full format: incident, assigned_to, state, severity, priority, version, component, abstract
                     severity = parts[3] if parts[3] else None
                     priority = parts[4] if parts[4] else None
                     version = parts[5] if parts[5] else None
+                    component = parts[6] if parts[6] else None
+                    abstract = parts[7] if len(parts) > 7 else None
+                elif len(parts) >= 7:
+                    # Old format without component: incident, assigned_to, state, severity, priority, version, abstract
+                    severity = parts[3] if parts[3] else None
+                    priority = parts[4] if parts[4] else None
+                    version = parts[5] if parts[5] else None
+                    component = None
                     abstract = parts[6] if len(parts) > 6 else None
                 else:
                     # Partial - fields may be empty/collapsed, last field is likely abstract
                     severity = None
                     priority = None
                     version = None
+                    component = None
                     abstract = parts[-1] if len(parts) > 3 else None
 
                 results[incident_no] = EtrackInfo(
@@ -617,6 +644,7 @@ class EtrackExecutor:
                     priority=priority,
                     abstract=abstract,
                     version=version,
+                    component=component,
                 )
 
             for incident_no in batch:
