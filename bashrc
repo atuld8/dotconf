@@ -396,7 +396,7 @@ trimoutput() {
 
 myssh ()
 {
-    ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1
+    ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" $1
 }
 
 mysshtest ()
@@ -410,25 +410,25 @@ mysshtest ()
     ssh -o "BatchMode yes" $1 "ls > /dev/null" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo "Setting passwordless login";
-        ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1 "mkdir ~/.ssh; echo `cat ~/.ssh/id_rsa.pub` >> ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 644 ~/.ssh/authorized_keys"
+        ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" $1 "mkdir ~/.ssh; echo `cat ~/.ssh/id_rsa.pub` >> ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 644 ~/.ssh/authorized_keys"
         ssh -o "BatchMode yes" $1 "ls > /dev/null" > /dev/null 2>&1
         if [ $? -ne 0 ]; then
             echo "Coping custom bashrc";
-            tar cf - -C ~/.vim/ bashrc | ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;"
+            tar cf - -C ~/.vim/ bashrc | ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;"
             echo "Logging to bash";
-            ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -t $1 "bash --rcfile ~/bashrc -i;"
+            ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" -t $1 "bash --rcfile ~/bashrc -i;"
         else
             echo "Coping custom bashrc";
-            tar cf - -C ~/.vim bashrc | ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "BatchMode yes"  -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;"
+            tar cf - -C ~/.vim bashrc | ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "BatchMode yes"  -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;"
             echo "Logging to bash";
-            ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -o "BatchMode yes" -t $1 "bash --rcfile ~/bashrc -i;"
+            ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" -o "BatchMode yes" -t $1 "bash --rcfile ~/bashrc -i;"
         fi
     else
         echo "Coping custom bashrc";
-        tar cf - -C ~/.vim bashrc | ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "BatchMode yes"  -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;"
+        tar cf - -C ~/.vim bashrc | ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "BatchMode yes"  -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;"
         echo "Logging to bash";
         tmux rename-window "$(echo $* | cut -d @ -f2)"
-        ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -o "BatchMode yes" -t $1 "bash --rcfile ~/.bashrc -i;"
+        ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" -o "BatchMode yes" -t $1 "bash --rcfile ~/.bashrc -i;"
     fi
 }
 
@@ -463,16 +463,16 @@ mysshcftpne ()
 mysshpass ()
 {
     echo "Coping custom bashrc";
-    tar cf - -C ~/.vim bashrc | sshpass -f ~/.stdpass ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "BatchMode yes" -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;";
+    tar cf - -C ~/.vim bashrc | sshpass -f ~/.stdpass ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "BatchMode yes" -o "ForwardX11=yes" $1 "tar xf - > /dev/null 2>&1;";
     echo "Logging to bash";
-    sshpass -f ~/.stdpass ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -o "BatchMode yes" -t $1 "bash --rcfile ~/bashrc -i;"
+    sshpass -f ~/.stdpass ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" -o "BatchMode yes" -t $1 "bash --rcfile ~/bashrc -i;"
 }
 
 #vimscp () {    CMD=`echo $1 | sed -e's/:/\//g'`;    CMD="scp://${CMD}";    vim $CMD; }
 vimscp () {    CMD=`echo $@ | sed -e's/:/\//g'`; newCMD="";  for tok in `echo $CMD`; do `echo $tok | egrep ".*@.*//.*" > /dev/null`; if [ $? -eq 0 ]; then newCMD=$newCMD" scp://${tok}"; else newCMD=$newCMD" $tok"; fi;  done;   vim $newCMD; }
 
 # connect to server and start the java gui at Windows Eng server
-jnbSAcft () { ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" root@pcft-vm$1 "/usr/openv/netbackup/bin/jnbSA -d $WIN_ENG_SYS.$PUNIN:1.0 &"; }
+jnbSAcft () { ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -o "ForwardX11=yes" root@pcft-vm$1 "/usr/openv/netbackup/bin/jnbSA -d $WIN_ENG_SYS.$PUNIN:1.0 &"; }
 
 alias mysshpasscmd="sshpass -f ~/.stdpass ssh $@"
 
@@ -520,7 +520,7 @@ function ttmux {
     else
         CMD="tmux attach -d -t tmux_$SID || tmux new -s tmux_$SID"
     fi
-    ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -t $NIS_USER@$NIS_SERVER $CMD
+    ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -t $NIS_USER@$NIS_SERVER $CMD
 }
 
 function tscreen {
@@ -535,7 +535,7 @@ function tscreen {
     else
         CMD="screen -d -R tmux_$SID"
     fi
-    ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -t $NIS_USER@$NIS_SERVER $CMD
+    ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -t $NIS_USER@$NIS_SERVER $CMD
 }
 ##########################
 # tmux funtions end
