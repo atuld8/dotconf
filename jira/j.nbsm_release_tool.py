@@ -1483,7 +1483,7 @@ class ReleaseProcessor:
             labels_from_env: Use JIRA_LABELS env var if --labels not provided
             legacy_default_labels: Use default label 'NBServerMigrator' if no labels specified
             metadata_from_env: Use env vars for missing metadata values:
-                              JIRA_LABELS, JIRA_COMPONENT, JIRA_EPIC_LINK, JIRA_WATCHER_GROUP
+                              JIRA_PROJECT_KEY, JIRA_LABELS, JIRA_COMPONENT, JIRA_EPIC_LINK, JIRA_WATCHER_GROUP
 
         Returns:
             Dict with success/failure counts
@@ -1593,6 +1593,18 @@ class ReleaseProcessor:
             if jiras:
                 tag_label = tag if tag else '(no build-id)'
                 print(f"  {tag_label}: {', '.join(jiras)}")
+
+        # Auto-detect project_key from env var or first Jira ID if not provided
+        if not project_key:
+            env_project_key = os.getenv('JIRA_PROJECT_KEY', '').strip()
+            if env_project_key:
+                project_key = env_project_key
+                print(f"\nUsing project key from JIRA_PROJECT_KEY: {project_key}")
+            elif all_jira_ids:
+                first_jira = all_jira_ids[0]
+                if '-' in first_jira:
+                    project_key = first_jira.split('-')[0]
+                    print(f"\nAuto-detected project key from Jira ID: {project_key}")
 
         # Resolve component ID if component name provided
         component_id = None
@@ -1713,12 +1725,7 @@ class ReleaseProcessor:
 # CLI
 # =============================================================================
 
-def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description='NBSM Release Tool - Manage releases and update Jira tickets',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+DETAILED_EXAMPLES = """
 ================================================================================
 EXAMPLES
 ================================================================================
@@ -1726,220 +1733,116 @@ EXAMPLES
 LIST-TAGS - Show available tags
 -------------------------------
   # List all NBSM/NBSVRUP tags
-  %(prog)s list-tags
+  j.nbsm_release_tool.py list-tags
 
   # Filter by version
-  %(prog)s list-tags --version 2.9
+  j.nbsm_release_tool.py list-tags --version 2.9
 
   # Filter by prefix (NBSM or NBSVRUP)
-  %(prog)s list-tags --prefix NBSM
+  j.nbsm_release_tool.py list-tags --prefix NBSM
 
   # Show tags in a specific range
-  %(prog)s list-tags --from NBSM_2.9_0001 --to NBSM_2.9_0010
-
-  # Use custom repository
-  %(prog)s list-tags --repo ~/my/custom/repo
-
-  # Use a different branch
-  %(prog)s list-tags --branch origin/develop
+  j.nbsm_release_tool.py list-tags --from NBSM_2.9_0001 --to NBSM_2.9_0010
 
 EXTRACT-JIRAS - Extract Jira IDs from git
 -----------------------------------------
   # Single tag pair (auto-detect predecessor)
-  %(prog)s extract-jiras --tag NBSM_2.9_0010
+  j.nbsm_release_tool.py extract-jiras --tag NBSM_2.9_0010
 
   # Explicit tag range (single comparison)
-  %(prog)s extract-jiras --from NBSM_2.9_0009 --to NBSM_2.9_0010
+  j.nbsm_release_tool.py extract-jiras --from NBSM_2.9_0009 --to NBSM_2.9_0010
 
   # Walk entire range (process all intermediate tags)
-  %(prog)s extract-jiras --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+  j.nbsm_release_tool.py extract-jiras --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
 
   # Full version range - auto-resolve first to latest tag
-  %(prog)s extract-jiras --full-range NBSM_2.9 --walk-range
-  %(prog)s extract-jiras --full-range NBSVRUP_3.0 --walk-range
+  j.nbsm_release_tool.py extract-jiras --full-range NBSM_2.9 --walk-range
 
   # Include what went INTO the first tag (using explicit base)
-  %(prog)s extract-jiras --from NBSM_2.8_0001 --to NBSM_2.8_0010 --base NBSM_2.7_0050 --walk-range
-  %(prog)s extract-jiras --full-range NBSM_2.8 --base abc1234 --walk-range
+  j.nbsm_release_tool.py extract-jiras --from NBSM_2.8_0001 --to NBSM_2.8_0010 --base NBSM_2.7_0050 --walk-range
 
-  # Auto-detect base from previous version (NBSM_2.7's last tag)
-  %(prog)s extract-jiras --from NBSM_2.8_0001 --to NBSM_2.8_0010 --auto-base --walk-range
-  %(prog)s extract-jiras --full-range NBSM_2.8 --auto-base --walk-range
-
-  # Output as JSON
-  %(prog)s extract-jiras --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --format json
-
-  # Use latest tag (auto-detect)
-  %(prog)s extract-jiras
-
-  # Use a different branch
-  %(prog)s extract-jiras --branch origin/develop --tag NBSM_2.9_0010
+  # Auto-detect base from previous version
+  j.nbsm_release_tool.py extract-jiras --full-range NBSM_2.8 --auto-base --walk-range
 
 REPORT - Generate Jira report
 -----------------------------
-    # List format (default) grouped by build with Jira details
-  %(prog)s report --from NBSM_2.9_0009 --to NBSM_2.9_0010
+  # List format (default) grouped by build with Jira details
+  j.nbsm_release_tool.py report --from NBSM_2.9_0009 --to NBSM_2.9_0010
 
-    # Bordered table format
-    %(prog)s report --from NBSM_2.9_0009 --to NBSM_2.9_0010 --format table
+  # Bordered table format
+  j.nbsm_release_tool.py report --from NBSM_2.9_0009 --to NBSM_2.9_0010 --format table
 
   # Walk range and show all builds
-  %(prog)s report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+  j.nbsm_release_tool.py report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
 
-  # Full version range with auto-base (includes first tag's Jiras)
-  %(prog)s report --full-range NBSM_2.8 --auto-base --walk-range --format club
-
-  # Full version range - auto-resolve first to latest tag
-  %(prog)s report --full-range NBSM_2.9 --walk-range --format club
+  # Full version range with auto-base
+  j.nbsm_release_tool.py report --full-range NBSM_2.8 --auto-base --walk-range --format club
 
   # Markdown format (for release notes)
-  %(prog)s report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --format markdown
-
-  # JSON format
-  %(prog)s report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --format json
-
-  # Skip fetching Jira details (just show IDs)
-  %(prog)s report --from NBSM_2.9_0009 --to NBSM_2.9_0010 --no-fetch
-
-  # Use a different branch
-  %(prog)s report --branch origin/develop --from NBSM_2.9_0001 --to NBSM_2.9_0010
+  j.nbsm_release_tool.py report --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --format markdown
 
 UPDATE - Update Jira tickets directly
 -------------------------------------
-    # Update specific Jiras with build ID and labels
-  %(prog)s update NBU-12345 NBU-12346 --build-id NBSM_2.9_0010 --labels Verify
+  # Update specific Jiras with build ID and labels
+  j.nbsm_release_tool.py update NBU-12345 NBU-12346 --build-id NBSM_2.9_0010 --labels Verify
 
-    # Metadata-only update (no Solution/build update)
-    %(prog)s update NBU-12345 --project-key NBU --component Commandos --labels Verify
+  # Metadata-only update (no Solution/build update)
+  j.nbsm_release_tool.py update NBU-12345 --component Commandos --labels Verify
 
-  # Add multiple labels
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --labels Verify,Reviewed
+  # Full metadata update
+  j.nbsm_release_tool.py update NBU-12345 -i NBSM_2.9_0010 -C Commandos -W DL -E NBU-99999 -l Verify,Reviewed
 
-  # Update with assignee
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --labels Verify --assignee john.doe
+  # Use env-based metadata (fills missing metadata values)
+  export JIRA_PROJECT_KEY="NBU"
+  export JIRA_LABELS="Verify Reviewed"
+  export JIRA_COMPONENT="Commandos"
+  export JIRA_EPIC_LINK="NBU-99999"
+  export JIRA_WATCHER_GROUP="DL1 DL2"
+  j.nbsm_release_tool.py update NBU-12345 -i NBSM_2.9_0010 -M
 
-  # Set component (requires --project-key)
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --project-key NBU --component Commandos
-
-  # Set watcher group (single or multiple)
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --watcher-group DL
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --watcher-group DL1,DL2
-
-  # Set epic link
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --epic-link NBU-99999
-
-  # Full metadata update (legacy script behavior)
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --project-key NBU --component Commandos --watcher-group DL --epic-link NBU-99999 --labels Verify,Reviewed
-
-  # Use env-based labels (JIRA_LABELS env var)
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --labels-from-env
-  export JIRA_LABELS="NBServerMigrator NBServerMigrator_2.7"
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --labels-from-env
-
-    # Use env-based metadata (fills missing metadata values)
-    export JIRA_LABELS="Verify Reviewed"
-    export JIRA_COMPONENT="Commandos"
-    export JIRA_EPIC_LINK="NBU-99999"
-    export JIRA_WATCHER_GROUP="DL1 DL2"
-    %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --project-key NBU --metadata-from-env
-
-  # Legacy default labels (NBServerMigrator only)
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --legacy-default-labels
+  # Verify env vars are set correctly
+  j.nbsm_release_tool.py update -V
 
   # Dry run (preview only)
-  %(prog)s update NBU-12345 NBU-12346 --build-id NBSM_2.9_0010 --dry-run
-
-  # Skip confirmation prompt
-  %(prog)s update NBU-12345 --build-id NBSM_2.9_0010 --no-confirm
+  j.nbsm_release_tool.py update NBU-12345 NBU-12346 -i NBSM_2.9_0010 -n
 
 PROCESS - Full pipeline (recommended)
 -------------------------------------
   # Single tag pair: extract, report, confirm, update
-  %(prog)s process --tag NBSM_2.9_0010 --labels Verify
-
-  # Explicit range (single comparison)
-  %(prog)s process --from NBSM_2.9_0009 --to NBSM_2.9_0010 --labels Verify
+  j.nbsm_release_tool.py process --tag NBSM_2.9_0010 --labels Verify
 
   # Walk entire range (each Jira tagged with its first appearance)
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --labels Verify
-
-  # With assignee
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --labels Verify --assignee john.doe
+  j.nbsm_release_tool.py process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --labels Verify
 
   # With component, watcher group, epic link
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --project-key NBU --component Commandos --watcher-group DL --epic-link NBU-99999 --labels Verify
-
-  # Full metadata update with all options
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --project-key NBU --component Commandos --watcher-group DL1,DL2 --epic-link NBU-99999 --labels Verify,Reviewed --assignee john.doe
-
-  # Use env labels for release (migration labels from environment)
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --labels-from-env --project-key NBU --component Commandos
-
-  # Legacy mode (default labels + component + watcher group)
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --legacy-default-labels --project-key NBU --component Commandos
+  j.nbsm_release_tool.py process -f NBSM_2.9_0001 -T NBSM_2.9_0010 -w -C Commandos -W DL -E NBU-99999 -l Verify
 
   # Dry run (preview without making changes)
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --dry-run
-
-  # Skip confirmation (use with caution)
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --no-confirm
-
-  # Skip report display (faster)
-  %(prog)s process --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --skip-report
-
-  # Use custom repository
-  %(prog)s process --repo ~/my/repo --from NBSM_2.9_0009 --to NBSM_2.9_0010
-
-  # Use a different branch
-  %(prog)s process --branch origin/release-2.9 --from NBSM_2.9_0009 --to NBSM_2.9_0010
+  j.nbsm_release_tool.py process -f NBSM_2.9_0001 -T NBSM_2.9_0010 -w -n
 
 VALIDATE - Pre-release validation
 ---------------------------------
   # Check if all Jiras are Resolved/Closed
-  %(prog)s validate --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+  j.nbsm_release_tool.py validate --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
 
   # Fail exit code if any Jira not resolved
-  %(prog)s validate --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range --require-resolved
-
-  # Use a different branch
-  %(prog)s validate --branch origin/release-2.9 --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
+  j.nbsm_release_tool.py validate -f NBSM_2.9_0001 -T NBSM_2.9_0010 -w -R
 
 VALIDATE-PROPERTIES - Check properties set on issues
 ----------------------------------------------------
-  # Check all default properties on single issue (labels, component, assignee, solution, epic-link, watcher-group)
-  %(prog)s validate-properties NBU-12345
-
-  # Check multiple issues
-  %(prog)s validate-properties NBU-12345 NBU-12346 NBU-12347
+  # Check all default properties on single issue
+  j.nbsm_release_tool.py validate-properties NBU-12345
 
   # Check specific properties only
-  %(prog)s validate-properties NBU-12345 --properties labels,component,solution
+  j.nbsm_release_tool.py validate-properties NBU-12345 --properties labels,component,solution
 
-  # Check all properties with JSON output
-  %(prog)s validate-properties NBU-12345 NBU-12346 --format json
-
-  # Summary output (only shows if set or not)
-  %(prog)s validate-properties NBU-12345 --format summary
-
-  # Check epic-link and watcher-group only
-  %(prog)s validate-properties NBU-12345 --properties epic_link,watcher_group
-
-    # Extract Jira IDs from tag range, then validate properties
-    %(prog)s validate-properties --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
-
-    # Validate properties for all Jiras in a full version range
-    %(prog)s validate-properties --full-range NBSM_2.9 --walk-range
+  # Extract Jira IDs from tag range, then validate properties
+  j.nbsm_release_tool.py validate-properties --from NBSM_2.9_0001 --to NBSM_2.9_0010 --walk-range
 
 CHECK-COMMITS - Find commits without Jira IDs
 ----------------------------------------------
   # Find bad commits (missing NBU-xxxxx)
-  %(prog)s check-commits --from NBSM_2.9_0001 --to NBSM_2.9_0010
-
-  # Check latest tag
-  %(prog)s check-commits --tag NBSM_2.9_0010
-
-  # Use a different branch
-  %(prog)s check-commits --branch origin/develop --from NBSM_2.9_0001 --to NBSM_2.9_0010
+  j.nbsm_release_tool.py check-commits --from NBSM_2.9_0001 --to NBSM_2.9_0010
 
 ================================================================================
 TAG RANGE WALK EXPLAINED
@@ -1962,9 +1865,37 @@ ENVIRONMENT VARIABLES
 
   JIRA_SERVER_NAME    Jira server hostname (required for Jira operations)
   JIRA_ACC_TOKEN      Jira API Bearer token (required for Jira operations)
+  JIRA_PROJECT_KEY    Default project key for component lookup
+  JIRA_LABELS         Labels to add (space-separated)
+  JIRA_COMPONENT      Component name to set
+  JIRA_EPIC_LINK      Epic key to link
+  JIRA_WATCHER_GROUP  Watcher groups (space-separated)
   NBSM_DEFAULT_REPO   Default repository path (optional)
+"""
 
-================================================================================
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description='NBSM Release Tool - Manage releases and update Jira tickets',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Commands:
+  list-tags           List available tags
+  extract-jiras       Extract Jira IDs from git commit messages
+  report              Generate Jira report with issue details
+  update              Update Jira tickets (build ID, labels, component, etc.)
+  process             Full pipeline: extract, report, update (recommended)
+  validate            Pre-release validation (check Resolved/Closed status)
+  validate-properties Check properties set on Jira issues
+  check-commits       Find commits without Jira IDs
+  help                Show detailed examples
+
+Quick Start:
+  %(prog)s process --tag NBSM_2.9_0010 --labels Verify
+  %(prog)s update NBU-12345 -i NBSM_2.9_0010 -M    # Use env vars for metadata
+  %(prog)s update -V                               # Verify env vars are set
+
+For detailed examples, run: %(prog)s help
 """
     )
 
@@ -2042,7 +1973,9 @@ ENVIRONMENT VARIABLES
     p_update.add_argument('-L', '--labels-from-env', action='store_true',
                           help='Use JIRA_LABELS env var if -l/--labels not provided')
     p_update.add_argument('-M', '--metadata-from-env', action='store_true',
-                          help='Fill missing labels/component/epic-link/watcher-group from env: JIRA_LABELS, JIRA_COMPONENT, JIRA_EPIC_LINK, JIRA_WATCHER_GROUP')
+                          help='Fill missing labels/component/epic-link/watcher-group from env: JIRA_PROJECT_KEY, JIRA_LABELS, JIRA_COMPONENT, JIRA_EPIC_LINK, JIRA_WATCHER_GROUP')
+    p_update.add_argument('-V', '--metadata-from-env-verify', action='store_true',
+                          help='Print all metadata env variable names and their current values, then exit')
     p_update.add_argument('-D', '--legacy-default-labels', action='store_true',
                           help='Use default label "NBServerMigrator" if no labels specified')
     p_update.add_argument('-S', '--state', choices=['Done'],
@@ -2260,10 +2193,15 @@ def main():
     """Main entry point."""
     args = parse_args()
 
-    if not args.command or args.command == 'help':
-        # Re-run with --help to show full help
+    if not args.command:
+        # No command given - show short help
         sys.argv = [sys.argv[0], '--help']
         parse_args()
+        return
+
+    if args.command == 'help':
+        # Show detailed examples
+        print(DETAILED_EXAMPLES)
         return
 
     # Set up repos
@@ -2361,6 +2299,22 @@ def main():
         # update (direct Jira update)
         # =====================================================================
         elif args.command == 'update':
+            # Handle --metadata-from-env-verify first (no other args needed)
+            if getattr(args, 'metadata_from_env_verify', False):
+                print("Metadata environment variables used by --metadata-from-env:")
+                print()
+                env_vars = {
+                    'JIRA_PROJECT_KEY': os.getenv('JIRA_PROJECT_KEY', ''),
+                    'JIRA_LABELS': os.getenv('JIRA_LABELS', ''),
+                    'JIRA_COMPONENT': os.getenv('JIRA_COMPONENT', ''),
+                    'JIRA_EPIC_LINK': os.getenv('JIRA_EPIC_LINK', ''),
+                    'JIRA_WATCHER_GROUP': os.getenv('JIRA_WATCHER_GROUP', ''),
+                }
+                for name, value in env_vars.items():
+                    status = f"'{value}'" if value else '(not set)'
+                    print(f"  {name}: {status}")
+                sys.exit(0)
+
             if not args.jiras:
                 print("Error: No Jira IDs provided")
                 sys.exit(1)
