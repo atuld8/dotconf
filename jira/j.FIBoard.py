@@ -253,35 +253,49 @@ def _extract_display_value(value) -> str:
 
 def get_issues_by_jql(jql_query: str, max_results: int = 200) -> list:
     """Fetch issues from Jira based on JQL query."""
-    try:
-        url = f'{JIRA_URL}/rest/api/2/search'
+    url = f'{JIRA_URL}/rest/api/2/search'
 
-        # Use *all fields and expand=names for dynamic field discovery
-        params = {
-            'jql': jql_query,
-            'maxResults': max_results,
-            'fields': '*all',
-            'expand': 'names'
-        }
+    # Use *all fields and expand=names for dynamic field discovery
+    params = {
+        'jql': jql_query,
+        'maxResults': max_results,
+        'fields': '*all',
+        'expand': 'names'
+    }
 
-        response = requests.get(url, headers=headers, params=params, timeout=60)
-        response.raise_for_status()
+    # Retry with increasing timeouts
+    timeouts = [60, 120, 180]
+    last_error = None
 
-        result = response.json()
-        issues = result.get('issues', [])
+    for attempt, timeout in enumerate(timeouts, 1):
+        try:
+            print(f"[INFO] Attempt {attempt}/{len(timeouts)} (timeout={timeout}s)...", file=sys.stderr)
+            response = requests.get(url, headers=headers, params=params, timeout=timeout)
+            response.raise_for_status()
 
-        # Inject names mapping into each issue for _field_value_by_name() compatibility
-        names = result.get('names')
-        if names:
-            for issue in issues:
-                issue['names'] = names
+            result = response.json()
+            issues = result.get('issues', [])
 
-        print(f"[INFO] Fetched {len(issues)} issues from Jira", file=sys.stderr)
-        return issues
+            # Inject names mapping into each issue for _field_value_by_name() compatibility
+            names = result.get('names')
+            if names:
+                for issue in issues:
+                    issue['names'] = names
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching issues from Jira: {e}", file=sys.stderr)
-        sys.exit(1)
+            print(f"[INFO] Fetched {len(issues)} issues from Jira", file=sys.stderr)
+            return issues
+
+        except requests.exceptions.Timeout as e:
+            last_error = e
+            if attempt < len(timeouts):
+                print(f"[WARN] Request timed out, retrying...", file=sys.stderr)
+            continue
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching issues from Jira: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    print(f"Error fetching issues from Jira: {last_error}", file=sys.stderr)
+    sys.exit(1)
 
 
 def get_issue_key_with_type(issue: dict, for_board: bool = True, priority: str = None) -> str:
