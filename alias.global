@@ -12,6 +12,8 @@ alias d='vim -d'
 alias eb='exec bash'
 alias f.='find . -name'
 alias h='history'
+alias h.dt='HISTTIMEFORMAT="%F %T " history'
+alias h.sync='history -a; history -n'
 alias fixterm="printf '\e[?2004l'; stty sane"
 alias p='realpath '
 alias f.a='alias | cut -d" " -f2- | grep'

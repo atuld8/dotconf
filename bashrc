@@ -596,9 +596,10 @@ if [ -f ~/.alias ]; then
    source ~/.alias
 fi
 
-export HISTFILESIZE=2000
-export HISTSIZE=1000
-export HISTIGNORE='export VIMPASS=*:VIMPASS=*:'$HISTIGNORE
+export HISTFILESIZE=200000
+export HISTSIZE=1000000
+export HISTIGNORE='export VIMPASS=*:VIMPASS=*:ls:cd:pwd:exit:history:'$HISTIGNORE
+shopt -s histappend
 
 export SSH_RMNDEV='$NIS_USER@$NIS_SERVER'
 
