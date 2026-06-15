@@ -543,13 +543,16 @@ def display_sprint_board(board_data, status_counts):
         if max_issues == 0:
             continue
 
+        # Calculate total issues for this assignee
+        total_issues = sum(len(status_data.get(status, [])) for status in status_columns)
+
         # Create rows (one row per issue, with assignee name only in first row)
         for i in range(max_issues):
             row = []
 
-            # Assignee column (only show name in first row)
+            # Assignee column (only show name and total count in first row)
             if i == 0:
-                row.append(assignee)
+                row.append(f"{assignee} ({total_issues})")
             else:
                 row.append('')
 
