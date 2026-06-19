@@ -12,6 +12,7 @@ alias mc.ps='ps -eo pid,ppid,args'
 alias mc.eclipse="$HOME/Downloads/eclipse/Eclipse.app/Contents/MacOS/eclipse"
 alias mc.as='open -a "Android Studio.app"'
 alias mc.outlook='open -a "Microsoft Outlook.app"'
+alias mc.exl='open -a "Microsoft Excel.app"'
 alias mc.nano='/opt/homebrew/bin/nano'
 alias mc.vsc='open -a /Applications/Visual\ Studio\ Code.app'
 alias mc.pgadmin='open -a "pgAdmin 4.app"'

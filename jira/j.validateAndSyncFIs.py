@@ -667,6 +667,22 @@ def _process_single_fi(
             return ResultCategory.FAIL_UPDATE, entry
 
     # ETRACK MODE
+
+    # Check for etrack validation errors (format issues)
+    etrack_validation_errors = fi_data.get("etrack_validation_errors", [])
+    if etrack_validation_errors:
+        entry["etrack_validation_errors"] = etrack_validation_errors
+
+    # Check for type warnings (non-SERVICE_REQUEST)
+    etrack_details = fi_data.get("etrack_details", [])
+    type_warnings = []
+    for et in etrack_details:
+        type_warning = et.get("type_warning", "")
+        if type_warning:
+            type_warnings.append(f"{et.get('Incident', '?')}: {type_warning.strip()}")
+    if type_warnings:
+        entry["etrack_type_warnings"] = type_warnings
+
     analysis = analyze_etrack_mismatches(
         fi_data,
         check_component=sync_component,
@@ -747,25 +763,33 @@ def _format_verbose_result(category: str, entry: Dict[str, Any], dry_run: bool, 
     """Format verbose output for a processed FI."""
     fi_id = entry["fi_id"]
 
+    # Collect warnings to append
+    warnings = []
+    if entry.get("etrack_validation_errors"):
+        warnings.append(f"Format errors: {', '.join(entry['etrack_validation_errors'])}")
+    if entry.get("etrack_type_warnings"):
+        warnings.append(f"Type warnings: {', '.join(entry['etrack_type_warnings'])}")
+    warning_suffix = f" | {' | '.join(warnings)}" if warnings else ""
+
     if category == ResultCategory.FAIL_FETCH:
-        return f"[FETCH ERROR] {entry.get('error', '-')}"
+        return f"[FETCH ERROR] {entry.get('error', '-')}{warning_suffix}"
     elif category == ResultCategory.FAIL_NO_ETRACK:
-        return "[NO ETRACK]"
+        return f"[NO ETRACK]{warning_suffix}"
     elif category == ResultCategory.FAIL_MULTI_ETRACK:
-        return f"[CONFLICT] {entry.get('error', '-')}"
+        return f"[CONFLICT] {entry.get('error', '-')}{warning_suffix}"
     elif category == ResultCategory.FAIL_UPDATE:
-        return f"[UPDATE FAILED] {entry.get('error', '-')}"
+        return f"[UPDATE FAILED] {entry.get('error', '-')}{warning_suffix}"
     elif category == ResultCategory.SKIP_NO_MISMATCH:
         if mapping_only:
-            return f"[OK - no mapping] Component={entry.get('fi_component', '-')}, Version={entry.get('fi_version', '-')}"
-        return "[OK - no mismatch]"
+            return f"[OK - no mapping] Component={entry.get('fi_component', '-')}, Version={entry.get('fi_version', '-')}{warning_suffix}"
+        return f"[OK - no mismatch]{warning_suffix}"
     elif category == ResultCategory.SUCCESS:
         if mapping_only:
             action = "Would update" if dry_run else "Updated"
             parts = []
             for u in entry.get("updates", []):
                 parts.append(f"{u['field']}: {u['old_value']} -> {u['new_value']}")
-            return f"[{action}] {', '.join(parts)}"
+            return f"[{action}] {', '.join(parts)}{warning_suffix}"
         else:
             vd = entry.get("_verbose_data", {})
             action = "Would sync" if dry_run else "Synced"
@@ -780,7 +804,7 @@ def _format_verbose_result(category: str, entry: Dict[str, Any], dry_run: bool, 
                     parts.append(f"Version: {vd['fi_ver']} -> {vd['final_ver']} (mapped from {vd['et_ver']})")
                 else:
                     parts.append(f"Version: {vd['fi_ver']} -> {vd['final_ver']}")
-            return f"[{action}] etrack {vd.get('etrack_id', '-')}: {', '.join(parts)}"
+            return f"[{action}] etrack {vd.get('etrack_id', '-')}: {', '.join(parts)}{warning_suffix}"
     return ""
 
 

@@ -337,8 +337,12 @@ def _extract_linked_fis(issue_data: Dict[str, Any]) -> List[str]:
     return sorted(fi_set, key=lambda value: int(value.split("-")[1]))
 
 
-def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Dict[str, List[str]]:
+def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Tuple[Dict[str, List[str]], List[str]]:
     """Extract etrack IDs from various fields with their sources.
+
+    Validates etrack format:
+    - Whole number (e.g., 12345678)
+    - ET prefix variants: ET12345678, ET-12345678, ET 12345678
 
     Checks the following sources:
     - customfield_33802: Etrack Incident
@@ -347,19 +351,56 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Dict[str, List[st
     - Field named "Etrack Incident (Internal)" (or "Etrack Incident (Internal):")
 
     Returns:
-        Dict mapping etrack_id -> list of source field names
+        Tuple of:
+        - Dict mapping etrack_id -> list of source field names
+        - List of validation error messages for invalid formats
     """
     sources: Dict[str, List[str]] = {}
+    errors: List[str] = []
     fields = issue.get("fields", {}) if isinstance(issue.get("fields"), dict) else issue
+
+    # Import validate_etrack_format from etrack_integration
+    try:
+        from account_manager.etrack_integration import validate_etrack_format
+    except ImportError:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        workspace_root = os.path.dirname(script_dir)
+        if workspace_root not in sys.path:
+            sys.path.insert(0, workspace_root)
+        try:
+            from account_manager.etrack_integration import validate_etrack_format
+        except ImportError:
+            # Fallback: basic validation if import fails
+            def validate_etrack_format(value):
+                if not value:
+                    return (False, None, "Empty value")
+                value_str = str(value).strip()
+                if re.match(r'^\d+$', value_str):
+                    return (True, value_str, None)
+                et_match = re.match(r'^ET[\s\-]?(\d+)$', value_str, re.IGNORECASE)
+                if et_match:
+                    return (True, et_match.group(1), None)
+                return (False, None, f"Value '{value_str}' does not match etrack format")
 
     def add_ids(raw_value: Any, source_name: str):
         if raw_value:
-            for match in re.findall(r"\d+", str(raw_value)):
-                if int(match) >= 100000:  # Filter small numbers
-                    if match not in sources:
-                        sources[match] = []
-                    if source_name not in sources[match]:
-                        sources[match].append(source_name)
+            raw_str = str(raw_value).strip()
+            # Handle comma/space-separated multiple values
+            for val in re.split(r'[,;\s]+', raw_str):
+                val = val.strip()
+                if not val:
+                    continue
+                is_valid, extracted, error_msg = validate_etrack_format(val)
+                if is_valid and extracted:
+                    # Filter small numbers (real etrack IDs are typically 6-7 digits)
+                    if int(extracted) >= 100000:
+                        if extracted not in sources:
+                            sources[extracted] = []
+                        if source_name not in sources[extracted]:
+                            sources[extracted].append(source_name)
+                elif error_msg and val:
+                    # Value exists but doesn't match etrack criteria
+                    errors.append(f"[{source_name}] {error_msg}")
 
     # Check known customfield IDs
     add_ids(fields.get("customfield_33802"), "EI")
@@ -382,16 +423,21 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Dict[str, List[st
                 add_ids(fields.get(key), display_name)
                 break
 
-    return sources
+    return sources, errors
 
 
-def _extract_etrack_ids(issue: Dict[str, Any]) -> List[str]:
+def _extract_etrack_ids(issue: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     """Extract etrack IDs from various fields.
 
     Filters out numbers < 100000 as real etrack IDs are typically 6-7 digits.
+
+    Returns:
+        Tuple of:
+        - List of valid etrack IDs (sorted)
+        - List of validation error messages
     """
-    sources = _extract_etrack_ids_with_sources(issue)
-    return sorted(sources.keys(), key=int) if sources else []
+    sources, errors = _extract_etrack_ids_with_sources(issue)
+    return (sorted(sources.keys(), key=int) if sources else [], errors)
 
 
 def _is_meaningful_text(value: str) -> bool:
@@ -677,6 +723,13 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
             abstract = (info.abstract or "-").strip()
             if len(abstract) > 140:
                 abstract = abstract[:140] + "..."
+
+            # Check if type is SERVICE_REQUEST
+            et_type = info.type or "-"
+            type_warning = ""
+            if et_type != "-" and et_type.upper() != "SERVICE_REQUEST":
+                type_warning = f" [WARNING: Type is '{et_type}', expected SERVICE_REQUEST]"
+
             details[et] = {
                 "state": info.state or "-",
                 "assignee": info.assignee or "-",
@@ -684,6 +737,8 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "priority": info.priority or "-",
                 "version": info.version or "-",
                 "component": info.component or "-",
+                "type": et_type,
+                "type_warning": type_warning,
                 "abstract": abstract,
             }
         else:
@@ -694,6 +749,8 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "priority": "-",
                 "version": "-",
                 "component": "-",
+                "type": "-",
+                "type_warning": "",
                 "abstract": "No etrack details found",
             }
 
@@ -1677,7 +1734,7 @@ def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = N
             pass  # Fall back to partial data
 
     fields = issue.get("fields", {})
-    etrack_ids = _extract_etrack_ids(issue)
+    etrack_ids, etrack_errors = _extract_etrack_ids(issue)
     sfdc_links = _extract_sfdc_case_links(issue)
 
     return {
@@ -1685,6 +1742,7 @@ def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = N
         "Status": _opt_value(fields.get("status")),
         "Assignee": _opt_value(fields.get("assignee")),
         "Etrack IDs": ", ".join(etrack_ids) if etrack_ids else "-",
+        "Etrack Errors": etrack_errors if etrack_errors else None,
         "Etrack Ref": _first_present_display_value(fields.get("customfield_36508")),
         "SFDC Case #": _extract_sfdc_case_number(issue),
         "SFDC Cases": sfdc_links,  # list of {label, url}
@@ -2280,6 +2338,7 @@ def _build_json_output(
     customer_field_issues_headers: Optional[List[str]] = None,
     customer_field_issues_meta: Optional[Dict[str, Any]] = None,
     fuzzy_match: bool = False,
+    etrack_validation_errors: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "profile": profile_type,
@@ -2307,6 +2366,10 @@ def _build_json_output(
             payload["linked_fis"].append(item)
 
     if show_etrack_details:
+        # Include validation errors if any
+        if etrack_validation_errors:
+            payload["etrack_validation_errors"] = etrack_validation_errors
+
         payload["etrack_details"] = []
         for etrack_id in etrack_ids:
             detail = {"Incident": etrack_id}
@@ -2646,7 +2709,7 @@ def main() -> int:
     status_context = _extract_current_status_and_next_steps(fields, comments)
     linked_fis = _extract_linked_fis(issue)
     linked_status: Optional[Dict[str, Dict[str, str]]] = None
-    etrack_sources = _extract_etrack_ids_with_sources(issue)
+    etrack_sources, etrack_validation_errors = _extract_etrack_ids_with_sources(issue)
     etrack_ids = sorted(etrack_sources.keys(), key=int) if etrack_sources else []
     sfdc_case_links = _extract_sfdc_case_links(issue)
     timeline_context = _extract_timeline_context(issue)
@@ -2756,6 +2819,7 @@ def main() -> int:
             customer_field_issues_headers=customer_field_issues_headers,
             customer_field_issues_meta=customer_field_issues_meta,
             fuzzy_match=args.fuzzy_match,
+            etrack_validation_errors=etrack_validation_errors if show_etrack_requested else None,
         )
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
@@ -2918,18 +2982,32 @@ def main() -> int:
         if show_etrack_requested:
             print(section_separator)
             print("\n* Etrack details:")
+
+            # Show validation errors for invalid etrack format values
+            if etrack_validation_errors:
+                print("  ! Etrack format validation errors:")
+                for err in etrack_validation_errors:
+                    print(f"    - {err}")
+                print()
+
             if not etrack_ids:
                 print("  * No etrack incident linked in Jira fields.")
             else:
                 rows = []
+                type_warnings = []
                 for et in etrack_ids:
                     info = (etrack_info or {}).get(et, {})
                     source_list = etrack_sources.get(et, [])
                     source_str = ", ".join(source_list) if source_list else "-"
+                    et_type = info.get("type", "-")
+                    type_warning = info.get("type_warning", "")
+                    if type_warning:
+                        type_warnings.append(f"    - {et}: {type_warning.strip()}")
                     rows.append([
                         et,
                         source_str,
                         info.get("state", "-"),
+                        et_type,
                         info.get("severity", "-"),
                         info.get("priority", "-"),
                         info.get("version", "-"),
@@ -2937,8 +3015,14 @@ def main() -> int:
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "Src", "State", "Severity", "Priority", "Version", "Component", "Assignee", "Abstract"])
+                _print_table(rows, ["Incident", "Src", "State", "Type", "Severity", "Priority", "Version", "Component", "Assignee", "Abstract"])
                 print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
+
+                # Show type warnings if any etrack is not SERVICE_REQUEST
+                if type_warnings:
+                    print("\n  ! Etrack type warnings (expected SERVICE_REQUEST):")
+                    for warning in type_warnings:
+                        print(warning)
 
                 # Show FI vs Etrack comparison for mismatches
                 if etrack_info:

@@ -760,6 +760,10 @@ def extract_validated_etrack_id(client, issue_key, silent=False):
     """
     Extract and validate a single etrack ID from FI's linked etrack fields.
 
+    Validates etrack format:
+    - Whole number (e.g., 12345678)
+    - ET prefix variants: ET12345678, ET-12345678, ET 12345678
+
     Checks 4 source fields:
     - EI = Etrack Incident (customfield_33802)
     - ER = Etrack Ref (customfield_36508)
@@ -767,12 +771,29 @@ def extract_validated_etrack_id(client, issue_key, silent=False):
     - INT = Etrack Incident (Internal) (named field)
 
     Raises:
-        RuntimeError: If no etrack ID found, or multiple distinct IDs from different sources
+        RuntimeError: If no etrack ID found, or multiple distinct IDs from different sources,
+                      or invalid etrack format
 
     Returns:
         The single validated etrack ID string
     """
     import re
+
+    # Import validate_etrack_format from etrack_integration
+    try:
+        from account_manager.etrack_integration import validate_etrack_format
+    except ImportError:
+        # Fallback: basic validation if import fails
+        def validate_etrack_format(value):
+            if not value:
+                return (False, None, "Empty value")
+            value_str = str(value).strip()
+            if re.match(r'^\d+$', value_str):
+                return (True, value_str, None)
+            et_match = re.match(r'^ET[\s\-]?(\d+)$', value_str, re.IGNORECASE)
+            if et_match:
+                return (True, et_match.group(1), None)
+            return (False, None, "Value '{}' does not match etrack format".format(value_str))
 
     # Fetch issue (names already expanded by default)
     issue_data = client.get_issue(issue_key)
@@ -781,16 +802,28 @@ def extract_validated_etrack_id(client, issue_key, silent=False):
 
     # Build sources dict: etrack_id -> [source_codes]
     sources = {}  # type: Dict[str, List[str]]
+    format_errors = []  # type: List[str]
 
     def add_ids(raw_value, source_name):
         # type: (Any, str) -> None
         if raw_value:
-            for match in re.findall(r"\d+", str(raw_value)):
-                if int(match) >= 100000:  # Filter small numbers
-                    if match not in sources:
-                        sources[match] = []
-                    if source_name not in sources[match]:
-                        sources[match].append(source_name)
+            raw_str = str(raw_value).strip()
+            # Handle comma/space-separated multiple values
+            for val in re.split(r'[,;\s]+', raw_str):
+                val = val.strip()
+                if not val:
+                    continue
+                is_valid, extracted, error_msg = validate_etrack_format(val)
+                if is_valid and extracted:
+                    # Filter small numbers (real etrack IDs are typically 6-7 digits)
+                    if int(extracted) >= 100000:
+                        if extracted not in sources:
+                            sources[extracted] = []
+                        if source_name not in sources[extracted]:
+                            sources[extracted].append(source_name)
+                elif error_msg and val:
+                    # Value exists but doesn't match etrack criteria
+                    format_errors.append("[{}] {}".format(source_name, error_msg))
 
     # Check known customfield IDs
     add_ids(fields.get("customfield_33802"), "EI")
@@ -812,13 +845,20 @@ def extract_validated_etrack_id(client, issue_key, silent=False):
                 add_ids(fields.get(key), display_name)
                 break
 
+    # Report format validation errors
+    if format_errors and not silent:
+        print("! Etrack format validation errors:")
+        for err in format_errors:
+            print("  - {}".format(err))
+
     # Validation
     if not sources:
-        raise RuntimeError(
-            "No etrack ID found in {}.\n"
-            "Checked fields: Etrack Incident (EI), Etrack Ref (ER), "
-            "NBU R&D Ticket (RD), Etrack Incident Internal (INT)".format(issue_key)
-        )
+        error_msg = "No valid etrack ID found in {}.\n".format(issue_key)
+        error_msg += "Checked fields: Etrack Incident (EI), Etrack Ref (ER), "
+        error_msg += "NBU R&D Ticket (RD), Etrack Incident Internal (INT)"
+        if format_errors:
+            error_msg += "\nFormat errors were found - see above."
+        raise RuntimeError(error_msg)
 
     unique_ids = list(sources.keys())
 
@@ -874,6 +914,12 @@ def sync_etrack_to_jira(client, issue_key, etrack_id, sync_component=False, sync
 
     if not etrack_info:
         raise RuntimeError("Could not fetch etrack info for incident: {}".format(etrack_id))
+
+    # Validate etrack type is SERVICE_REQUEST
+    et_type = getattr(etrack_info, 'type', None) or '-'
+    if et_type != '-' and et_type.upper() != 'SERVICE_REQUEST':
+        if not silent:
+            print("! WARNING: Etrack {} type is '{}', expected SERVICE_REQUEST".format(etrack_id, et_type))
 
     # Fetch current Jira issue values
     issue_data = client.get_issue(issue_key)

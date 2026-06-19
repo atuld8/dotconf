@@ -37,6 +37,45 @@ class EtrackInfo:
     abstract: Optional[str]
     version: Optional[str]
     component: Optional[str] = None
+    type: Optional[str] = None  # e.g., SERVICE_REQUEST
+
+
+def validate_etrack_format(value: str) -> tuple:
+    """
+    Validate and extract etrack ID from various formats.
+
+    Valid formats:
+    - Whole number: 12345678
+    - ET prefix: ET12345678, ET-12345678, ET 12345678
+
+    Args:
+        value: Raw value from Jira field
+
+    Returns:
+        tuple: (is_valid, extracted_digits, error_message)
+               - is_valid: True if format is valid
+               - extracted_digits: The numeric portion if valid, None otherwise
+               - error_message: Description of validation failure if invalid
+    """
+    if not value:
+        return (False, None, "Empty value")
+
+    value_str = str(value).strip()
+    if not value_str:
+        return (False, None, "Empty value after strip")
+
+    # Pattern 1: Pure whole number (6-8 digits typically)
+    if re.match(r'^\d+$', value_str):
+        return (True, value_str, None)
+
+    # Pattern 2: ET prefix with optional hyphen or space
+    # Match: ET12345678, ET-12345678, ET 12345678, et12345, etc.
+    et_match = re.match(r'^ET[\s\-]?(\d+)$', value_str, re.IGNORECASE)
+    if et_match:
+        return (True, et_match.group(1), None)
+
+    # Value exists but doesn't match criteria
+    return (False, None, f"Value '{value_str}' does not match etrack format (expected: whole number or ET<digits>/ET-<digits>/ET <digits>)")
 
 
 class EtrackExecutor:
@@ -428,13 +467,13 @@ class EtrackExecutor:
             EtrackInfo object or None
         """
         query = (
-            f"SELECT incident, assigned_to, state, severity, priority, version, component, abstract "
+            f"SELECT incident, assigned_to, state, severity, priority, version, component, type, abstract "
             f"FROM incident WHERE incident = {incident_no}"
         )
         output = self._execute_command("esql", stdin_input=query)
 
         if not output:
-            fallback_query = f"SELECT incident, assigned_to, state, abstract FROM incident WHERE incident = {incident_no}"
+            fallback_query = f"SELECT incident, assigned_to, state, type, abstract FROM incident WHERE incident = {incident_no}"
             output = self._execute_command("esql", stdin_input=fallback_query)
 
         if not output:
@@ -480,33 +519,37 @@ class EtrackExecutor:
                 assignee = parts[1] if len(parts) > 1 else None
                 state = parts[2] if len(parts) > 2 else None
 
-                if len(parts) == 4:
-                    # Fallback format: incident, assigned_to, state, abstract
+                if len(parts) == 5:
+                    # Fallback format: incident, assigned_to, state, type, abstract
                     severity = None
                     priority = None
                     version = None
                     component = None
-                    abstract = parts[3]
-                elif len(parts) >= 8:
-                    # Full format: incident, assigned_to, state, severity, priority, version, component, abstract
+                    etype = parts[3] if parts[3] else None
+                    abstract = parts[4]
+                elif len(parts) >= 9:
+                    # Full format: incident, assigned_to, state, severity, priority, version, component, type, abstract
                     severity = parts[3] if parts[3] else None
                     priority = parts[4] if parts[4] else None
                     version = parts[5] if parts[5] else None
                     component = parts[6] if parts[6] else None
-                    abstract = parts[7] if len(parts) > 7 else None
-                elif len(parts) >= 7:
-                    # Old format without component: incident, assigned_to, state, severity, priority, version, abstract
+                    etype = parts[7] if parts[7] else None
+                    abstract = parts[8] if len(parts) > 8 else None
+                elif len(parts) >= 8:
+                    # Old format without component: incident, assigned_to, state, severity, priority, version, type, abstract
                     severity = parts[3] if parts[3] else None
                     priority = parts[4] if parts[4] else None
                     version = parts[5] if parts[5] else None
                     component = None
-                    abstract = parts[6] if len(parts) > 6 else None
+                    etype = parts[6] if parts[6] else None
+                    abstract = parts[7] if len(parts) > 7 else None
                 else:
                     # Partial - fields may be empty/collapsed, last field is likely abstract
                     severity = None
                     priority = None
                     version = None
                     component = None
+                    etype = None
                     abstract = parts[-1] if len(parts) > 3 else None
 
                 return EtrackInfo(
@@ -518,6 +561,7 @@ class EtrackExecutor:
                     abstract=abstract,
                     version=version,
                     component=component,
+                    type=etype,
                 )
 
         return None
