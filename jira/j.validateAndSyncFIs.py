@@ -420,11 +420,17 @@ def analyze_etrack_mismatches(
             continue  # Only use first etrack for updates
 
         field = mismatch.get("field", "")
+        etrack_value = mismatch.get("etrack_value", "-")
+
+        # Skip if etrack value is empty - don't sync to empty values
+        if not etrack_value or etrack_value == "-":
+            continue
+
         if field == "Component" and check_component:
             result["mismatches"].append({
                 "field": "Component",
                 "fi_value": mismatch.get("fi_value", "-"),
-                "etrack_value": mismatch.get("etrack_value", "-"),
+                "etrack_value": etrack_value,
                 "etrack_id": et_id,
             })
             result["all_match"] = False
@@ -432,7 +438,7 @@ def analyze_etrack_mismatches(
             result["mismatches"].append({
                 "field": "Version",
                 "fi_value": mismatch.get("fi_value", "-"),
-                "etrack_value": mismatch.get("etrack_value", "-"),
+                "etrack_value": etrack_value,
                 "etrack_id": et_id,
             })
             result["all_match"] = False
@@ -766,7 +772,18 @@ def _format_verbose_result(category: str, entry: Dict[str, Any], dry_run: bool, 
     # Collect warnings to append
     warnings = []
     if entry.get("etrack_validation_errors"):
-        warnings.append(f"Format errors: {', '.join(entry['etrack_validation_errors'])}")
+        # Truncate each error message and limit total count
+        errors = entry['etrack_validation_errors']
+        truncated_errors = []
+        max_errors = 3
+        for err in errors[:max_errors]:
+            if len(err) > 30:
+                truncated_errors.append(err[:30] + "...")
+            else:
+                truncated_errors.append(err)
+        if len(errors) > max_errors:
+            truncated_errors.append(f"(+{len(errors) - max_errors} more)")
+        warnings.append(f"Format errors: {', '.join(truncated_errors)}")
     if entry.get("etrack_type_warnings"):
         warnings.append(f"Type warnings: {', '.join(entry['etrack_type_warnings'])}")
     warning_suffix = f" | {' | '.join(warnings)}" if warnings else ""

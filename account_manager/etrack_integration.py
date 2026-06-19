@@ -64,6 +64,10 @@ def validate_etrack_format(value: str) -> tuple:
     if not value_str:
         return (False, None, "Empty value after strip")
 
+    # Handle float values from Jira numeric fields (e.g., 4223773.0 -> 4223773)
+    if re.match(r'^\d+\.0$', value_str):
+        value_str = value_str[:-2]  # Strip ".0" suffix
+
     # Pattern 1: Pure whole number (6-8 digits typically)
     if re.match(r'^\d+$', value_str):
         return (True, value_str, None)

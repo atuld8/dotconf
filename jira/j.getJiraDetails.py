@@ -375,6 +375,9 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Tuple[Dict[str, L
                 if not value:
                     return (False, None, "Empty value")
                 value_str = str(value).strip()
+                # Handle float values from Jira numeric fields (e.g., 4223773.0)
+                if re.match(r'^\d+\.0$', value_str):
+                    value_str = value_str[:-2]
                 if re.match(r'^\d+$', value_str):
                     return (True, value_str, None)
                 et_match = re.match(r'^ET[\s\-]?(\d+)$', value_str, re.IGNORECASE)
@@ -1590,16 +1593,23 @@ def _jql_escape(value: str) -> str:
 
 
 def _field_key_to_jql_ref(field_key: str) -> str:
-    if field_key.startswith("customfield_"):
-        return f"cf[{field_key.split('_', 1)[1]}]"
+    """Convert field key to JQL reference format.
+
+    Use quoted format for customfields as cf[] syntax isn't universally supported.
+    """
+    # Use quoted format - more universally compatible
     return f'"{field_key}"'
 
 
 def _build_fi_search_jql(jira: JiraClient, raw_query: str) -> str:
     """Build a JQL query to find FI issues linked to an FI key, eTrack incident, or SFDC case.
 
-    Numeric-type fields (etrack incident, etrack ref, case#) only support = equality.
-    Text/string fields (Salesforce Case # / Link) support ~ fuzzy search.
+    Uses field DISPLAY NAMES directly in JQL (quoted).
+
+    Fields searched:
+    - NBU R&D Ticket (text field, uses ~)
+    - Etrack Incident (Internal) (numeric field, uses =)
+    - SalesForce Case Link (text field, uses ~)
     """
     stripped = raw_query.strip()
     if not stripped:
@@ -1616,27 +1626,36 @@ def _build_fi_search_jql(jira: JiraClient, raw_query: str) -> str:
             fi_values = ", ".join(f'"{_jql_escape(k)}"' for k in sorted(set(fi_keys)))
             clauses.append(f"key in ({fi_values})")
 
-    # --- Numeric tokens -> eTrack Incident (cf[33802]) ---
-    # cf[33802] = Etrack Incident : multi-value numeric field; use "in (v)" to match any entry
-    # cf[36508] = Etrack Ref      : text field, only supports ~
-    # cf[11814] = Case#           : text field, only supports ~
-    numeric_tokens = list(dict.fromkeys(re.findall(r"\d{4,}", stripped)))
-    if numeric_tokens:
-        et_ref = _field_key_to_jql_ref("customfield_33802")
-        in_values = ", ".join(numeric_tokens)
-        clauses.append(f"{et_ref} in ({in_values})")
-
-    # Text-search fields: Etrack Ref, Case#, Salesforce fields — all use ~
+    # --- For non-FI-key searches ---
     is_pure_fi_key = re.fullmatch(r"FI-\d+", stripped, re.IGNORECASE) is not None
     if not is_pure_fi_key:
-        text_field_keys: List[str] = ["customfield_36508", "customfield_11814"]
-        for field_name in ("Salesforce Case #", "Salesforce Case Link"):
-            field_key = jira.get_field_key_by_name(field_name)
-            if field_key:
-                text_field_keys.append(field_key)
-        for field_key in text_field_keys:
-            field_ref = _field_key_to_jql_ref(field_key)
-            clauses.append(f'{field_ref} ~ "{_jql_escape(stripped)}"')
+        # Extract numeric tokens for numeric field search
+        numeric_tokens = list(dict.fromkeys(re.findall(r"\d{4,}", stripped)))
+
+        # Text fields - use ~ operator with wildcard for etrack fields
+        # Use *number* to match "ET-4216468" when searching for "4216468"
+        text_field_names = [
+            "NBU R&D Ticket",             # Etrack field (stores "ET-XXXXXX")
+            "SalesForce Case Link",       # SFDC link
+        ]
+        for field_name in text_field_names:
+            # For numeric-only queries, use wildcard to match prefixed values like "ET-4216468"
+            if numeric_tokens and stripped.isdigit():
+                clauses.append(f'"{field_name}" ~ "*{_jql_escape(stripped)}*"')
+            else:
+                clauses.append(f'"{field_name}" ~ "{_jql_escape(stripped)}"')
+
+        # Numeric fields - use = or in operator (only if we have numeric tokens)
+        if numeric_tokens:
+            numeric_field_names = [
+                "Etrack Incident (Internal)",  # Numeric etrack field
+            ]
+            in_values = ", ".join(numeric_tokens)
+            for field_name in numeric_field_names:
+                if len(numeric_tokens) == 1:
+                    clauses.append(f'"{field_name}" = {numeric_tokens[0]}')
+                else:
+                    clauses.append(f'"{field_name}" in ({in_values})')
 
     if not clauses:
         raise ValueError(f"Unable to build FI search JQL for query: {stripped}")
@@ -1737,6 +1756,16 @@ def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = N
     etrack_ids, etrack_errors = _extract_etrack_ids(issue)
     sfdc_links = _extract_sfdc_case_links(issue)
 
+    # Extract Etrack Incident (Internal) by field name from names mapping
+    etrack_internal = None
+    names = issue.get("names") if isinstance(issue.get("names"), dict) else {}
+    for key, mapped_name in names.items():
+        if isinstance(mapped_name, str) and "etrack incident (internal)" in mapped_name.lower():
+            val = fields.get(key)
+            if val is not None:
+                etrack_internal = str(int(val)) if isinstance(val, float) else str(val)
+            break
+
     return {
         "FI": issue.get("key", "-"),
         "Status": _opt_value(fields.get("status")),
@@ -1744,6 +1773,7 @@ def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = N
         "Etrack IDs": ", ".join(etrack_ids) if etrack_ids else "-",
         "Etrack Errors": etrack_errors if etrack_errors else None,
         "Etrack Ref": _first_present_display_value(fields.get("customfield_36508")),
+        "Etrack Internal": etrack_internal if etrack_internal else "-",
         "SFDC Case #": _extract_sfdc_case_number(issue),
         "SFDC Cases": sfdc_links,  # list of {label, url}
         "Summary": _compact_text(fields.get("summary", "-"), max_len=100),
@@ -1764,7 +1794,6 @@ def _print_fi_search_results(raw_query: str, issues: List[Dict[str, Any]], outpu
     # Debug: show available fields
     if debug and issues:
         print("\n[DEBUG] Checking field data...", file=sys.stderr)
-        import sys
         fields = issues[0].get("fields", {})
         names = issues[0].get("names", {})
         print(f"[DEBUG] Total custom fields in response: {len([k for k in fields.keys() if k.startswith('customfield')])}", file=sys.stderr)
@@ -1790,6 +1819,19 @@ def _print_fi_search_results(raw_query: str, issues: List[Dict[str, Any]], outpu
         if not matched:
             print("  (none found)", file=sys.stderr)
 
+        # Show any field that might contain 'etrack'
+        print("\n[DEBUG] All custom fields containing 'etrack':", file=sys.stderr)
+        etrack_matched = False
+        for cf_key in sorted(fields.keys()):
+            if "customfield" in cf_key:
+                display_name = names.get(cf_key, cf_key)
+                if "etrack" in str(display_name).lower():
+                    value = fields.get(cf_key, "")
+                    print(f"  {cf_key}: {display_name} = {str(value)[:150]}", file=sys.stderr)
+                    etrack_matched = True
+        if not etrack_matched:
+            print("  (none found)", file=sys.stderr)
+
         print(file=sys.stderr)
 
     print()
@@ -1809,6 +1851,7 @@ def _print_fi_search_results(raw_query: str, issues: List[Dict[str, Any]], outpu
                 item["Assignee"] if idx == 0 else "",
                 item["Etrack IDs"] if idx == 0 else "",
                 item["Etrack Ref"] if idx == 0 else "",
+                item["Etrack Internal"] if idx == 0 else "",
                 item["SFDC Case #"] if idx == 0 else "",
                 case_num,
                 case_url,
@@ -1817,7 +1860,7 @@ def _print_fi_search_results(raw_query: str, issues: List[Dict[str, Any]], outpu
 
     _print_table(
         rows,
-        ["FI", "Status", "Assignee", "Etrack IDs", "Etrack Ref", "SFDC Case #", "SFDC Case", "SFDC URL", "Summary"],
+        ["FI", "Status", "Assignee", "Etrack IDs", "Etrack Ref", "Etrack Internal", "SFDC Case #", "SFDC Case", "SFDC URL", "Summary"],
     )
 
 
@@ -2507,8 +2550,9 @@ def main() -> int:
         "--search",
         action="store_true",
         help=(
-            "FI search mode. With --type fi, treat the positional value as an FI, "
-            "etrack incident, or Salesforce case identifier and return associated FI details."
+            "FI search mode. Treat the positional value as an FI key, etrack ID, or Salesforce case "
+            "and search all etrack fields: EI (Etrack Incident), ER (Etrack Ref), "
+            "RD (NBU R&D Ticket), INT (Etrack Incident Internal), plus Salesforce Case fields."
         ),
     )
     parser.add_argument(

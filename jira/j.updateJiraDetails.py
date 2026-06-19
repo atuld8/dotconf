@@ -788,6 +788,9 @@ def extract_validated_etrack_id(client, issue_key, silent=False):
             if not value:
                 return (False, None, "Empty value")
             value_str = str(value).strip()
+            # Handle float values from Jira numeric fields (e.g., 4223773.0)
+            if re.match(r'^\d+\.0$', value_str):
+                value_str = value_str[:-2]
             if re.match(r'^\d+$', value_str):
                 return (True, value_str, None)
             et_match = re.match(r'^ET[\s\-]?(\d+)$', value_str, re.IGNORECASE)
