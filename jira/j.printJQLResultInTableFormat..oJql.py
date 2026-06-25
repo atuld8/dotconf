@@ -75,9 +75,16 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "-e", "--exactCols",
+    type=lambda s: s.split(','),
+    help="Comma-separated list of exact column names to display (ignores profile settings)",
+    default=[]
+)
+
+parser.add_argument(
     "-p", "--profile",
     type=str,
-    choices=['default', 'pvm', 'fi', 'basic', 'nbsm', 'aging', 'release', 'triage'],
+    choices=['default', 'pvm', 'fi', 'basic', 'nbsm', 'aging', 'release', 'triage', 'customer', 'listcust'],
     default='basic',
     help="""Output profile for table columns:
 
@@ -98,7 +105,11 @@ parser.add_argument(
 
   pvm     : Security/patch focused (excludes Runtime, Reporter, IssueType, Labels, Epic)
 
-  fi      : Field Issue columns (Case Priority, Customer Name, Etrack Incident, etc.)
+  fi      : Field Issue columns (Case Priority, Case Account Name, Etrack Incident, etc.)
+
+  customer: Key, Assignee, Summary, Affects Version/s, Status, Customer Name, Case Account Name
+
+  listcust: Customer Name, Case Account Name (unique rows only)
 
   default : Full columns with AUTO-SWITCH to 'fi' (FI-* keys) or 'pvm' (PVM-* keys)
 
@@ -131,6 +142,8 @@ PROFILE_EXCLUDES = {
     'aging': ['Sr.', 'Reporter', 'Severity', 'IssueType', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Components', 'Affects Version/s'],
     'release': ['Sr.', 'Runtime', 'Reporter', 'Severity', 'IssueType', 'Labels', 'Epic', 'CVSS', 'Created', 'Updated'],
     'triage': ['Sr.', 'Runtime', 'Reporter', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Affects Version/s', 'Created', 'Updated'],
+    'customer': [],
+    'listcust': [],
 }
 
 # Column order for basic profile (universal minimal view)
@@ -199,7 +212,7 @@ FI_COLUMN_ORDER = [
     'Case Priority',
     'Priority',
     'Components',
-    'Customer Name',
+    'Case Account Name',
     'Assignee',
     'Assignee Manager',
     'Affects Version/s',
@@ -213,8 +226,26 @@ FI_COLUMN_ORDER = [
     'Customer Sentiment'
 ]
 
+# Column order for customer profile
+CUSTOMER_COLUMN_ORDER = [
+    'Key',
+    'Assignee',
+    'Summary',
+    'Affects Version/s',
+    'Status',
+    'Customer Name',
+    'Case Account Name',
+]
+
+# Column order for listcust profile (unique customers only)
+LISTCUST_COLUMN_ORDER = [
+    'Customer Name',
+    'Case Account Name',
+]
+
 FI_DYNAMIC_FIELD_CANDIDATES = OrderedDict([
     ('Case Priority', ['Case Priority']),  # Removed incorrect alternative name
+    ('Case Account Name', ['Case Account Name']),
     ('Customer Name', ['Customer Name', 'Customer']),
     ('Assignee Manager', ['Assignee Manager']),
     ('Case Status', ['Case Status']),
@@ -226,7 +257,7 @@ FI_DYNAMIC_FIELD_CANDIDATES = OrderedDict([
 
 # Prefer stable Jira IDs (from working j.getJiraDetails.py behavior), then fall back to name resolution.
 FI_STATIC_FIELD_IDS = {
-    'Customer Name': 'customfield_18901',
+    'Case Account Name': 'customfield_18901',
     'Case Status': 'customfield_16200',
     'Etrack Incident': 'customfield_33802',
 }
@@ -668,13 +699,16 @@ def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
         return None
 
 
-def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile='default', fi_field_map=None):
+def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile='default', fi_field_map=None, exact_cols=None):
     """Prints the issues in a table format.
 
     Args:
         issues (list): The list of issues to display.
         excludeCols (list): The list of columns to exclude from the display.
         extra_fields (list): List of tuples (field_id, display_name) for extra columns.
+        profile (str): The profile to use for column selection.
+        fi_field_map (dict): Field ID mapping for FI-specific fields.
+        exact_cols (list): If provided, only these columns will be shown (overrides profile).
     """
     # Extract the relevant data into a list of dictionaries
     data = []
@@ -712,6 +746,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
                 'Case Priority': _extract_field_or_dash(issue, fi_field_map.get('Case Priority')),  # Ensure only 'Case Priority' is used
                 'Priority': priority,
                 'Components': components,
+                'Case Account Name': _extract_field_or_dash(issue, fi_field_map.get('Case Account Name')),
                 'Customer Name': _extract_field_or_dash(issue, fi_field_map.get('Customer Name')),
                 'Assignee': assignee,
                 'Assignee Manager': _extract_field_or_dash(issue, fi_field_map.get('Assignee Manager')),
@@ -736,6 +771,27 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
             data.append(filtered_entry)
             continue
 
+        if profile in ['customer', 'listcust']:
+            customer_entry = {
+                'Key': key,
+                'Assignee': assignee,
+                'Summary': summary,
+                'Affects Version/s': affected_versions,
+                'Status': status,
+                'Customer Name': _extract_field_or_dash(issue, fi_field_map.get('Customer Name')),
+                'Case Account Name': _extract_field_or_dash(issue, fi_field_map.get('Case Account Name')),
+            }
+
+            for field_id, display_name in extra_fields:
+                value = extract_field_value(issue, field_id)
+                if len(str(value)) > 50:
+                    value = str(value)[:50] + "..."
+                customer_entry[display_name] = value
+
+            filtered_entry = {k: v for k, v in customer_entry.items() if k not in excludeCols}
+            data.append(filtered_entry)
+            continue
+
         unfiltered_entry = {
             'Sr.': index,
             'Key': key,
@@ -757,6 +813,18 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
             'Updated': updated,
         }
 
+        # Add FI-specific fields if fi_field_map is available (for exactCols support)
+        if fi_field_map:
+            unfiltered_entry['Customer Name'] = _extract_field_or_dash(issue, fi_field_map.get('Customer Name'))
+            unfiltered_entry['Case Account Name'] = _extract_field_or_dash(issue, fi_field_map.get('Case Account Name'))
+            unfiltered_entry['Case Priority'] = _extract_field_or_dash(issue, fi_field_map.get('Case Priority'))
+            unfiltered_entry['Case Status'] = _extract_field_or_dash(issue, fi_field_map.get('Case Status'))
+            unfiltered_entry['Etrack Incident'] = _extract_field_or_dash(issue, fi_field_map.get('Etrack Incident'))
+            unfiltered_entry['Squad Name'] = _extract_field_or_dash(issue, fi_field_map.get('Squad Name'))
+            unfiltered_entry['Cap Involvement'] = _extract_field_or_dash(issue, fi_field_map.get('Cap Involvement'))
+            unfiltered_entry['Customer Sentiment'] = _extract_field_or_dash(issue, fi_field_map.get('Customer Sentiment'))
+            unfiltered_entry['Assignee Manager'] = _extract_field_or_dash(issue, fi_field_map.get('Assignee Manager'))
+
         # Add extra dynamic fields
         for field_id, display_name in extra_fields:
             value = extract_field_value(issue, field_id)
@@ -774,35 +842,53 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
     # Convert the data to a pandas DataFrame and display it as a table
     df = pd.DataFrame(data)
 
+    # Handle listcust profile - keep only unique rows
+    if profile == 'listcust':
+        df = df[['Customer Name', 'Case Account Name']].drop_duplicates()
+
     # print(df.to_markdown())  # Prints a table in markdown format, good for command line
 
     # Use PrettyTable to print the DataFrame in a table format
     table = PrettyTable()
 
-    # Determine column order based on profile
-    if profile == 'fi':
-        column_order = FI_COLUMN_ORDER
-    elif profile == 'basic':
-        column_order = BASIC_COLUMN_ORDER
-    elif profile == 'nbsm':
-        column_order = NBSM_COLUMN_ORDER
-    elif profile == 'aging':
-        column_order = AGING_COLUMN_ORDER
-    elif profile == 'release':
-        column_order = RELEASE_COLUMN_ORDER
-    elif profile == 'triage':
-        column_order = TRIAGE_COLUMN_ORDER
+    # Handle exact_cols - override all profile settings
+    if exact_cols:
+        available_cols = [col.strip() for col in exact_cols if col.strip() in df.columns.tolist()]
+        if available_cols:
+            df = df[available_cols]
+            table.field_names = available_cols
+        else:
+            print(f"Warning: None of the requested columns {exact_cols} found in data.")
+            table.field_names = df.columns.tolist()
     else:
-        column_order = None
+        # Determine column order based on profile
+        if profile == 'fi':
+            column_order = FI_COLUMN_ORDER
+        elif profile == 'basic':
+            column_order = BASIC_COLUMN_ORDER
+        elif profile == 'nbsm':
+            column_order = NBSM_COLUMN_ORDER
+        elif profile == 'aging':
+            column_order = AGING_COLUMN_ORDER
+        elif profile == 'release':
+            column_order = RELEASE_COLUMN_ORDER
+        elif profile == 'triage':
+            column_order = TRIAGE_COLUMN_ORDER
+        elif profile == 'customer':
+            column_order = CUSTOMER_COLUMN_ORDER
+        elif profile == 'listcust':
+            column_order = LISTCUST_COLUMN_ORDER
+        else:
+            column_order = None
 
-    if column_order:
-        ordered_columns = [col for col in column_order if col in df.columns.tolist()]
-        remaining_columns = [col for col in df.columns.tolist() if col not in ordered_columns]
-        final_columns = ordered_columns + remaining_columns
-        df = df[final_columns]  # Reorder DataFrame columns to match header order
-        table.field_names = final_columns
-    else:
-        table.field_names = df.columns.tolist()
+        if column_order:
+            ordered_columns = [col for col in column_order if col in df.columns.tolist()]
+            remaining_columns = [col for col in df.columns.tolist() if col not in ordered_columns]
+            final_columns = ordered_columns + remaining_columns
+            df = df[final_columns]  # Reorder DataFrame columns to match header order
+            table.field_names = final_columns
+        else:
+            table.field_names = df.columns.tolist()
 
     # Set column alignment to left
     for field in table.field_names:
@@ -841,7 +927,13 @@ def main():
 
     fi_field_map = {}
     fi_extra_field_ids = []
-    if args.profile in ['default', 'fi']:
+    # Resolve FI fields for profiles that need them, or when exactCols contains FI-specific fields
+    fi_field_names = {'Customer Name', 'Case Account Name', 'Case Priority', 'Case Status', 
+                      'Etrack Incident', 'Squad Name', 'Cap Involvement', 'Customer Sentiment', 
+                      'Assignee Manager'}
+    needs_fi_fields = (args.profile in ['default', 'fi', 'customer', 'listcust'] or
+                       (args.exactCols and any(col.strip() in fi_field_names for col in args.exactCols)))
+    if needs_fi_fields:
         fi_field_map, fi_extra_field_ids = resolve_fi_profile_fields()
 
     requested_extra_ids = list(dict.fromkeys(extra_field_ids + fi_extra_field_ids))
@@ -863,7 +955,10 @@ def main():
     # Combine profile excludes with user-specified excludes
     all_excludes = list(set(args.excludeCols + PROFILE_EXCLUDES.get(effective_profile, [])))
 
-    print_issues_in_table_format(issues, all_excludes, extra_fields, profile=effective_profile, fi_field_map=fi_field_map)
+    # Get exact columns if specified (overrides profile)
+    exact_cols = args.exactCols if args.exactCols else None
+
+    print_issues_in_table_format(issues, all_excludes, extra_fields, profile=effective_profile, fi_field_map=fi_field_map, exact_cols=exact_cols)
 
 
 if __name__ == '__main__':
