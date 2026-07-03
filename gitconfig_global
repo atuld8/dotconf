@@ -10,23 +10,26 @@
 [difftool]
 	prompt = false
 [alias]
-    aTrkCwd = "!cd "${GIT_PREFIX:-.}" && git add -u -- . && git status"
-    aAllCwd = !cd "${GIT_PREFIX:-.}" && git add . && git add -u -- . && git status
-    ; ! in a git alias resets to repo root; hence . has no effect
-    atrked = "!git add -u ."
-    aCPP = "!cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit --reuse-message=HEAD && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push"
-    aCPh = "!cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit --reuse-message=HEAD && git push'"
-    aCmPP = "!f_acmp() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -m \"$*\" && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acmp"
-    aCFPP = "!f_acfp() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -F $* && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acfp"
-    aCmPh = "!f_acmp() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -m \"$*\" && git push; }; f_acmp"
-    aCFPh = "!f_acfp() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -F $* && git push; }; f_acfp"
-    aCRPh = "!f_acrp() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit --reuse-message=$* && git push; }; f_acrp"
-    aCmPhUpCb = "!f_acmphupcb() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -m \"$*\" && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acmphupcb"
-    aCFPhUpcb = "!f_acfphupcb() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -F $* && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acfphupcb"
-    aCRPhUpcb = "!f_acrphupcb() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit --reuse-message=$* && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acrphupcb"
-    aCmPhfwl = "!f_acmphfwl() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -m \"$*\" && git push --force-with-leasse; }; f_acmphfwl"
-    aCFPhfwl = "!f_acfphfwl() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit -F $* && git push --force-with-lease; }; f_acfphfwl"
-    aCAmdPhfwl = "!f_acamdphfwl() { cd "${GIT_PREFIX:-.}" && git add -u -- . && git commit --verbose --amend --no-edit && git push --force-with-lease; }; f_acamdphfwl"
+    aTrkCwd = "!cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git status"
+    aAllCwd = !cd "${GIT_PREFIX:-.}" && git add . && git add -u -v -- . && git status
+    ; ! in a git alias resets to repo root hence . has no effect
+    atrked = "!git add -u -v ."
+    aCPP = "!cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit --reuse-message=HEAD && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push"
+    aCPh = "!git add -u -v . && git commit --reuse-message=HEAD && git push"
+    aCPhCwd = "!cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit --reuse-message=HEAD && git push"
+    aCmPP = "!f_acmp() { git add -u -v .&& git commit -m \"$*\" && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acmp"
+    aCmPPCwd = "!f_acmp() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -m \"$*\" && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acmp"
+    aCFPP = "!f_acfp() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -F $* && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acfp"
+    aCmPh = "!f_acmp() { git add -u -v -- . && git commit -m \"$*\" && git push; }; f_acmp"
+    aCmPhCwd = "!f_acmp() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -m \"$*\" && git push; }; f_acmp"
+    aCFPh = "!f_acfp() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -F $* && git push; }; f_acfp"
+    aCRPh = "!f_acrp() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit --reuse-message=$* && git push; }; f_acrp"
+    aCmPhUpCb = "!f_acmphupcb() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -m \"$*\" && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acmphupcb"
+    aCFPhUpcb = "!f_acfphupcb() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -F $* && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acfphupcb"
+    aCRPhUpcb = "!f_acrphupcb() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit --reuse-message=$* && git push -u origin \"$(git rev-parse --abbrev-ref HEAD)\"; }; f_acrphupcb"
+    aCmPhfwl = "!f_acmphfwl() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -m \"$*\" && git push --force-with-leasse; }; f_acmphfwl"
+    aCFPhfwl = "!f_acfphfwl() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit -F $* && git push --force-with-lease; }; f_acfphfwl"
+    aCAmdPhfwl = "!f_acamdphfwl() { cd "${GIT_PREFIX:-.}" && git add -u -v -- . && git commit --verbose --amend --no-edit && git push --force-with-lease; }; f_acamdphfwl"
     ; alias with format alias.a def
     aList = config --get-regexp alias
     aGList = config --global --get-regexp alias
@@ -105,6 +108,7 @@
 
     dg = difftool --gui --no-prompt
     df = -c diff.wsErrorHighlight=all diff --no-ext-diff
+    dfcwd = -c diff.wsErrorHighlight=all diff --no-ext-diff .
     ; this will check for error like trailing spaces and report
     dfChk = diff --no-ext-diff --check
     dfICr = diff --no-ext-diff --ignore-cr-at-eol
@@ -118,7 +122,7 @@
     dfcs = diff --compact-summary
     dfCNR = diff --cached --no-ext-diff --name-only --relative
     dfCw = diff --no-ext-diff --color-words
-    dfCwd = diff --no-ext-diff --color-words=.
+    dfCwrd = diff --no-ext-diff --color-words=.
     dfWrx = diff --no-ext-diff --word-diff-regex=. --color-words=.
     dfWrxSp = diff --no-ext-diff --word-diff-regex=.
     dfWrxSp1 = diff --no-ext-diff --word-diff-regex=\"[ ]+|[^ ]+\"
