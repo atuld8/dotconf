@@ -146,4 +146,11 @@ return {
       "mechatroner/rainbow_csv",
       ft = { "csv", "tsv", "csv_pipe", "csv_semicolon" },
   },
+  -- Best in-terminal markdown renderer (replaces raw syntax with pretty display)
+  { "MeanderingProgrammer/render-markdown.nvim" },
+  -- Browser preview (opens rendered HTML in browser)
+  { "iamcco/markdown-preview.nvim",
+    build = "cd app && npm install",
+    ft = { "markdown" }
+  },
 }
