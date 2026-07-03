@@ -10,7 +10,6 @@
 [difftool]
 	prompt = false
 [alias]
-    a = add
     atrkcwd = !git add -u -- . && git status
     addallcwd = !git add . && git add -u -- . && git status
     aCPP = ! git commit -a --reuse-message=HEAD -- . && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push
