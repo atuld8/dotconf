@@ -13,7 +13,7 @@
     atrkcwd = "!git add -u -- . && git status"
     addallcwd = !git add . && git add -u -- . && git status
     aCPP = "! git add -u -- . && git commit --reuse-message=HEAD && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push"
-    aCPh = "! git add -u -- . && git commit --reuse-message=HEAD && git push"
+    aCPh = "! sh -c 'git add -u -- . && git commit --reuse-message=HEAD && git push'"
     aCmPP = "!f_acmp() { git add -u -- . && git commit -m \"$*\" && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acmp"
     aCFPP = "!f_acfp() { git add -u -- . && git commit -F $* && git pull origin \"$(git rev-parse --abbrev-ref HEAD)\" && git push; }; f_acfp"
     aCmPh = "!f_acmp() { git add -u -- . && git commit -m \"$*\" && git push; }; f_acmp"
