@@ -1246,6 +1246,237 @@ class JiraClient:
 
         return result
 
+    def get_remote_links(self, issue_key: str) -> List[Dict[str, Any]]:
+        """Fetch remote links for a Jira issue (includes PR links, commit links, etc.)."""
+        url = f"{self.base_url}/rest/api/2/issue/{issue_key}/remotelink"
+        try:
+            response = self._get(url)
+            if response.status_code != 200:
+                return []
+            return response.json()
+        except Exception:
+            return []
+
+
+def _extract_code_links(issue: Dict[str, Any], remote_links: List[Dict[str, Any]] = None) -> List[Dict[str, str]]:
+    """Extract PR/commit/code repository links and etrack references from issue.
+
+    Searches in:
+    - Remote links (PR links from GitHub/GitLab integrations)
+    - Issue description
+    - Comments
+    - Custom fields (Release Team Update, etc.)
+    - Issue links (for linked commits/PRs)
+
+    Returns:
+        List of dicts with keys: type, title, url, source
+    """
+    code_links: List[Dict[str, str]] = []
+    seen_urls: Set[str] = set()
+    seen_etrack_ids: Set[str] = set()
+
+    # Patterns for code/PR links
+    github_pr_pattern = re.compile(
+        r'(https?://github\.com/[^/]+/[^/]+/pull/\d+)'
+        r'|'
+        r'(https?://github\.com/[^/]+/[^/]+/commit/[a-f0-9]+)'
+        r'|'
+        r'(https?://github\.com/[^/]+/[^/]+/compare/[^\s"<>\)\]]+)',
+        re.IGNORECASE
+    )
+    gitlab_mr_pattern = re.compile(
+        r'(https?://[^/]*gitlab[^/]*/[^/]+/[^/]+/-/merge_requests/\d+)'
+        r'|'
+        r'(https?://[^/]*gitlab[^/]*/[^/]+/[^/]+/-/commit/[a-f0-9]+)',
+        re.IGNORECASE
+    )
+    bitbucket_pr_pattern = re.compile(
+        r'(https?://[^/]*bitbucket[^/]*/[^/]+/[^/]+/pull-requests?/\d+)',
+        re.IGNORECASE
+    )
+    gerrit_pattern = re.compile(
+        r'(https?://[^/]*gerrit[^/]*/[^/]+/\+/\d+)',
+        re.IGNORECASE
+    )
+    # Veritas Stash PR pattern - captures full URL and PR number
+    stash_pr_pattern = re.compile(
+        r'(https?://stash\.veritas\.com/projects/([^/]+)/repos/([^/]+)/pull-requests/(\d+)[^\s"<>\)\]]*)',
+        re.IGNORECASE
+    )
+    # Etrack link pattern (engtools URL)
+    etrack_link_pattern = re.compile(
+        r'(https?://engtools\.engba\.veritas\.com/etrack/[^\s"<>\)\]]+incident=(\d+)[^\s"<>\)\]]*)',
+        re.IGNORECASE
+    )
+    # Etrack ID mention patterns: "merged as part of 4230931", "fixing as part of ET 4230931", "ET-4230931"
+    # Pattern captures: group(1)=prefix like "Mainline" or "11.2.0.1", group(2)=etrack_id for version pattern
+    #                   group(3)=etrack_id for "merged/fixing as part of" pattern
+    #                   group(4)=etrack_id for "ET-" pattern
+    etrack_mention_pattern = re.compile(
+        r'(Mainline|\d+\.\d+\.\d+(?:\.\d+)?)\s*:\s*(\d{6,8})'
+        r'|'
+        r'(?:merged\s+(?:as\s+)?part\s+of|fixing\s+(?:as\s+)?part\s+of|part\s+of\s+ET)\s*(\d{6,8})'
+        r'|'
+        r'ET[-\s]?(\d{6,8})',
+        re.IGNORECASE
+    )
+
+    def _add_link(link_type: str, title: str, url: str, source: str):
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            # Clean up URL
+            url = url.rstrip('.,;:)]')
+            code_links.append({
+                "type": link_type,
+                "title": title[:120] if title else url.split('/')[-1][:50],
+                "url": url,
+                "source": source,
+            })
+
+    def _add_etrack_ref(etrack_id: str, title: str, source: str):
+        if etrack_id and etrack_id not in seen_etrack_ids and len(etrack_id) >= 6:
+            seen_etrack_ids.add(etrack_id)
+            code_links.append({
+                "type": "Etrack",
+                "title": title,
+                "url": f"https://engtools.engba.veritas.com/etrack/readonly_inc.php?incident={etrack_id}",
+                "source": source,
+            })
+
+    def _extract_from_text(text: str, source: str):
+        if not text:
+            return
+        # GitHub
+        for match in github_pr_pattern.finditer(text):
+            url = match.group(1) or match.group(2) or match.group(3)
+            if url:
+                if '/pull/' in url:
+                    _add_link("PR", "", url, source)
+                elif '/commit/' in url:
+                    _add_link("Commit", "", url, source)
+                elif '/compare/' in url:
+                    _add_link("Compare", "", url, source)
+        # GitLab
+        for match in gitlab_mr_pattern.finditer(text):
+            url = match.group(1) or match.group(2)
+            if url:
+                link_type = "MR" if '/merge_requests/' in url else "Commit"
+                _add_link(link_type, "", url, source)
+        # Bitbucket
+        for match in bitbucket_pr_pattern.finditer(text):
+            url = match.group(1)
+            if url:
+                _add_link("PR", "", url, source)
+        # Gerrit
+        for match in gerrit_pattern.finditer(text):
+            url = match.group(1)
+            if url:
+                _add_link("CL", "", url, source)
+        # Veritas Stash PRs
+        for match in stash_pr_pattern.finditer(text):
+            url = match.group(1)
+            project = match.group(2)  # e.g., "NB"
+            repo = match.group(3)  # e.g., "src"
+            pr_number = match.group(4)  # e.g., "151312"
+            if url:
+                title = f"{project}/{repo} PR #{pr_number}"
+                _add_link("Stash PR", title, url, source)
+        # Etrack links (engtools URLs)
+        for match in etrack_link_pattern.finditer(text):
+            url = match.group(1)
+            etrack_id = match.group(2)
+            if url and etrack_id:
+                seen_etrack_ids.add(etrack_id)  # Mark as seen to avoid duplicate from mention pattern
+                _add_link("Etrack", f"ET {etrack_id}", url, source)
+        # Etrack ID mentions (e.g., "Mainline: 4230812", "11.2.0.1: 4231160", "merged as part of 4230931")
+        for match in etrack_mention_pattern.finditer(text):
+            version_prefix = match.group(1)  # "Mainline" or "11.2.0.1" etc.
+            version_etrack_id = match.group(2)  # etrack_id for version pattern
+            merged_etrack_id = match.group(3)  # etrack_id for "merged/fixing as part of" pattern
+            et_etrack_id = match.group(4)  # etrack_id for "ET-" pattern
+            
+            if version_prefix and version_etrack_id:
+                # Clean title: "Mainline: 4230812" or "11.2.0.1: 4231160"
+                title = f"{version_prefix}: {version_etrack_id}"
+                _add_etrack_ref(version_etrack_id, title, source)
+            elif merged_etrack_id:
+                title = f"ET {merged_etrack_id}"
+                _add_etrack_ref(merged_etrack_id, title, source)
+            elif et_etrack_id:
+                title = f"ET {et_etrack_id}"
+                _add_etrack_ref(et_etrack_id, title, source)
+
+    # 1. Extract from remote links (most reliable - from Jira integration)
+    if remote_links:
+        for rlink in remote_links:
+            obj = rlink.get("object", {})
+            url = obj.get("url", "")
+            title = obj.get("title", "")
+            status_text = ""
+            if obj.get("status"):
+                status_icon = obj["status"].get("icon", {}).get("title", "")
+                status_text = f" [{status_icon}]" if status_icon else ""
+
+            # Determine link type from URL or title
+            link_type = "Link"
+            if 'stash.veritas.com' in url.lower() and '/pull-requests/' in url.lower():
+                link_type = "Stash PR"
+            elif any(x in url.lower() for x in ['pull', 'pr', 'merge_request']):
+                link_type = "PR"
+            elif '/commit/' in url.lower():
+                link_type = "Commit"
+            elif 'github' in url.lower() or 'gitlab' in url.lower() or 'bitbucket' in url.lower():
+                link_type = "Code"
+
+            if url:
+                _add_link(link_type, f"{title}{status_text}", url, "Remote Link")
+
+    # 2. Extract from description
+    fields = issue.get("fields", {})
+    description = fields.get("description", "")
+    _extract_from_text(description, "Description")
+
+    # 3. Extract from comments (last 10 comments to avoid too much noise)
+    comments = fields.get("comment", {}).get("comments", [])
+    for comment in comments[-10:]:
+        body = comment.get("body", "")
+        _extract_from_text(body, "Comment")
+
+    # 4. Extract from custom fields (Release Team Update, Progress Status, etc.)
+    names_map = issue.get("names", {})
+    pvm_relevant_fields = {
+        "release team update", "release update", "release notes",
+        "fix details", "fix information", "resolution details",
+        "dev comments", "developer comments", "engineering notes",
+        "mainline", "branch info", "merge info", "pr info",
+        "progress status", "pvm progress status", "vulnerability progress status",
+        "root causes", "root cause",
+    }
+    for field_id, field_value in fields.items():
+        if not field_id.startswith("customfield_"):
+            continue
+        if field_value is None:
+            continue
+        # Get field name
+        field_name = names_map.get(field_id, field_id)
+        field_name_lower = field_name.lower() if isinstance(field_name, str) else ""
+        # Check if this is a relevant field for PVM
+        is_relevant = any(pf in field_name_lower for pf in pvm_relevant_fields)
+        if not is_relevant:
+            continue
+        # Extract text content
+        text_content = ""
+        if isinstance(field_value, str):
+            text_content = field_value
+        elif isinstance(field_value, dict):
+            text_content = field_value.get("content", "") or str(field_value)
+        elif isinstance(field_value, list):
+            text_content = " ".join(str(v) for v in field_value)
+        if text_content:
+            _extract_from_text(text_content, field_name)
+
+    return code_links
+
 
 def _print_table(rows: List[List[str]], headers: List[str]):
     if tabulate:
@@ -2163,6 +2394,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
     # Print optional fields in compact format as well
     optional_parts = []
     pvm_long_parts = []
+    pvm_security_parts = []
+    pvm_root_causes_parts = []
     for label in optional_labels:
         if profile_type != "pvm" and label in {"Fixed Version/s", "Resolved"}:
             continue
@@ -2177,8 +2410,12 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
 
         field_prefix = "* "
         part = f"{field_prefix}{label}: {formatted_value}"
-        if profile_type == "pvm" and label in {"Solution", "Progress Status", "Root Causes"}:
+        if profile_type == "pvm" and label in {"Solution", "Progress Status"}:
             pvm_long_parts.append(part)
+        elif profile_type == "pvm" and label == "Root Causes":
+            pvm_root_causes_parts.append(part)
+        elif profile_type == "pvm" and label in {"CVSS Score", "Impact", "Security Level"}:
+            pvm_security_parts.append(part)
         else:
             optional_parts.append(part)
 
@@ -2186,8 +2423,16 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         for part in optional_parts:
             print(part)
         print(separator)
+    if pvm_security_parts:
+        for part in pvm_security_parts:
+            print(part)
+        print(separator)
     if pvm_long_parts:
         for part in pvm_long_parts:
+            print(part)
+        print(separator)
+    if pvm_root_causes_parts:
+        for part in pvm_root_causes_parts:
             print(part)
         print(separator)
 
@@ -2494,6 +2739,7 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
         "subtasks",
         "linked-fis",
         "etrack",
+        "code-links",
         "comments",
         "fields",
         "timeline",
@@ -2503,8 +2749,8 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
     mode_defaults: Dict[str, Set[str]] = {
         "standard": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "comments", "fields", "verbose"},
         "summary": {"summary", "description"},
-        "investigate": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "comments", "fields", "timeline", "verbose"},
-        "ops": {"summary", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "comments"},
+        "investigate": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "code-links", "comments", "fields", "timeline", "verbose"},
+        "ops": {"summary", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "code-links", "comments"},
     }
 
     if raw_sections.strip():
@@ -2611,7 +2857,7 @@ def main() -> int:
         default="",
         help=(
             "Comma-separated sections to display (overrides --mode). "
-            "Allowed: summary,description,status,customer-field-issues,rca-ca,subtasks,linked-fis,etrack,comments,fields,timeline,verbose"
+            "Allowed: summary,description,status,customer-field-issues,rca-ca,subtasks,linked-fis,etrack,code-links,comments,fields,timeline,verbose"
         ),
     )
     parser.add_argument(
@@ -2821,6 +3067,21 @@ def main() -> int:
 
     if show_etrack_requested and etrack_ids:
         etrack_info = _fetch_etrack_details(etrack_ids)
+
+    # Fetch remote links and extract code links for PVM profile or when code-links section is requested
+    remote_links: List[Dict[str, Any]] = []
+    code_links: List[Dict[str, str]] = []
+    show_code_links = (
+        profile_type == "pvm"
+        or args.mode in {"investigate", "ops"}
+        or (sections_override_active and "code-links" in enabled_sections)
+    )
+    if show_code_links:
+        try:
+            remote_links = jira.get_remote_links(issue.get("key", issue_key))
+        except Exception:
+            remote_links = []
+        code_links = _extract_code_links(issue, remote_links)
 
     requested_fields = _split_field_selectors(args.show_field)
     default_optional_rows = _get_default_optional_fields(issue, profile_type, etrack_ids)
@@ -3082,6 +3343,27 @@ def main() -> int:
         elif args.show_empty:
             print(section_separator)
             print("\n* Etrack details: disabled (use --show-etrack-details or mode investigate/ops)")
+            print(section_separator)
+
+    # Code Links section (PRs, commits, etc.) - especially useful for PVM issues
+    if "code-links" in enabled_sections or show_code_links:
+        if code_links:
+            print(section_separator)
+            print("\n* Code Links (PRs/Commits):")
+            rows = []
+            for link in code_links:
+                rows.append([
+                    link.get("type", "Link"),
+                    link.get("title", "-"),
+                    link.get("url", "-"),
+                    link.get("source", "-"),
+                ])
+            _print_table(rows, ["Type", "Title", "URL", "Source"])
+            print(section_separator)
+        elif profile_type == "pvm" or args.show_empty:
+            # Always show message for PVM profile even if no links found
+            print(section_separator)
+            print("\n* Code Links (PRs/Commits): No PR, Stash, or Etrack links detected in description, comments, or custom fields.")
             print(section_separator)
 
     if "comments" in enabled_sections:
