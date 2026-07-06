@@ -1478,7 +1478,11 @@ def _extract_code_links(issue: Dict[str, Any], remote_links: List[Dict[str, Any]
     return code_links
 
 
-def _print_table(rows: List[List[str]], headers: List[str]):
+def _print_table(rows: List[List[str]], headers: List[str], md_format: bool = False):
+    if md_format:
+        _print_table_md(rows, headers)
+        return
+
     if tabulate:
         print(tabulate(rows, headers=headers, tablefmt="simple"))
         return
@@ -1495,6 +1499,19 @@ def _print_table(rows: List[List[str]], headers: List[str]):
     print("-+-".join("-" * width for width in widths))
     for row in rows:
         print(fmt(row))
+
+
+def _print_table_md(rows: List[List[str]], headers: List[str]):
+    """Print table in Markdown format."""
+    # Header row
+    print("| " + " | ".join(headers) + " |")
+    # Separator row
+    print("| " + " | ".join(["---"] * len(headers)) + " |")
+    # Data rows
+    for row in rows:
+        # Escape pipe characters in cell values
+        escaped = [str(cell).replace("|", "\\|") for cell in row]
+        print("| " + " | ".join(escaped) + " |")
 
 
 def _summary_rows_to_dict(summary_rows: List[List[str]]) -> Dict[str, str]:
@@ -2326,6 +2343,69 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         _print_table(summary_rows, ["Field", "Value"])
         return
 
+    if output_format == "md":
+        print()
+        if is_cap_fi:
+            print("**CAP-FI PROFILE**\n")
+        # Issue header
+        issue_key = _summary_value(summary_rows, 'Issue')
+        summary_text = _summary_value(summary_rows, 'Summary')
+        print(f"# {issue_key}\n")
+        print(f"**{summary_text}**\n")
+        # Status section
+        print("## Status\n")
+        print(f"| Field | Value |")
+        print(f"| --- | --- |")
+        print(f"| Project | {_summary_value(summary_rows, 'Project')} |")
+        print(f"| Type | {_summary_value(summary_rows, 'Type')} |")
+        print(f"| Priority | {_summary_value(summary_rows, 'Priority')} |")
+        print(f"| Status | {_summary_value(summary_rows, 'Status')} |")
+        print(f"| Resolution | {_summary_value(summary_rows, 'Resolution')} |")
+        print()
+        # People section
+        print("## People\n")
+        print(f"| Role | Person |")
+        print(f"| --- | --- |")
+        print(f"| Assignee | {_summary_value(summary_rows, 'Assignee')} |")
+        print(f"| Reporter | {_summary_value(summary_rows, 'Reporter')} |")
+        print(f"| Creator | {_summary_value(summary_rows, 'Creator')} |")
+        print()
+        # Metadata section
+        print("## Metadata\n")
+        print(f"| Field | Value |")
+        print(f"| --- | --- |")
+        print(f"| Parent | {_summary_value(summary_rows, 'Parent')} |")
+        print(f"| Components | {_summary_value(summary_rows, 'Components')} |")
+        print(f"| Labels | {_summary_value(summary_rows, 'Labels')} |")
+        print(f"| Fixed Version/s | {_summary_value(summary_rows, 'Fixed Version/s')} |")
+        print(f"| Affects Versions | {_summary_value(summary_rows, 'Affects Versions')} |")
+        print()
+        # Additional fields section
+        optional_present = [
+            label
+            for label in optional_labels
+            if _summary_value(summary_rows, label) != "-" or (profile_type == "fi" and label == "Case Priority")
+        ]
+        if optional_present:
+            print("## Additional Fields\n")
+            print(f"| Field | Value |")
+            print(f"| --- | --- |")
+            for label in optional_present:
+                value = _summary_value(summary_rows, label).replace("|", "\\|")
+                print(f"| {label} | {value} |")
+            print()
+        # Activity section
+        print("## Activity\n")
+        print(f"| Field | Value |")
+        print(f"| --- | --- |")
+        print(f"| Comments | {_summary_value(summary_rows, 'Comments')} |")
+        print(f"| Attachments | {_summary_value(summary_rows, 'Attachments')} |")
+        print(f"| Watcher Count | {_summary_value(summary_rows, 'Watcher Count')} |")
+        print(f"| Created | {_summary_value(summary_rows, 'Created')} |")
+        print(f"| Updated | {_summary_value(summary_rows, 'Updated')} |")
+        print(f"| Resolved | {_summary_value(summary_rows, 'Resolved')} |")
+        return
+
     if output_format == "grouped":
         print()
         if is_cap_fi:
@@ -2937,9 +3017,9 @@ def main() -> int:
     parser.add_argument(
         "-F",
         "--format",
-        choices=["compact", "grouped", "table", "minimal", "json"],
+        choices=["compact", "grouped", "table", "minimal", "json", "md"],
         default="compact",
-        help="Summary output format: compact (default), grouped, table, minimal, or json.",
+        help="Summary output format: compact (default), grouped, table, minimal, json, or md (markdown).",
     )
     args = parser.parse_args()
 
@@ -3135,7 +3215,14 @@ def main() -> int:
         f"etrack={'on' if show_etrack_requested else 'off'} "
         f"long={args.long_text_style}/{args.wrap_width}"
     )
-    section_separator = "-" * 140
+    is_md_format = args.format == "md"
+    section_separator = "" if is_md_format else "-" * 140
+
+    def _md_section_header(title: str) -> str:
+        """Return markdown section header or plain text based on format."""
+        if is_md_format:
+            return f"\n## {title}\n"
+        return f"\n* {title}:"
 
     if "summary" in enabled_sections:
         _print_summary(summary_rows, args.format, profile_type)
@@ -3144,32 +3231,50 @@ def main() -> int:
     _desc_max_len = {"short": 300, "mid": 700, "full": 0}
     if "description" in enabled_sections:
         if args.desc != "none" and description and _is_meaningful_text(_clean_text(description)):
-            print(section_separator)
-            print("\n* Description:")
-            print(
-                _format_multiline_text(
-                    description,
-                    max_len=_desc_max_len.get(args.desc, 300),
-                    width=args.wrap_width,
-                    indent="  ",
-                    style=args.long_text_style,
-                )
+            if section_separator:
+                print(section_separator)
+            if is_md_format:
+                print("\n## Description\n")
+            else:
+                print("\n* Description:")
+            desc_text = _format_multiline_text(
+                description,
+                max_len=_desc_max_len.get(args.desc, 300),
+                width=args.wrap_width,
+                indent="" if is_md_format else "  ",
+                style=args.long_text_style,
             )
-            print(section_separator)
+            if is_md_format:
+                print(f"```\n{desc_text}\n```")
+            else:
+                print(desc_text)
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Description: None")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Description\n" if is_md_format else "\n* Description: None")
+            if is_md_format:
+                print("*None*")
+            if section_separator:
+                print(section_separator)
 
     if "status" in enabled_sections:
         aged_reason_value = _format_selected_field_value(_field_value_by_name(issue, "Aged Reason"))
         if status_context:
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
             if aged_reason_value != "-":
-                print(f"\n* Aged Reason: {aged_reason_value}")
-            print("\n* Current Status / Next Steps:")
+                if is_md_format:
+                    print(f"\n**Aged Reason:** {aged_reason_value}\n")
+                else:
+                    print(f"\n* Aged Reason: {aged_reason_value}")
+            print("\n## Current Status / Next Steps\n" if is_md_format else "\n* Current Status / Next Steps:")
             if "current_status" in status_context:
-                print("  * Current Status:")
+                if is_md_format:
+                    print("**Current Status:**\n")
+                else:
+                    print("  * Current Status:")
                 print(
                     _format_multiline_text(
                         status_context["current_status"],
@@ -3181,7 +3286,10 @@ def main() -> int:
             if "next_steps" in status_context:
                 if "current_status" in status_context:
                     print()
-                print("  * Next Steps:")
+                if is_md_format:
+                    print("**Next Steps:**\n")
+                else:
+                    print("  * Next Steps:")
                 print(
                     _format_multiline_text(
                         status_context["next_steps"],
@@ -3190,62 +3298,88 @@ def main() -> int:
                         style=args.long_text_style,
                     )
                 )
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
             if aged_reason_value != "-":
-                print(f"\n* Aged Reason: {aged_reason_value}")
-            print("\n* Current Status / Next Steps: None")
-            print(section_separator)
+                if is_md_format:
+                    print(f"\n**Aged Reason:** {aged_reason_value}\n")
+                else:
+                    print(f"\n* Aged Reason: {aged_reason_value}")
+            print("\n## Current Status / Next Steps\n\n*None*" if is_md_format else "\n* Current Status / Next Steps: None")
+            if section_separator:
+                print(section_separator)
 
     if "customer-field-issues" in enabled_sections:
         if customer_field_issues_requested:
             customer_name = customer_field_issues_meta.get("customer_name", "-")
             label_suffix = " (active only)" if customer_field_issues_active_only else ""
-            print(section_separator)
-            print(f"\n* Customer Field Issues{label_suffix} (customer: {customer_name}):")
+            if section_separator:
+                print(section_separator)
+            if is_md_format:
+                print(f"\n## Customer Field Issues{label_suffix}\n")
+                print(f"**Customer:** {customer_name}\n")
+            else:
+                print(f"\n* Customer Field Issues{label_suffix} (customer: {customer_name}):")
             if customer_field_issues_meta.get("error"):
                 print(f"  Unable to fetch customer field issues: {customer_field_issues_meta['error']}")
             elif not customer_name or customer_name == "-":
-                print("  Customer (Case Account Name) is not set on this issue.")
+                print("  Customer (Case Account Name) is not set on this issue." if not is_md_format else "*Customer (Case Account Name) is not set on this issue.*")
             elif customer_field_issues_rows:
-                _print_table(customer_field_issues_rows, customer_field_issues_headers)
+                _print_table(customer_field_issues_rows, customer_field_issues_headers, md_format=is_md_format)
             else:
-                print("  No matching FI issues found.")
-            print(section_separator)
+                print("  No matching FI issues found." if not is_md_format else "*No matching FI issues found.*")
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Customer Field Issues: None")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Customer Field Issues\n" if is_md_format else "\n* Customer Field Issues: None")
+            if is_md_format:
+                print("*None*")
+            if section_separator:
+                print(section_separator)
 
     if "rca-ca" in enabled_sections:
         if rca_ca_context:
-            print(section_separator)
-            print("\n* RCA-CA:")
+            if section_separator:
+                print(section_separator)
+            print("\n## RCA-CA\n" if is_md_format else "\n* RCA-CA:")
             for label in ["FI RCA Category", "Action Taken", "RCA Notes", "Bug Signature", "Etrack-Resolution"]:
                 value = rca_ca_context.get(label)
                 if not value:
                     continue
-                print(f"  * {label}:")
+                if is_md_format:
+                    print(f"**{label}:**\n")
+                else:
+                    print(f"  * {label}:")
                 print(
                     _format_multiline_text(
                         value,
                         max_len=0,
                         width=args.wrap_width,
-                        indent="    ",
+                        indent="" if is_md_format else "    ",
                         style=args.long_text_style,
                     )
                 )
-            print(section_separator)
+                if is_md_format:
+                    print()
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* RCA-CA: None")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## RCA-CA\n\n*None*" if is_md_format else "\n* RCA-CA: None")
+            if section_separator:
+                print(section_separator)
 
     if "subtasks" in enabled_sections:
         if subtasks:
-            print(section_separator)
-            print("\n* Sub-tasks:")
+            if section_separator:
+                print(section_separator)
+            print("\n## Sub-tasks\n" if is_md_format else "\n* Sub-tasks:")
             rows = []
             for item in subtasks:
                 rows.append([
@@ -3255,17 +3389,23 @@ def main() -> int:
                     item.get("assignee", "-"),
                     item.get("summary", "-"),
                 ])
-            _print_table(rows, ["Key", "Type", "Status", "Assignee", "Summary"])
-            print(section_separator)
+            _print_table(rows, ["Key", "Type", "Status", "Assignee", "Summary"], md_format=is_md_format)
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Sub-tasks: None")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Sub-tasks\n" if is_md_format else "\n* Sub-tasks: None")
+            if is_md_format:
+                print("*None*")
+            if section_separator:
+                print(section_separator)
 
     if "linked-fis" in enabled_sections:
         if linked_fis:
-            print(section_separator)
-            print("\n* Linked FIs:")
+            if section_separator:
+                print(section_separator)
+            print("\n## Linked FIs\n" if is_md_format else "\n* Linked FIs:")
             rows = []
             for linked_key in linked_fis:
                 data = (linked_status or {}).get(linked_key, {})
@@ -3276,27 +3416,38 @@ def main() -> int:
                     data.get("assignee", "-"),
                     data.get("updated", "-"),
                 ])
-            _print_table(rows, ["FI", "Status", "Resolution", "Assignee", "Updated"])
-            print(section_separator)
+            _print_table(rows, ["FI", "Status", "Resolution", "Assignee", "Updated"], md_format=is_md_format)
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Linked FIs: None")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Linked FIs\n" if is_md_format else "\n* Linked FIs: None")
+            if is_md_format:
+                print("*None*")
+            if section_separator:
+                print(section_separator)
 
     if "etrack" in enabled_sections:
         if show_etrack_requested:
-            print(section_separator)
-            print("\n* Etrack details:")
+            if section_separator:
+                print(section_separator)
+            print("\n## Etrack Details\n" if is_md_format else "\n* Etrack details:")
 
             # Show validation errors for invalid etrack format values
             if etrack_validation_errors:
-                print("  ! Etrack format validation errors:")
-                for err in etrack_validation_errors:
-                    print(f"    - {err}")
+                if is_md_format:
+                    print("**⚠️ Etrack format validation errors:**\n")
+                    for err in etrack_validation_errors:
+                        print(f"- {err}")
+                else:
+                    print("  ! Etrack format validation errors:")
+                    for err in etrack_validation_errors:
+                        print(f"    - {err}")
                 print()
 
             if not etrack_ids:
-                print("  * No etrack incident linked in Jira fields.")
+                print("*No etrack incident linked in Jira fields.*" if is_md_format else "  * No etrack incident linked in Jira fields.")
             else:
                 rows = []
                 type_warnings = []
@@ -3307,7 +3458,7 @@ def main() -> int:
                     et_type = info.get("type", "-")
                     type_warning = info.get("type_warning", "")
                     if type_warning:
-                        type_warnings.append(f"    - {et}: {type_warning.strip()}")
+                        type_warnings.append(f"    - {et}: {type_warning.strip()}" if not is_md_format else f"- {et}: {type_warning.strip()}")
                     rows.append([
                         et,
                         source_str,
@@ -3320,12 +3471,18 @@ def main() -> int:
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "Src", "State", "Type", "Severity", "Priority", "Version", "Component", "Assignee", "Abstract"])
-                print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
+                _print_table(rows, ["Incident", "Src", "State", "Type", "Severity", "Priority", "Version", "Component", "Assignee", "Abstract"], md_format=is_md_format)
+                if is_md_format:
+                    print("\n> **Legend:** EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
+                else:
+                    print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
 
                 # Show type warnings if any etrack is not SERVICE_REQUEST
                 if type_warnings:
-                    print("\n  ! Etrack type warnings (expected SERVICE_REQUEST):")
+                    if is_md_format:
+                        print("\n**⚠️ Etrack type warnings (expected SERVICE_REQUEST):**\n")
+                    else:
+                        print("\n  ! Etrack type warnings (expected SERVICE_REQUEST):")
                     for warning in type_warnings:
                         print(warning)
 
@@ -3338,110 +3495,182 @@ def main() -> int:
                 if sfdc_case_links:
                     _print_sfdc_case_links_section(sfdc_case_links)
                 elif args.show_empty:
-                    print("\n* SalesForce Case Links: None")
-            print(section_separator)
+                    print("\n## SalesForce Case Links\n\n*None*" if is_md_format else "\n* SalesForce Case Links: None")
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Etrack details: disabled (use --show-etrack-details or mode investigate/ops)")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            if is_md_format:
+                print("\n## Etrack Details\n\n*Disabled (use --show-etrack-details or mode investigate/ops)*")
+            else:
+                print("\n* Etrack details: disabled (use --show-etrack-details or mode investigate/ops)")
+            if section_separator:
+                print(section_separator)
 
     # Code Links section (PRs, commits, etc.) - especially useful for PVM issues
     if "code-links" in enabled_sections or show_code_links:
         if code_links:
-            print(section_separator)
-            print("\n* Code Links (PRs/Commits):")
+            if section_separator:
+                print(section_separator)
+            print("\n## Code Links (PRs/Commits)\n" if is_md_format else "\n* Code Links (PRs/Commits):")
             rows = []
             for link in code_links:
-                rows.append([
-                    link.get("type", "Link"),
-                    link.get("title", "-"),
-                    link.get("url", "-"),
-                    link.get("source", "-"),
-                ])
-            _print_table(rows, ["Type", "Title", "URL", "Source"])
-            print(section_separator)
+                url = link.get("url", "-")
+                title = link.get("title", "-")
+                # In markdown, make URLs clickable
+                if is_md_format and url != "-":
+                    url_display = f"[{title or url.split('/')[-1][:30]}]({url})"
+                    rows.append([
+                        link.get("type", "Link"),
+                        title,
+                        url_display,
+                        link.get("source", "-"),
+                    ])
+                else:
+                    rows.append([
+                        link.get("type", "Link"),
+                        title,
+                        url,
+                        link.get("source", "-"),
+                    ])
+            _print_table(rows, ["Type", "Title", "URL", "Source"], md_format=is_md_format)
+            if section_separator:
+                print(section_separator)
         elif profile_type == "pvm" or args.show_empty:
             # Always show message for PVM profile even if no links found
-            print(section_separator)
-            print("\n* Code Links (PRs/Commits): No PR, Stash, or Etrack links detected in description, comments, or custom fields.")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            if is_md_format:
+                print("\n## Code Links (PRs/Commits)\n")
+                print("*No PR, Stash, or Etrack links detected in description, comments, or custom fields.*")
+            else:
+                print("\n* Code Links (PRs/Commits): No PR, Stash, or Etrack links detected in description, comments, or custom fields.")
+            if section_separator:
+                print(section_separator)
 
     if "comments" in enabled_sections:
         if args.show_comments > 0 and comments:
-            print(section_separator)
-            print(f"\n* Latest {min(args.show_comments, len(comments))} comment(s):")
+            if section_separator:
+                print(section_separator)
+            num_comments = min(args.show_comments, len(comments))
+            if is_md_format:
+                print(f"\n## Latest {num_comments} Comment(s)\n")
+            else:
+                print(f"\n* Latest {num_comments} comment(s):")
             latest = comments[-args.show_comments:]
             for index, comment in enumerate(latest, 1):
                 author = (comment.get("author") or {}).get("displayName", "-")
                 created = _normalize_timestamp(comment.get("created"))
-                print(f"  * {index}. {author} @ {created}")
-                print(
-                    _format_multiline_text(
+                if is_md_format:
+                    print(f"### {index}. {author} @ {created}\n")
+                    body_text = _format_multiline_text(
                         comment.get("body"),
                         max_len=450,
                         width=args.wrap_width,
-                        indent="     ",
+                        indent="",
                         style=args.long_text_style,
                     )
-                )
-                if index < len(latest):
-                    print()
-            print(section_separator)
+                    print(f"```\n{body_text}\n```\n")
+                else:
+                    print(f"  * {index}. {author} @ {created}")
+                    print(
+                        _format_multiline_text(
+                            comment.get("body"),
+                            max_len=450,
+                            width=args.wrap_width,
+                            indent="     ",
+                            style=args.long_text_style,
+                        )
+                    )
+                    if index < len(latest):
+                        print()
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Comments: None")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Comments\n\n*None*" if is_md_format else "\n* Comments: None")
+            if section_separator:
+                print(section_separator)
 
     if "fields" in enabled_sections:
         if requested_fields:
-            print(section_separator)
-            print("\n* Selected Fields:")
-            _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"])
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Selected Fields\n" if is_md_format else "\n* Selected Fields:")
+            _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"], md_format=is_md_format)
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Selected Fields: None (use --show-field)")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Selected Fields\n\n*None (use --show-field)*" if is_md_format else "\n* Selected Fields: None (use --show-field)")
+            if section_separator:
+                print(section_separator)
 
     if "timeline" in enabled_sections:
         if timeline_context:
-            print(section_separator)
-            print("\n* Timeline:")
+            if section_separator:
+                print(section_separator)
+            print("\n## Timeline\n" if is_md_format else "\n* Timeline:")
 
             if "component_history" in timeline_context:
-                print(f"  * Component History: {timeline_context['component_history']}")
+                if is_md_format:
+                    print(f"**Component History:** {timeline_context['component_history']}\n")
+                else:
+                    print(f"  * Component History: {timeline_context['component_history']}")
 
             if "aged_reason_history" in timeline_context:
-                print(f"  * Aged Reason History: {timeline_context['aged_reason_history']}")
+                if is_md_format:
+                    print(f"**Aged Reason History:** {timeline_context['aged_reason_history']}\n")
+                else:
+                    print(f"  * Aged Reason History: {timeline_context['aged_reason_history']}")
 
             if "timeline" in timeline_context:
-                print("  * Timeline:")
+                if is_md_format:
+                    print("**Timeline:**\n")
+                    print("```")
+                else:
+                    print("  * Timeline:")
                 print(
                     _format_multiline_text(
                         timeline_context["timeline"],
                         max_len=0,
                         width=args.wrap_width,
-                        indent="    ",
+                        indent="" if is_md_format else "    ",
                         style="raw",
                     )
                 )
-            print(section_separator)
+                if is_md_format:
+                    print("```")
+            if section_separator:
+                print(section_separator)
         elif args.show_empty:
-            print(section_separator)
-            print("\n* Timeline: None")
-            print(section_separator)
+            if section_separator:
+                print(section_separator)
+            print("\n## Timeline\n\n*None*" if is_md_format else "\n* Timeline: None")
+            if section_separator:
+                print(section_separator)
 
     if "verbose" in enabled_sections and args.verbose:
-        print(section_separator)
-        print("\n* Verbose Output:")
+        if section_separator:
+            print(section_separator)
+        print("\n## Verbose Output\n" if is_md_format else "\n* Verbose Output:")
         verbose_issue = _filtered_issue_for_verbose(issue, args.include_empty_customfields)
         verbose_issue = _replace_customfield_keys_with_names(verbose_issue)
         verbose_issue = _prune_verbose_noise(verbose_issue)
+        if is_md_format:
+            print("```json")
         print(json.dumps(verbose_issue, indent=2, ensure_ascii=False))
-        print(section_separator)
+        if is_md_format:
+            print("```")
+        if section_separator:
+            print(section_separator)
     elif "verbose" in enabled_sections and args.show_empty:
-        print(section_separator)
-        print("\n* Verbose Output: disabled (use --verbose)")
+        if section_separator:
+            print(section_separator)
+        print("\n## Verbose Output\n\n*Disabled (use --verbose)*" if is_md_format else "\n* Verbose Output: disabled (use --verbose)")
         print(section_separator)
 
     return 0

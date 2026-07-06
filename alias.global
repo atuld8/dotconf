@@ -229,6 +229,8 @@ alias .jbt='sed -E -e "s/^(JiraID:|Summary:|Assignee:|Reporter:|IssueType:|Label
 alias .btw='af.ew() { which $1 && .bt $(which $1) || echo "$1 is not a file"; }; af.ew'
 alias .btwa='af.ewa() { echo .bt $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*);}; af.ewa'
 
+alias .glow='glow -n -p -l'
+
 .btstdin() {
 local cmd="$1"   # first arg is the command
 shift            # drop the first arg, keep the rest as its arguments

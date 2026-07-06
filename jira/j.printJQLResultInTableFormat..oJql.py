@@ -123,6 +123,19 @@ parser.add_argument(
     help="Maximum number of rows to fetch. Use 0 to fetch all matching results (default: 150)."
 )
 
+parser.add_argument(
+    "-f", "--format",
+    type=str,
+    choices=['table', 'csv', 'md', 'json'],
+    default='table',
+    help="""Output format:
+  table : PrettyTable ASCII table (default)
+  csv   : Comma-separated values
+  md    : Markdown table
+  json  : JSON array of objects
+(default: table)"""
+)
+
 # Add debug flag
 parser.add_argument(
     "-d", "--debug",
@@ -699,7 +712,7 @@ def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
         return None
 
 
-def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile='default', fi_field_map=None, exact_cols=None):
+def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile='default', fi_field_map=None, exact_cols=None, output_format='table'):
     """Prints the issues in a table format.
 
     Args:
@@ -709,6 +722,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
         profile (str): The profile to use for column selection.
         fi_field_map (dict): Field ID mapping for FI-specific fields.
         exact_cols (list): If provided, only these columns will be shown (overrides profile).
+        output_format (str): Output format - 'table', 'csv', 'md', or 'json'.
     """
     # Extract the relevant data into a list of dictionaries
     data = []
@@ -846,20 +860,13 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
     if profile == 'listcust':
         df = df[['Customer Name', 'Case Account Name']].drop_duplicates()
 
-    # print(df.to_markdown())  # Prints a table in markdown format, good for command line
-
-    # Use PrettyTable to print the DataFrame in a table format
-    table = PrettyTable()
-
     # Handle exact_cols - override all profile settings
     if exact_cols:
         available_cols = [col.strip() for col in exact_cols if col.strip() in df.columns.tolist()]
         if available_cols:
             df = df[available_cols]
-            table.field_names = available_cols
         else:
-            print(f"Warning: None of the requested columns {exact_cols} found in data.")
-            table.field_names = df.columns.tolist()
+            print(f"Warning: None of the requested columns {exact_cols} found in data.", file=sys.stderr)
     else:
         # Determine column order based on profile
         if profile == 'fi':
@@ -886,23 +893,57 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
             remaining_columns = [col for col in df.columns.tolist() if col not in ordered_columns]
             final_columns = ordered_columns + remaining_columns
             df = df[final_columns]  # Reorder DataFrame columns to match header order
-            table.field_names = final_columns
-        else:
-            table.field_names = df.columns.tolist()
 
-    # Set column alignment to left
-    for field in table.field_names:
-        if field in ['Sr.', 'Runtime', 'CVSS']:
-            table.align[field] = "r"  # Align to the right
-        elif field == 'Priority':
-            table.align[field] = "c"  # Align to center
-        else:
-            table.align[field] = "l"  # Align to the left
-    for _, row in df.iterrows():
-        table.add_row(row.tolist())
-    print(table)
-    print(f"\nTotal rows: {len(df)}")
-    # print(table.get_html_string())
+    # Output based on format
+    if output_format == 'json':
+        import json
+        # Strip ANSI codes from values for clean JSON output
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        clean_records = []
+        for record in df.to_dict(orient='records'):
+            clean_record = {k: ansi_escape.sub('', str(v)) if isinstance(v, str) else v for k, v in record.items()}
+            clean_records.append(clean_record)
+        print(json.dumps(clean_records, indent=2, ensure_ascii=False))
+        print(f"\n// Total rows: {len(df)}", file=sys.stderr)
+    elif output_format == 'csv':
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        # Strip ANSI codes for CSV output
+        df_clean = df.apply(lambda col: col.map(lambda x: ansi_escape.sub('', str(x)) if isinstance(x, str) else x))
+        print(df_clean.to_csv(index=False))
+        print(f"# Total rows: {len(df)}", file=sys.stderr)
+    elif output_format == 'md':
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        # Strip ANSI codes and escape pipe characters for markdown
+        df_clean = df.apply(lambda col: col.map(
+            lambda x: ansi_escape.sub('', str(x)).replace('|', '\\|') if isinstance(x, str) else x
+        ))
+        # Print markdown table header
+        headers = df_clean.columns.tolist()
+        print("| " + " | ".join(headers) + " |")
+        print("| " + " | ".join(["---"] * len(headers)) + " |")
+        # Print rows
+        for _, row in df_clean.iterrows():
+            print("| " + " | ".join(str(v) for v in row.tolist()) + " |")
+        print(f"\n*Total rows: {len(df)}*")
+    else:  # table format (default)
+        # Use PrettyTable to print the DataFrame in a table format
+        table = PrettyTable()
+        table.field_names = df.columns.tolist()
+        # Set column alignment to left
+        for field in table.field_names:
+            if field in ['Sr.', 'Runtime', 'CVSS']:
+                table.align[field] = "r"  # Align to the right
+            elif field == 'Priority':
+                table.align[field] = "c"  # Align to center
+            else:
+                table.align[field] = "l"  # Align to the left
+        for _, row in df.iterrows():
+            table.add_row(row.tolist())
+        print(table)
+        print(f"\nTotal rows: {len(df)}")
 
 
 def main():
@@ -958,7 +999,7 @@ def main():
     # Get exact columns if specified (overrides profile)
     exact_cols = args.exactCols if args.exactCols else None
 
-    print_issues_in_table_format(issues, all_excludes, extra_fields, profile=effective_profile, fi_field_map=fi_field_map, exact_cols=exact_cols)
+    print_issues_in_table_format(issues, all_excludes, extra_fields, profile=effective_profile, fi_field_map=fi_field_map, exact_cols=exact_cols, output_format=args.format)
 
 
 if __name__ == '__main__':
