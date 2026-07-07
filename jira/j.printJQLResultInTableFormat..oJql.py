@@ -544,7 +544,8 @@ def calculate_runtime(issue):
     """
     created_str = issue['fields'].get('created')
     resolution_str = issue['fields'].get('resolutiondate')
-    status = issue['fields']['status']['name'].lower()
+    status_field = issue['fields'].get('status')
+    status = status_field.get('name', '').lower() if status_field else ''
 
     if not created_str:
         return '-'
@@ -732,18 +733,25 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
     for index, issue in enumerate(issues, start=1):
         key = issue['key']
         summary_limit = 70 if profile == 'fi' else 120
-        summary = issue['fields']['summary'] if len(issue['fields']['summary']) < summary_limit else issue['fields']['summary'][:summary_limit] + "..."
-        status = issue['fields']['status']['name']
-        assignee = issue['fields']['assignee']['displayName'] if issue['fields']['assignee'] else 'Unassigned'
-        reporter = issue['fields']['reporter']['displayName'] if issue['fields']['reporter'] else 'Unknown'
-        priority = issue['fields']['priority']['name'] if issue['fields']['priority']['name'] else 'NA'
-        severity = issue['fields']['customfield_20303']['value'] if issue['fields']['customfield_20303'] and issue['fields']['customfield_20303']['value'] else 'NA'
-        issuetype = issue['fields']['issuetype']['name'] if issue['fields']['issuetype']['name'] else 'Unknown'
-        labels = ', '.join(issue['fields']['labels']) if issue['fields']['labels'] else '-'
-        epic_link = issue['fields']['customfield_10008'] if issue['fields']['customfield_10008'] else '-'
+        summary_raw = issue['fields'].get('summary', '-') or '-'
+        summary = summary_raw if len(summary_raw) < summary_limit else summary_raw[:summary_limit] + "..."
+        status_field = issue['fields'].get('status')
+        status = status_field.get('name', '-') if status_field else '-'
+        assignee_field = issue['fields'].get('assignee')
+        assignee = assignee_field.get('displayName', 'Unassigned') if assignee_field else 'Unassigned'
+        reporter_field = issue['fields'].get('reporter')
+        reporter = reporter_field.get('displayName', 'Unknown') if reporter_field else 'Unknown'
+        priority_field = issue['fields'].get('priority')
+        priority = priority_field.get('name', 'NA') if priority_field else 'NA'
+        severity_field = issue['fields'].get('customfield_20303')
+        severity = severity_field.get('value', 'NA') if severity_field and isinstance(severity_field, dict) else 'NA'
+        issuetype_field = issue['fields'].get('issuetype')
+        issuetype = issuetype_field.get('name', 'Unknown') if issuetype_field else 'Unknown'
+        labels = ', '.join(issue['fields'].get('labels', [])) if issue['fields'].get('labels') else '-'
+        epic_link = issue['fields'].get('customfield_10008', '-') or '-'
         runtime = calculate_runtime(issue)
-        fix_versions = ', '.join(fv['name'] for fv in issue['fields']['fixVersions']) if issue['fields'].get('fixVersions') else '-'
-        cvss_score = issue['fields']['customfield_33415'] if issue['fields'].get('customfield_33415') else '-'
+        fix_versions = ', '.join(fv.get('name', '') for fv in issue['fields'].get('fixVersions', []) if fv) if issue['fields'].get('fixVersions') else '-'
+        cvss_score = issue['fields'].get('customfield_33415', '-') or '-'
         components = extract_field_value(issue, 'components')  # Use 'components' as the field ID directly
         affected_versions = extract_field_value(issue, 'versions')
         updated = _format_updated_timestamp(issue['fields'].get('updated'))
