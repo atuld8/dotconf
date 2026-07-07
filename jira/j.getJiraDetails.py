@@ -831,8 +831,6 @@ def _assignee_matches(fi_assignee: str, etrack_assignee: str) -> bool:
             return True
 
         # Check if initials match (e.g., "jdoe" contains "j" from "john" and "doe")
-        et_joined = "".join(sorted(et_parts))
-        fi_initials = "".join(p[0] for p in sorted(fi_parts))
         if len(et_parts) == 1 and len(fi_parts) >= 2:
             # e.g., "jdoe" vs {"john", "doe"}
             et_single = list(et_parts)[0]
@@ -1849,7 +1847,7 @@ def _field_key_to_jql_ref(field_key: str) -> str:
     return f'"{field_key}"'
 
 
-def _build_fi_search_jql(jira: JiraClient, raw_query: str) -> str:
+def _build_fi_search_jql(_jira: JiraClient, raw_query: str) -> str:
     """Build a JQL query to find FI issues linked to an FI key, eTrack incident, or SFDC case.
 
     Uses field DISPLAY NAMES directly in JQL (quoted).
@@ -2120,7 +2118,7 @@ def _append_if_present(rows: List[List[str]], label: str, value: Any, formatter:
         rows.append([label, formatted])
 
 
-def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, etrack_ids: List[str]) -> List[List[str]]:
+def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etrack_ids: List[str]) -> List[List[str]]:
     fields = issue.get("fields")
     if not isinstance(fields, dict):
         return []
@@ -2354,8 +2352,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         print(f"**{summary_text}**\n")
         # Status section
         print("## Status\n")
-        print(f"| Field | Value |")
-        print(f"| --- | --- |")
+        print("| Field | Value |")
+        print("| --- | --- |")
         print(f"| Project | {_summary_value(summary_rows, 'Project')} |")
         print(f"| Type | {_summary_value(summary_rows, 'Type')} |")
         print(f"| Priority | {_summary_value(summary_rows, 'Priority')} |")
@@ -2364,16 +2362,16 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         print()
         # People section
         print("## People\n")
-        print(f"| Role | Person |")
-        print(f"| --- | --- |")
+        print("| Role | Person |")
+        print("| --- | --- |")
         print(f"| Assignee | {_summary_value(summary_rows, 'Assignee')} |")
         print(f"| Reporter | {_summary_value(summary_rows, 'Reporter')} |")
         print(f"| Creator | {_summary_value(summary_rows, 'Creator')} |")
         print()
         # Metadata section
         print("## Metadata\n")
-        print(f"| Field | Value |")
-        print(f"| --- | --- |")
+        print("| Field | Value |")
+        print("| --- | --- |")
         print(f"| Parent | {_summary_value(summary_rows, 'Parent')} |")
         print(f"| Components | {_summary_value(summary_rows, 'Components')} |")
         print(f"| Labels | {_summary_value(summary_rows, 'Labels')} |")
@@ -2388,16 +2386,16 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         ]
         if optional_present:
             print("## Additional Fields\n")
-            print(f"| Field | Value |")
-            print(f"| --- | --- |")
+            print("| Field | Value |")
+            print("| --- | --- |")
             for label in optional_present:
                 value = _summary_value(summary_rows, label).replace("|", "\\|")
                 print(f"| {label} | {value} |")
             print()
         # Activity section
         print("## Activity\n")
-        print(f"| Field | Value |")
-        print(f"| --- | --- |")
+        print("| Field | Value |")
+        print("| --- | --- |")
         print(f"| Comments | {_summary_value(summary_rows, 'Comments')} |")
         print(f"| Attachments | {_summary_value(summary_rows, 'Attachments')} |")
         print(f"| Watcher Count | {_summary_value(summary_rows, 'Watcher Count')} |")
