@@ -129,7 +129,7 @@ function af.mvToOrg() { if [[ ! -e "$1" ]]; then echo "$1 not exists"; else [ "$
 function af.mvFromOrg() { if [[ ! -e "$1" ]]; then echo "$1 not exists"; else [ "${1##*.}" == "org" ] && mv "$1" "${1%.org}" || echo "$1 already has not org ext"; fi; }
 function af.mv24bkp() { DF=$1; if [[ ! -e "$DF" && ! -e "$DF.bkp" ]]; then echo "$1 not exists"; else [ ! -e "$DF" ] && DF="${1}.bkp" && echo "Moving file from $DF"; [ "${DF##*.}" != "bkp" ] && mv "$DF" "${DF}.bkp" || mv "$DF" "${DF%.bkp}"; fi; }
 alias cd.data='af.mcd ~/data'
-alias cd.sb.stage='af.cd ~/stage || ( mkdir ~/stage && cd ~/stage )'
+alias cd.sb.stage='af.stage() { af.cd ~/stage $1 || ( af.mcd ~/stage $1 && af.cd ~/stage $1 ); }; af.stage'
 alias cd.vim='af.cd ~/.vim'
 alias cd.down='af.cd ~/Downloads'
 alias cd.desk='af.cd ~/Desktop'
