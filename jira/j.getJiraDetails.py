@@ -3019,6 +3019,30 @@ def main() -> int:
         default="compact",
         help="Summary output format: compact (default), grouped, table, minimal, json, or md (markdown).",
     )
+    parser.add_argument(
+        "-fo",
+        "--fields-only",
+        action="store_true",
+        help="Show only the fields specified by -f, suppress all other sections and header.",
+    )
+    parser.add_argument(
+        "-nh",
+        "--no-header",
+        action="store_true",
+        help="Suppress the profile/mode header line.",
+    )
+    parser.add_argument(
+        "-r",
+        "--raw",
+        action="store_true",
+        help="Print field values only (no table columns/headers). Use with -f.",
+    )
+    parser.add_argument(
+        "-D",
+        "--delimiter",
+        default="\n",
+        help="Separator between raw field values (default: newline). Use with --raw.",
+    )
     args = parser.parse_args()
 
     raw_issue_input = args.issue_key.strip()
@@ -3028,6 +3052,14 @@ def main() -> int:
 
     if args.search and args.issue_type not in {"auto", "fi"}:
         print("Error: --search is only supported with --type fi or --type auto")
+        return 2
+
+    if args.fields_only and not args.show_field:
+        print("Error: --fields-only requires at least one -f/--show-field")
+        return 2
+
+    if args.raw and not args.show_field:
+        print("Error: --raw requires at least one -f/--show-field")
         return 2
 
     issue_key = raw_issue_input.upper()
@@ -3050,6 +3082,8 @@ def main() -> int:
             enabled_sections.add("timeline")
         if args.list_customer_field_issues or args.list_active_customer_field_issues:
             enabled_sections.add("customer-field-issues")
+        if args.fields_only:
+            enabled_sections = {"fields"}
     except ValueError as exc:
         print(f"Error: {exc}")
         return 2
@@ -3176,6 +3210,18 @@ def main() -> int:
     if requested_fields:
         selected_field_rows = _get_selected_field_rows(issue, requested_fields)
 
+    # Handle --fields-only with JSON format: output only selected fields
+    if args.fields_only and args.format == "json":
+        if args.raw:
+            # Raw JSON: just an array of values
+            values = [row[2] for row in selected_field_rows]
+            print(json.dumps(values, indent=2, ensure_ascii=False))
+        else:
+            # Structured JSON: field name -> value mapping
+            fields_json = {row[1]: row[2] for row in selected_field_rows}
+            print(json.dumps(fields_json, indent=2, ensure_ascii=False))
+        return 0
+
     if args.format == "json":
         subtasks_for_output = subtasks if "subtasks" in enabled_sections else []
         json_payload = _build_json_output(
@@ -3207,12 +3253,13 @@ def main() -> int:
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
 
-    print(
-        f"profile={profile_type} type_arg={args.issue_type} mode={args.mode} "
-        f"format={args.format} desc={args.desc} comments={args.show_comments} "
-        f"etrack={'on' if show_etrack_requested else 'off'} "
-        f"long={args.long_text_style}/{args.wrap_width}"
-    )
+    if not args.no_header and not args.fields_only:
+        print(
+            f"profile={profile_type} type_arg={args.issue_type} mode={args.mode} "
+            f"format={args.format} desc={args.desc} comments={args.show_comments} "
+            f"etrack={'on' if show_etrack_requested else 'off'} "
+            f"long={args.long_text_style}/{args.wrap_width}"
+        )
     is_md_format = args.format == "md"
     section_separator = "" if is_md_format else "-" * 140
 
@@ -3594,12 +3641,36 @@ def main() -> int:
 
     if "fields" in enabled_sections:
         if requested_fields:
-            if section_separator:
-                print(section_separator)
-            print("\n## Selected Fields\n" if is_md_format else "\n* Selected Fields:")
-            _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"], md_format=is_md_format)
-            if section_separator:
-                print(section_separator)
+            if args.raw:
+                # Raw output: just values, separated by delimiter
+                values = [row[2] for row in selected_field_rows]  # row[2] is the Value column
+                print(args.delimiter.join(values))
+            elif args.fields_only:
+                # Fields-only mode: format-aware output without other sections
+                if args.format == "minimal":
+                    # Single-line inline format: * Field1: Value1 | * Field2: Value2
+                    parts = [f"* {row[1]}: {row[2]}" for row in selected_field_rows]
+                    print(" | ".join(parts))
+                elif args.format == "grouped":
+                    # Grouped style: each field on its own line with indent
+                    print("* Fields:")
+                    for row in selected_field_rows:
+                        print(f"  * {row[1]}: {row[2]}")
+                elif args.format == "table" or args.format == "compact" or is_md_format:
+                    # Table format (also used for compact and md)
+                    rows = [[row[1], row[2]] for row in selected_field_rows]  # Field, Value
+                    _print_table(rows, ["Field", "Value"], md_format=is_md_format)
+                else:
+                    # Fallback: 2-column table
+                    rows = [[row[1], row[2]] for row in selected_field_rows]
+                    _print_table(rows, ["Field", "Value"], md_format=is_md_format)
+            else:
+                if section_separator:
+                    print(section_separator)
+                print("\n## Selected Fields\n" if is_md_format else "\n* Selected Fields:")
+                _print_table(_compact_selected_field_rows(selected_field_rows), ["Requested", "Field", "Value"], md_format=is_md_format)
+                if section_separator:
+                    print(section_separator)
         elif args.show_empty:
             if section_separator:
                 print(section_separator)
