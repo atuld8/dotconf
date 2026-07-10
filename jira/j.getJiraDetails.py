@@ -45,6 +45,85 @@ except ImportError:  # pragma: no cover
     tabulate = None
 
 
+# Header abbreviations for console output (saves horizontal space)
+# Maps full label name -> short abbreviation
+HEADER_ABBREVIATIONS: Dict[str, str] = {
+    "Case Priority": "CasePri",
+    "Affects Version/s": "AffVer",
+    "Affects Versions": "AffVer",
+    "Fixed Version/s": "FixVer",
+    "Etrack Incident": "ET Inc",
+    "Etrack-Resolution": "ET Res",
+    "Etrack Ref": "ET Ref",
+    "NBU R&D Ticket": "R&D Tkt",
+    "CAP Involvement": "CAP",
+    "Customer Sentiment": "CustSent",
+    "SalesForce Case Link": "SFDC",
+    "Assignee Manager": "Asgn Mgr",
+    "Watcher Count": "Watch#",
+    "Watcher Groups": "WatchGrp",
+    "Progress Status": "ProgSts",
+    "Security Level": "SecLvl",
+    "Security Issue Watchers": "SecWatch",
+    "Customer": "Cust",
+    "Business Unit": "BU",
+    "FI RCA Category": "RCA Cat",
+    "Action Taken": "Action",
+    "Resolution": "Res",
+    "Components": "Comp",
+    "Attachments": "Attach",
+    "Case Status": "CaseSts",
+    "Epic Link": "Epic",
+    "Jira Link": "Link",
+    "CVSS Score": "CVSS",
+    "Root Causes": "RootCause",
+}
+
+# Track which abbreviations are used during output (reset per run)
+_used_abbreviations: Set[str] = set()
+# Global flag to enable/disable abbreviations (set by --no-abbrev)
+_abbreviations_enabled: bool = True
+
+
+def _abbreviate_label(label: str, track: bool = True) -> str:
+    """Return abbreviated label if available, otherwise original.
+
+    If track=True, records the abbreviation for legend printing.
+    Returns original label if abbreviations are disabled globally.
+    """
+    if not _abbreviations_enabled:
+        return label
+    abbrev = HEADER_ABBREVIATIONS.get(label)
+    if abbrev:
+        if track:
+            _used_abbreviations.add(label)
+        return abbrev
+    return label
+
+
+def _reset_abbreviations() -> None:
+    """Reset the used abbreviations tracker."""
+    _used_abbreviations.clear()
+
+
+def _set_abbreviations_enabled(enabled: bool) -> None:
+    """Enable or disable abbreviations globally."""
+    global _abbreviations_enabled
+    _abbreviations_enabled = enabled
+
+
+def _print_abbreviation_legend() -> None:
+    """Print legend of used abbreviations."""
+    if not _used_abbreviations or not _abbreviations_enabled:
+        return
+
+    # Sort by abbreviation for consistent output
+    used = sorted(_used_abbreviations, key=lambda x: HEADER_ABBREVIATIONS.get(x, x))
+    legend_parts = [f"{HEADER_ABBREVIATIONS[label]}={label}" for label in used]
+
+    print("\n[Legend: " + ", ".join(legend_parts) + "]")
+
+
 def _normalize_timestamp(value: Optional[str]) -> str:
     if not value:
         return "-"
@@ -1392,7 +1471,7 @@ def _extract_code_links(issue: Dict[str, Any], remote_links: List[Dict[str, Any]
             version_etrack_id = match.group(2)  # etrack_id for version pattern
             merged_etrack_id = match.group(3)  # etrack_id for "merged/fixing as part of" pattern
             et_etrack_id = match.group(4)  # etrack_id for "ET-" pattern
-            
+
             if version_prefix and version_etrack_id:
                 # Clean title: "Mainline: 4230812" or "11.2.0.1: 4231160"
                 title = f"{version_prefix}: {version_etrack_id}"
@@ -1476,26 +1555,40 @@ def _extract_code_links(issue: Dict[str, Any], remote_links: List[Dict[str, Any]
     return code_links
 
 
-def _print_table(rows: List[List[str]], headers: List[str], md_format: bool = False):
+def _print_table(rows: List[List[str]], headers: List[str], md_format: bool = False, abbreviate: bool = False):
     if md_format:
         _print_table_md(rows, headers)
         return
 
+    # Apply abbreviations for console output
+    display_headers = headers
+    display_rows = rows
+    if abbreviate:
+        display_headers = [_abbreviate_label(h) for h in headers]
+        # Also abbreviate the first column if it contains field labels (like in summary tables)
+        display_rows = []
+        for row in rows:
+            if row and len(row) >= 1:
+                new_row = [_abbreviate_label(str(row[0]))] + [str(c) for c in row[1:]]
+                display_rows.append(new_row)
+            else:
+                display_rows.append(row)
+
     if tabulate:
-        print(tabulate(rows, headers=headers, tablefmt="simple"))
+        print(tabulate(display_rows, headers=display_headers, tablefmt="simple"))
         return
 
-    widths = [len(header) for header in headers]
-    for row in rows:
+    widths = [len(header) for header in display_headers]
+    for row in display_rows:
         for index, cell in enumerate(row):
             widths[index] = max(widths[index], len(str(cell)))
 
     def fmt(values: List[str]) -> str:
         return " | ".join(str(value).ljust(widths[index]) for index, value in enumerate(values))
 
-    print(fmt(headers))
+    print(fmt(display_headers))
     print("-+-".join("-" * width for width in widths))
-    for row in rows:
+    for row in display_rows:
         print(fmt(row))
 
 
@@ -2118,6 +2211,60 @@ def _append_if_present(rows: List[List[str]], label: str, value: Any, formatter:
         rows.append([label, formatted])
 
 
+def _build_jira_link(base_url: str, issue_key: str) -> str:
+    """Build a Jira browse link for an issue key."""
+    if not base_url or not issue_key:
+        return "-"
+    return f"{base_url}/browse/{issue_key}"
+
+
+def _build_etrack_link(etrack_id: str) -> str:
+    """Build an etrack readonly link for an etrack ID."""
+    if not etrack_id or etrack_id == "-":
+        return "-"
+    # Clean up the ID (remove ET- prefix, spaces, trailing .0 from float)
+    clean_id = str(etrack_id).strip()
+    if clean_id.upper().startswith("ET"):
+        clean_id = re.sub(r"^ET[\s\-]*", "", clean_id, flags=re.IGNORECASE)
+    if re.match(r"^\d+\.0$", clean_id):
+        clean_id = clean_id[:-2]
+    if not re.match(r"^\d+$", clean_id):
+        return "-"
+    return f"https://engtools.engba.veritas.com/etrack/readonly_inc.php?incident={clean_id}"
+
+
+def _format_etrack_value_with_link(value: Any) -> str:
+    """Format an etrack field value, appending the etrack link if valid.
+
+    Handles various formats:
+    - Plain number: 12345678 -> "12345678 (https://...)"
+    - ET prefix: ET-12345678 -> "ET-12345678 (https://...)"
+    - Float from Jira: 12345678.0 -> "12345678 (https://...)"
+    - Multiple comma-separated: "123, 456" -> "123 (link), 456 (link)"
+    """
+    if value is None:
+        return "-"
+
+    raw = _format_selected_field_value(value)
+    if not raw or raw == "-":
+        return "-"
+
+    # Handle comma-separated multiple values
+    parts = [p.strip() for p in raw.split(",")]
+    formatted_parts = []
+
+    for part in parts:
+        if not part:
+            continue
+        link = _build_etrack_link(part)
+        if link != "-":
+            formatted_parts.append(f"{part} ({link})")
+        else:
+            formatted_parts.append(part)
+
+    return ", ".join(formatted_parts) if formatted_parts else "-"
+
+
 def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etrack_ids: List[str]) -> List[List[str]]:
     fields = issue.get("fields")
     if not isinstance(fields, dict):
@@ -2144,12 +2291,12 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etra
     _append_if_present(rows, "Etrack-Resolution", _field_value_by_any_name(issue, ["Etrack-Resolution", "Etrack Resolution"]))
     _append_if_present(rows, "FI RCA Category", _field_value_by_name(issue, "FI RCA Category"))
     _append_if_present(rows, "Action Taken", _field_value_by_name(issue, "Action Taken"))
-    # Show actual Etrack Incident field value (customfield_33802)
-    _append_if_present(rows, "Etrack Incident", fields.get("customfield_33802"))
-    # Show NBU R&D Ticket if different from Etrack Incident
+    # Show actual Etrack Incident field value (customfield_33802) with link
+    _append_if_present(rows, "Etrack Incident", fields.get("customfield_33802"), formatter=_format_etrack_value_with_link)
+    # Show NBU R&D Ticket if different from Etrack Incident, with link
     nbu_rnd_value = _field_value_by_any_name(issue, ["NBU R&D Ticket", "NBU R&D Ticket:"])
-    _append_if_present(rows, "NBU R&D Ticket", nbu_rnd_value)
-    _append_if_present(rows, "Etrack Ref", fields.get("customfield_36508"))
+    _append_if_present(rows, "NBU R&D Ticket", nbu_rnd_value, formatter=_format_etrack_value_with_link)
+    _append_if_present(rows, "Etrack Ref", fields.get("customfield_36508"), formatter=_format_etrack_value_with_link)
     _append_if_present(rows, "Case#", fields.get("customfield_11814"))
     if sfdc_case_links:
         rows.append(["SalesForce Case Link", _format_sfdc_case_links_for_display(sfdc_case_links)])
@@ -2241,9 +2388,12 @@ def _build_summary_rows(
     attachments: List[Dict[str, Any]],
     watchers: Any,
     default_optional_rows: List[List[str]],
+    jira_base_url: str = "",
 ) -> List[List[str]]:
+    jira_link = _build_jira_link(jira_base_url, issue_key) if jira_base_url else "-"
     return [
         ["Issue", issue_key],
+        ["Jira Link", jira_link],
         ["Summary", fields.get("summary", "-")],
         ["Project", _opt_value(fields.get("project"))],
         ["Type", _opt_value(fields.get("issuetype"))],
@@ -2338,7 +2488,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         print()
         if is_cap_fi:
             print("* CAP-FI PROFILE")
-        _print_table(summary_rows, ["Field", "Value"])
+        _print_table(summary_rows, ["Field", "Value"], abbreviate=True)
         return
 
     if output_format == "md":
@@ -2348,7 +2498,10 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         # Issue header
         issue_key = _summary_value(summary_rows, 'Issue')
         summary_text = _summary_value(summary_rows, 'Summary')
+        jira_link = _summary_value(summary_rows, 'Jira Link')
         print(f"# {issue_key}\n")
+        if jira_link and jira_link != "-":
+            print(f"**Link:** [{issue_key}]({jira_link})\n")
         print(f"**{summary_text}**\n")
         # Status section
         print("## Status\n")
@@ -2409,6 +2562,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         if is_cap_fi:
             print("* CAP-FI PROFILE")
         print(f"* Issue: {_summary_value(summary_rows, 'Issue')}")
+        print(f"* Jira Link: {_summary_value(summary_rows, 'Jira Link')}")
         print(f"* Summary: {_summary_value(summary_rows, 'Summary')}")
         print("\n* State:")
         print(f"  * Project: {_summary_value(summary_rows, 'Project')}")
@@ -2434,11 +2588,11 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         if optional_present:
             print("\n* Additional:")
             for label in optional_present:
-                print(f"  * {label}: {_summary_value(summary_rows, label)}")
+                print(f"  * {_abbreviate_label(label)}: {_summary_value(summary_rows, label)}")
         print("\n* Activity:")
         print(f"  * Comments: {_summary_value(summary_rows, 'Comments')}")
-        print(f"  * Attachments: {_summary_value(summary_rows, 'Attachments')}")
-        print(f"  * Watcher Count: {_summary_value(summary_rows, 'Watcher Count')}")
+        print(f"  * {_abbreviate_label('Attachments')}: {_summary_value(summary_rows, 'Attachments')}")
+        print(f"  * {_abbreviate_label('Watcher Count')}: {_summary_value(summary_rows, 'Watcher Count')}")
         print(f"  * Created: {_summary_value(summary_rows, 'Created')}")
         print(f"  * Updated: {_summary_value(summary_rows, 'Updated')}")
         print(f"  * Resolved: {_summary_value(summary_rows, 'Resolved')}")
@@ -2458,6 +2612,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         f"* Status: {_summary_value(summary_rows, 'Status')} | "
         f"* Resolution: {_summary_value(summary_rows, 'Resolution')}"
     )
+    print(f"* Jira Link: {_summary_value(summary_rows, 'Jira Link')}")
     print(separator)
     print(f"* Summary: {_compact_text(_summary_value(summary_rows, 'Summary'), max_len=180)}")
     print(separator)
@@ -2487,7 +2642,8 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
             formatted_value = _compact_text(value, max_len=80)
 
         field_prefix = "* "
-        part = f"{field_prefix}{label}: {formatted_value}"
+        abbrev_label = _abbreviate_label(label)
+        part = f"{field_prefix}{abbrev_label}: {formatted_value}"
         if profile_type == "pvm" and label in {"Solution", "Progress Status"}:
             pvm_long_parts.append(part)
         elif profile_type == "pvm" and label == "Root Causes":
@@ -2862,8 +3018,10 @@ def main() -> int:
     parser.add_argument("issue_key", help="Issue key (for example, PROJ-12345)")
     parser.add_argument(
         "-t",
+        "-p",
         "--type",
         "-type",
+        "--profile",
         dest="issue_type",
         default="auto",
         choices=["auto", "fi", "pvm", "generic", "default"],
@@ -3043,6 +3201,12 @@ def main() -> int:
         default="\n",
         help="Separator between raw field values (default: newline). Use with --raw.",
     )
+    parser.add_argument(
+        "-na",
+        "--no-abbrev",
+        action="store_true",
+        help="Disable header abbreviations for console output (show full field names).",
+    )
     args = parser.parse_args()
 
     raw_issue_input = args.issue_key.strip()
@@ -3068,6 +3232,8 @@ def main() -> int:
         return 2
 
     profile_type = "fi" if args.search else _resolve_profile_type(args.issue_type, issue_key)
+    _reset_abbreviations()  # Reset abbreviation tracking for this run
+    _set_abbreviations_enabled(not args.no_abbrev)  # Disable abbreviations if --no-abbrev
     try:
         enabled_sections = _resolve_enabled_sections(args.mode, args.sections)
         if args.sub_tasks:
@@ -3204,6 +3370,7 @@ def main() -> int:
         attachments,
         watchers,
         default_optional_rows,
+        jira_base_url=jira.base_url,
     )
     selected_field_rows: List[List[str]] = []
 
@@ -3741,6 +3908,10 @@ def main() -> int:
             print(section_separator)
         print("\n## Verbose Output\n\n*Disabled (use --verbose)*" if is_md_format else "\n* Verbose Output: disabled (use --verbose)")
         print(section_separator)
+
+    # Print abbreviation legend for console formats (not json, not md)
+    if args.format not in ("json", "md") and not args.raw:
+        _print_abbreviation_legend()
 
     return 0
 

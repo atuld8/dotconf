@@ -143,6 +143,12 @@ parser.add_argument(
     help="Enable debug output for field resolution and mapping."
 )
 
+parser.add_argument(
+    "-na", "--no-abbrev",
+    action="store_true",
+    help="Disable header abbreviations in table output (show full names)."
+)
+
 args = parser.parse_args()
 
 # Profile configurations: columns to exclude for each profile
@@ -150,7 +156,7 @@ PROFILE_EXCLUDES = {
     'default': ['CVSS', 'FixVers', 'Components', 'Affects Version/s', 'Created', 'Updated'],
     'pvm': ['Runtime', 'Reporter', 'IssueType', 'Labels', 'Epic', 'Components', 'Affects Version/s', 'Created', 'Updated'],
     'fi': [],
-    'basic': ['Sr.', 'Runtime', 'Reporter', 'Severity', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Components', 'Affects Version/s', 'Created'],
+    'basic': ['Sr.', 'Runtime', 'Reporter', 'Severity', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Components', 'Created'],
     'nbsm': ['Sr.', 'Reporter', 'Severity', 'FixVers', 'CVSS', 'Components', 'Affects Version/s', 'Created'],
     'aging': ['Sr.', 'Reporter', 'Severity', 'IssueType', 'Labels', 'FixVers', 'Epic', 'CVSS', 'Components', 'Affects Version/s'],
     'release': ['Sr.', 'Runtime', 'Reporter', 'Severity', 'IssueType', 'Labels', 'Epic', 'CVSS', 'Created', 'Updated'],
@@ -166,6 +172,7 @@ BASIC_COLUMN_ORDER = [
     'Priority',
     'Status',
     'Assignee',
+    'Affects Version/s',
     'Summary',
     'Updated',
 ]
@@ -274,6 +281,104 @@ FI_STATIC_FIELD_IDS = {
     'Case Status': 'customfield_16200',
     'Etrack Incident': 'customfield_33802',
 }
+
+# Header abbreviations for compact table output
+HEADER_ABBREVIATIONS = {
+    'Case Priority': 'CsPr',
+    'Affects Version/s': 'AffVer',
+    'Etrack Incident': 'EtrackInc',
+    'Cap Involvement': 'CAP',
+    'CAP Involvement': 'CAP',
+    'Customer Sentiment': 'CustSent',
+    'Case Account Name': 'CaseAcct',
+    'Customer Name': 'Customer',
+    'Assignee Manager': 'AsgnMgr',
+    'Case Status': 'CaseStat',
+    'Squad Name': 'Squad',
+    'Fixed Version/s': 'FixVer',
+    'Components': 'Comp',
+    'IssueType': 'Type',
+    'Priority': 'Pri',
+    'Assignee': 'Asgn',
+    'Updated': 'Upd',
+    'Created': 'Crtd',
+    'Runtime': 'RT',
+}
+
+# Value compaction mappings for Status field
+STATUS_COMPACT = {
+    'In Progress': 'InProg',
+    'Waiting on Support': 'WaitSup',
+    'Solution Provided': 'SolnProv',
+    'Pre closing': 'PreClose',
+    'Done - Solution provided': 'Done-Sol',
+    'New': 'New',
+}
+
+# Value compaction mappings for Case Status field
+CASE_STATUS_COMPACT = {
+    'Engineering pending': 'EngPend',
+    'Solution provided/monitoring': 'Sol/Mon',
+    'Customer pending': 'CustPend',
+}
+
+
+def _compact_status(value):
+    """Return compacted status value if available."""
+    if not value or value == '-':
+        return value
+    return STATUS_COMPACT.get(value, value)
+
+
+def _compact_case_status(value):
+    """Return compacted case status value if available."""
+    if not value or value == '-':
+        return value
+    return CASE_STATUS_COMPACT.get(value, value)
+
+
+def _compact_assignee_manager(value):
+    """Remove @domain.com from assignee manager email."""
+    import re
+    if not value or value == '-':
+        return value
+    # Remove @*.com or @*.* domain patterns
+    return re.sub(r'@[^@\s]+\.[^@\s]+', '', str(value)).strip()
+
+# Track which abbreviations were used during output
+_used_abbreviations = set()
+_abbreviations_enabled = True
+
+
+def _reset_abbreviations():
+    """Clear the set of used abbreviations."""
+    global _used_abbreviations
+    _used_abbreviations = set()
+
+
+def _set_abbreviations_enabled(enabled):
+    """Enable or disable abbreviations globally."""
+    global _abbreviations_enabled
+    _abbreviations_enabled = enabled
+
+
+def _abbreviate_header(header, track=True):
+    """Return abbreviated header if available, otherwise return original."""
+    if not _abbreviations_enabled:
+        return header
+    if header in HEADER_ABBREVIATIONS:
+        if track:
+            _used_abbreviations.add(header)
+        return HEADER_ABBREVIATIONS[header]
+    return header
+
+
+def _print_abbreviation_legend():
+    """Print legend of used abbreviations."""
+    if not _used_abbreviations:
+        return
+    legend_parts = [f"{HEADER_ABBREVIATIONS[h]}={h}" for h in sorted(_used_abbreviations)]
+    print(f"[Legend: {', '.join(legend_parts)}]")
 
 
 def format_jira_request_error(operation, url, timeout, exc):
@@ -620,6 +725,36 @@ def _format_updated_timestamp(raw_value):
     return text
 
 
+def _sanitize_jql(jql):
+    """Clean up common JQL syntax issues that cause 400 errors.
+
+    Fixes:
+    - Trailing commas in IN clauses: 'in ("a",)' -> 'in ("a")'
+    - Multiple commas: 'in ("a",,"b")' -> 'in ("a","b")'
+    - Empty IN clauses: 'in ()' -> warning
+    """
+    import re
+    original = jql
+
+    # Fix trailing comma before closing paren: ("value",) -> ("value")
+    jql = re.sub(r',\s*\)', ')', jql)
+
+    # Fix multiple consecutive commas: ,, -> ,
+    jql = re.sub(r',\s*,+', ',', jql)
+
+    # Fix leading comma after open paren: (,value) -> (value)
+    jql = re.sub(r'\(\s*,', '(', jql)
+
+    # Warn about empty IN clauses
+    if re.search(r'\bin\s*\(\s*\)', jql, re.IGNORECASE):
+        print("Warning: JQL contains empty IN clause 'in ()'. This may cause errors.", file=sys.stderr)
+
+    if jql != original:
+        print(f"JQL sanitized: fixed syntax issues in query.", file=sys.stderr)
+
+    return jql
+
+
 # Function to get issues by JQL
 def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
     """Fetches issues from Jira based on the provided JQL query.
@@ -631,6 +766,9 @@ def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
     Returns:
         list: A list of issues returned by the JQL query, or an empty list if an error occurs.
     """
+    # Sanitize JQL to fix common syntax issues
+    jql = _sanitize_jql(jql)
+
     timeout = 20
     url = f'{JIRA_URL}/rest/api/2/search'
 
@@ -685,6 +823,27 @@ def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
                 timeout=timeout,
                 params=params,
             )
+
+            # Handle HTTP errors with specific guidance for 400 (JQL syntax)
+            if response.status_code == 400:
+                try:
+                    error_json = response.json()
+                    error_msgs = error_json.get('errorMessages', [])
+                    errors = error_json.get('errors', {})
+                    print("JQL Error (400 Bad Request):", file=sys.stderr)
+                    for msg in error_msgs:
+                        print(f"  - {msg}", file=sys.stderr)
+                    for k, v in errors.items():
+                        print(f"  - {k}: {v}", file=sys.stderr)
+                    print(f"JQL: {jql}", file=sys.stderr)
+                    print("Hints:", file=sys.stderr)
+                    print("  - Check for trailing commas: 'in (\"a\",)' should be 'in (\"a\")'", file=sys.stderr)
+                    print("  - Check for invalid field names or operators", file=sys.stderr)
+                    print("  - Ensure string values are quoted: key = \"ABC-123\"", file=sys.stderr)
+                except Exception:
+                    pass
+                return None
+
             response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
 
             payload = response.json()
@@ -771,11 +930,11 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
                 'Case Account Name': _extract_field_or_dash(issue, fi_field_map.get('Case Account Name')),
                 'Customer Name': _extract_field_or_dash(issue, fi_field_map.get('Customer Name')),
                 'Assignee': assignee,
-                'Assignee Manager': _extract_field_or_dash(issue, fi_field_map.get('Assignee Manager')),
+                'Assignee Manager': _compact_assignee_manager(_extract_field_or_dash(issue, fi_field_map.get('Assignee Manager'))),
                 'Affects Version/s': affected_versions,
                 'Summary': summary,
-                'Status': status,
-                'Case Status': _extract_field_or_dash(issue, fi_field_map.get('Case Status')),
+                'Status': _compact_status(status),
+                'Case Status': _compact_case_status(_extract_field_or_dash(issue, fi_field_map.get('Case Status'))),
                 'Updated': updated,
                 'Etrack Incident': _extract_field_or_dash(issue, fi_field_map.get('Etrack Incident')),
                 'Squad Name': _extract_field_or_dash(issue, fi_field_map.get('Squad Name')),
@@ -799,7 +958,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
                 'Assignee': assignee,
                 'Summary': summary,
                 'Affects Version/s': affected_versions,
-                'Status': status,
+                'Status': _compact_status(status),
                 'Customer Name': _extract_field_or_dash(issue, fi_field_map.get('Customer Name')),
                 'Case Account Name': _extract_field_or_dash(issue, fi_field_map.get('Case Account Name')),
             }
@@ -818,7 +977,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
             'Sr.': index,
             'Key': key,
             'Summary': summary,
-            'Status': status,
+            'Status': _compact_status(status),
             'Runtime': runtime,
             'Assignee': assignee,
             'Reporter': reporter,
@@ -840,12 +999,12 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
             unfiltered_entry['Customer Name'] = _extract_field_or_dash(issue, fi_field_map.get('Customer Name'))
             unfiltered_entry['Case Account Name'] = _extract_field_or_dash(issue, fi_field_map.get('Case Account Name'))
             unfiltered_entry['Case Priority'] = _extract_field_or_dash(issue, fi_field_map.get('Case Priority'))
-            unfiltered_entry['Case Status'] = _extract_field_or_dash(issue, fi_field_map.get('Case Status'))
+            unfiltered_entry['Case Status'] = _compact_case_status(_extract_field_or_dash(issue, fi_field_map.get('Case Status')))
             unfiltered_entry['Etrack Incident'] = _extract_field_or_dash(issue, fi_field_map.get('Etrack Incident'))
             unfiltered_entry['Squad Name'] = _extract_field_or_dash(issue, fi_field_map.get('Squad Name'))
             unfiltered_entry['Cap Involvement'] = _extract_field_or_dash(issue, fi_field_map.get('Cap Involvement'))
             unfiltered_entry['Customer Sentiment'] = _extract_field_or_dash(issue, fi_field_map.get('Customer Sentiment'))
-            unfiltered_entry['Assignee Manager'] = _extract_field_or_dash(issue, fi_field_map.get('Assignee Manager'))
+            unfiltered_entry['Assignee Manager'] = _compact_assignee_manager(_extract_field_or_dash(issue, fi_field_map.get('Assignee Manager')))
 
         # Add extra dynamic fields
         for field_id, display_name in extra_fields:
@@ -938,19 +1097,26 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
         print(f"\n*Total rows: {len(df)}*")
     else:  # table format (default)
         # Use PrettyTable to print the DataFrame in a table format
+        _reset_abbreviations()
         table = PrettyTable()
-        table.field_names = df.columns.tolist()
+        original_cols = df.columns.tolist()
+        abbreviated_cols = [_abbreviate_header(col) for col in original_cols]
+        table.field_names = abbreviated_cols
+        # Build mapping from abbreviated to original for alignment
+        abbrev_to_orig = dict(zip(abbreviated_cols, original_cols))
         # Set column alignment to left
         for field in table.field_names:
-            if field in ['Sr.', 'Runtime', 'CVSS']:
+            orig_field = abbrev_to_orig.get(field, field)
+            if orig_field in ['Sr.', 'Runtime', 'CVSS']:
                 table.align[field] = "r"  # Align to the right
-            elif field == 'Priority':
+            elif orig_field == 'Priority':
                 table.align[field] = "c"  # Align to center
             else:
                 table.align[field] = "l"  # Align to the left
         for _, row in df.iterrows():
             table.add_row(row.tolist())
         print(table)
+        _print_abbreviation_legend()
         print(f"\nTotal rows: {len(df)}")
 
 
@@ -977,8 +1143,8 @@ def main():
     fi_field_map = {}
     fi_extra_field_ids = []
     # Resolve FI fields for profiles that need them, or when exactCols contains FI-specific fields
-    fi_field_names = {'Customer Name', 'Case Account Name', 'Case Priority', 'Case Status', 
-                      'Etrack Incident', 'Squad Name', 'Cap Involvement', 'Customer Sentiment', 
+    fi_field_names = {'Customer Name', 'Case Account Name', 'Case Priority', 'Case Status',
+                      'Etrack Incident', 'Squad Name', 'Cap Involvement', 'Customer Sentiment',
                       'Assignee Manager'}
     needs_fi_fields = (args.profile in ['default', 'fi', 'customer', 'listcust'] or
                        (args.exactCols and any(col.strip() in fi_field_names for col in args.exactCols)))
@@ -1006,6 +1172,9 @@ def main():
 
     # Get exact columns if specified (overrides profile)
     exact_cols = args.exactCols if args.exactCols else None
+
+    # Set abbreviation mode based on args (only for table output)
+    _set_abbreviations_enabled(not args.no_abbrev and args.format == 'table')
 
     print_issues_in_table_format(issues, all_excludes, extra_fields, profile=effective_profile, fi_field_map=fi_field_map, exact_cols=exact_cols, output_format=args.format)
 
