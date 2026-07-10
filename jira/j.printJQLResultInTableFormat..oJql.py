@@ -308,10 +308,10 @@ HEADER_ABBREVIATIONS = {
 # Value compaction mappings for Status field
 STATUS_COMPACT = {
     'In Progress': 'InProg',
-    'Waiting on Support': 'WaitSup',
-    'Solution Provided': 'SolnProv',
+    'Waiting on Support': 'WOS',
+    'Solution Provided': 'SolP',
     'Pre closing': 'PreClose',
-    'Done - Solution provided': 'Done-Sol',
+    'Done - Solution provided': 'D-SolP',
     'New': 'New',
 }
 
@@ -320,6 +320,10 @@ CASE_STATUS_COMPACT = {
     'Engineering pending': 'EngPend',
     'Solution provided/monitoring': 'Sol/Mon',
     'Customer pending': 'CustPend',
+    'Eng Solution Provided': 'EngSolProv',
+    'Customer updated': 'CustUpd',
+    'Resolved - Customer Updated': 'Rslvd-CustUpd',
+    'Work in progress': 'WIP',
 }
 
 
