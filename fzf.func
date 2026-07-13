@@ -124,3 +124,47 @@ function wnotes {
     find_fzf_exec ~/workspace/worknotes.links nvim
 }
 export -f wnotes
+
+# Open Build file in the directory of the picked file
+function gbuild {
+    f=$(git_fzf)
+
+    if [ ! "$f" ]; then
+        return 1
+    fi
+
+    local buildfile="$(dirname "$f")/Build"
+    if [ -f "$buildfile" ]; then
+        echo "$buildfile"
+        nvim "$buildfile"
+    else
+        echo "No Build file found in $(dirname "$f")"
+        return 1
+    fi
+}
+export -f gbuild
+
+# Find file/folder via fzf with optional filter, open directory in nvim
+function gdir {
+    local gd=$(git rev-parse --show-toplevel)
+
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    local f
+    if [ -n "$1" ]; then
+        f=$(git ls-files --full-name "$gd" | grep -i "$1" | fzf)
+    else
+        f=$(git ls-files --full-name "$gd" | fzf)
+    fi
+
+    if [ ! "$f" ]; then
+        return 1
+    fi
+
+    local dir="$(dirname "$gd/$f")"
+    echo "$dir"
+    nvim "$dir"
+}
+export -f gdir

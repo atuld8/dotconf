@@ -1,4 +1,4 @@
-alias x.vimdl='(cd ~/.vim; git dl $@; cd -)'
+alias x.vimdf='(cd ~/.vim; git df $@; cd -)'
 alias x.vimacp='(cd ~/.vim && git commit -a --reuse-message=HEAD  && git pull origin &&git push;)'
 alias x.vimacmp='function af.vimpushm() { (cd ~/.vim && git diff && git add -u . && git commit -m "$@" && git pull origin && git push;); }; af.vimpushm'
 
