@@ -827,6 +827,7 @@ def main() -> int:
                         help="Flag issues not updated for N+ days. Uses dump Updated timestamp unless --live is set.")
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     if args.with_etrack and args.without_etrack:
         print("Error: --with-etrack and --without-etrack are mutually exclusive.", file=sys.stderr)

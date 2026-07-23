@@ -873,6 +873,7 @@ def main() -> int:
         help="Summary output format: compact (default), grouped, table, minimal, or json.",
     )
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     fi_id = args.fi_id.strip().upper()
     if not re.match(r"^FI-\d+$", fi_id):

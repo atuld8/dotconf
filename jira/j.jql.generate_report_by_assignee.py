@@ -320,6 +320,7 @@ Supported columns for -c/--columns:
                              'Available: %s' % (','.join(DEFAULT_COLUMNS), ','.join(SUPPORTED_COLUMNS)))
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Validate columns
     invalid_cols = [c for c in args.columns if c.lower() not in SUPPORTED_COLUMNS]

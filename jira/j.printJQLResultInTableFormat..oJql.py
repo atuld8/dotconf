@@ -150,6 +150,7 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
 # Profile configurations: columns to exclude for each profile
 PROFILE_EXCLUDES = {

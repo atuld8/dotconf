@@ -1759,6 +1759,7 @@ def parse_args():
 def main():
     """Main entry point."""
     args = parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Handle --list-cols: show available columns and exit
     if args.list_cols:

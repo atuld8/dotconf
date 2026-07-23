@@ -56,6 +56,7 @@ def main():
     parser.add_argument("-s", "--sheet", required=True, help="Sheet name")
     parser.add_argument("-d", "--dry-run", action="store_true", help="Print data only, do not create Jira issues")
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     token = prompt_for_token()
     wb = openpyxl.load_workbook(args.file)

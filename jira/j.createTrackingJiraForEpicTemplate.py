@@ -21,6 +21,7 @@ parser.add_argument('--release_ver', type=str, required=True, help='The release 
 parser.add_argument('--tool_name', type=str, required=True, help='The tool name of the Epic used for label creation')
 
 args = parser.parse_args()
+print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 JIRA_EPIC_LINK      = args.epic_id
 JIRA_RELEASE        = args.release_ver
 JIRA_TOOL_NAME      = args.tool_name

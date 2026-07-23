@@ -1306,6 +1306,7 @@ Examples:
                         help='Do not send email notifications for this update')
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Handle list-fields (no issue required)
     if args.list_fields:

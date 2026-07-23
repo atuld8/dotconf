@@ -98,6 +98,7 @@ def main():
     """Main function to generate updated summary"""
 
     args = parse_options()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     org_summary = get_current_summary(args.ticket_id)
 

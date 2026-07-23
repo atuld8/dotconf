@@ -124,6 +124,7 @@ def main():
     parser.add_argument('-d', '--dry-run', action="store_true", help='Skip calling of Rest API')
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
     json_file = args.json_file
     DRY_RUN = args.dry_run
 

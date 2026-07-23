@@ -170,6 +170,7 @@ def main():
     parser.add_argument("--report", type=int, choices=[1, 2, 3], default=2, 
                         help="Specify report type: 1 for status report, 2 for priority report, 3 for detailed report")
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Read input file and skip the header
     with open(args.input_file, 'r') as f:

@@ -171,6 +171,7 @@ def main():
     parser.add_argument("input_file", help="Input file with table entries")
     parser.add_argument("--show-chart", action="store_true", help="Show bar chart if specified")
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Read input file
     with open(args.input_file, 'r') as f:

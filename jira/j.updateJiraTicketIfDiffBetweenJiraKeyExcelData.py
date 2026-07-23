@@ -122,6 +122,7 @@ def main():
     parser.add_argument("-f", "--file", required=True, help="Excel file path")
     parser.add_argument("-s", "--sheet", required=True, help="Sheet name")
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     token = prompt_for_token()
     wb = openpyxl.load_workbook(args.file)

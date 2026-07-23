@@ -53,6 +53,7 @@ if __name__ == "__main__":
         print("Usage: python script.py <jira_json_file|-> [field_mapping_file] [output_file]")
         sys.exit(1)
 
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
     jira_json_source = sys.argv[1]
     field_mapping_file = sys.argv[2] if len(sys.argv) > 2 else default_mapping_file
     output_file = sys.argv[3] if len(sys.argv) > 3 else None

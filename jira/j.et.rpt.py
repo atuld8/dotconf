@@ -3147,6 +3147,7 @@ def main():
     """Main entry point"""
     parser = create_parser()
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Enable colored output if requested
     if args.color:

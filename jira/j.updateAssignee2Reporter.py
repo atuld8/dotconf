@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
 parser.add_argument('jira_id', type=str, help='The ID of the Jira')
 
 args = parser.parse_args()
+print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 JIRA_ISSUE_ID      = args.jira_id
 
 # Jira API endpoint for updating assignee

@@ -536,5 +536,6 @@ Examples:
     )
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     main(args.file_path, args.show_all, args.show_jira_status)

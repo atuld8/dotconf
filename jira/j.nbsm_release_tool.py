@@ -2192,6 +2192,7 @@ def resolve_tags(args, extractor: GitExtractor) -> Tuple[str, str, Optional[str]
 def main():
     """Main entry point."""
     args = parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     if not args.command:
         # No command given - show short help

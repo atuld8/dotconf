@@ -1203,6 +1203,7 @@ Mapping File Format (JSON):
     )
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Set module-level fuzzy match flag for subprocess calls
     global _fuzzy_match_enabled

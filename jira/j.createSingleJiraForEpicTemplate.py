@@ -22,6 +22,7 @@ parser.add_argument('--story_file', type=str, required=True, help='The file cont
 parser.add_argument('--tool_name', type=str, required=True, help='tool name used for label creation')
 
 args = parser.parse_args()
+print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 EPIC_LINK      = args.epic_id
 RELEASE_VER    = args.release_ver
 TOOL_NAME      = args.tool_name

@@ -41,6 +41,7 @@ def main():
     parser.add_argument('--max-row', type=int, help='Maximum row number to process (inclusive)')
     parser.add_argument('--max-col', type=int, help='Maximum column number to process (inclusive, Excel column number, e.g. 10 for J)')
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     try:
         wb = openpyxl.load_workbook(args.file, data_only=args.data_only)

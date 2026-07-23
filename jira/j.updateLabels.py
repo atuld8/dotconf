@@ -95,6 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("--remove", nargs="*", default=[], help="List of labels to remove")
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Perform label management
     manage_labels(args.ticket_id, args.add, args.remove)

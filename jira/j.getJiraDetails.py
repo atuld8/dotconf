@@ -3208,6 +3208,7 @@ def main() -> int:
         help="Disable header abbreviations for console output (show full field names).",
     )
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     raw_issue_input = args.issue_key.strip()
     if not raw_issue_input:

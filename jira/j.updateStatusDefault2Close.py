@@ -161,6 +161,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--resolution", default="Fixed", help="The resolution value. Default is Fixed.")
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Perform label management
     main(args.ticket_id, args.status, args.resolution)

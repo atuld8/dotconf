@@ -161,6 +161,7 @@ if __name__ == "__main__":
     parser.add_argument("--sprint", default=None, help="Sprint Name")
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Perform label management
     update_sprint(args.ticket_id, args.board, args.sprint)

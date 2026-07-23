@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser(description='Get Jira user name details.')
 parser.add_argument('jira_user_str', type=str, help='The user string of the Jira')
 
 args = parser.parse_args()
+print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 JIRA_ASSIGNEE_NAME      = args.jira_user_str
 
 # Jira API endpoint for updating assignee

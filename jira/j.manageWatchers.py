@@ -991,6 +991,7 @@ def parse_args():
 def main():
     """Main entry point."""
     args = parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Handle --list-fields early (no env vars needed)
     if args.list_fields:

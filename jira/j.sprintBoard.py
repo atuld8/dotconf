@@ -720,6 +720,7 @@ Issue Type Indicators:
     )
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Modify query if sub-tasks should be included
     jql_query = args.query

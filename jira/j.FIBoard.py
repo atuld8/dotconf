@@ -638,6 +638,7 @@ Environment Variables:
     )
 
     args = parser.parse_args()
+    print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     # Use custom query if provided, otherwise build default with -u or env var
     if args.query:
