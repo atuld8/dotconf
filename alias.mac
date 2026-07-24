@@ -1,4 +1,7 @@
 #!/bin/ bash
+export onedrv="$HOME/Library/CloudStorage/OneDrive-Cohesity"
+export onedrvsfdc="$HOME/Library/CloudStorage/OneDrive-Cohesity/MonthReportData/SFDC_Case_Data"
+
 alias mc.sleepscreen='/System/Library/CoreServices/"Menu Extras"/User.menu/Contents/Resources/CGSession -suspend'
 alias mc.lockscreen='/System/Library/Frameworks/ScreenSaver.framework/Resources/ScreenSaverEngine.app/Contents/MacOS/ScreenSaverEngine'
 alias mc.edit='open -a MacVim.app $*'

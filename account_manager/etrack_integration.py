@@ -38,6 +38,7 @@ class EtrackInfo:
     version: Optional[str]
     component: Optional[str] = None
     type: Optional[str] = None  # e.g., SERVICE_REQUEST
+    target_version: Optional[str] = None
 
 
 def validate_etrack_format(value: str) -> tuple:
@@ -471,7 +472,7 @@ class EtrackExecutor:
             EtrackInfo object or None
         """
         query = (
-            f"SELECT incident, assigned_to, state, severity, priority, version, component, type, abstract "
+            f"SELECT incident, assigned_to, state, severity, priority, version, component, type, target_version, abstract "
             f"FROM incident WHERE incident = {incident_no}"
         )
         output = self._execute_command("esql", stdin_input=query)
@@ -530,14 +531,25 @@ class EtrackExecutor:
                     version = None
                     component = None
                     etype = parts[3] if parts[3] else None
+                    target_version = None
                     abstract = parts[4]
-                elif len(parts) >= 9:
-                    # Full format: incident, assigned_to, state, severity, priority, version, component, type, abstract
+                elif len(parts) >= 10:
+                    # Full format: incident, assigned_to, state, severity, priority, version, component, type, target_version, abstract
                     severity = parts[3] if parts[3] else None
                     priority = parts[4] if parts[4] else None
                     version = parts[5] if parts[5] else None
                     component = parts[6] if parts[6] else None
                     etype = parts[7] if parts[7] else None
+                    target_version = parts[8] if parts[8] else None
+                    abstract = parts[9] if len(parts) > 9 else None
+                elif len(parts) >= 9:
+                    # Old format without target_version: incident, assigned_to, state, severity, priority, version, component, type, abstract
+                    severity = parts[3] if parts[3] else None
+                    priority = parts[4] if parts[4] else None
+                    version = parts[5] if parts[5] else None
+                    component = parts[6] if parts[6] else None
+                    etype = parts[7] if parts[7] else None
+                    target_version = None
                     abstract = parts[8] if len(parts) > 8 else None
                 elif len(parts) >= 8:
                     # Old format without component: incident, assigned_to, state, severity, priority, version, type, abstract
@@ -546,6 +558,7 @@ class EtrackExecutor:
                     version = parts[5] if parts[5] else None
                     component = None
                     etype = parts[6] if parts[6] else None
+                    target_version = None
                     abstract = parts[7] if len(parts) > 7 else None
                 else:
                     # Partial - fields may be empty/collapsed, last field is likely abstract
@@ -554,6 +567,7 @@ class EtrackExecutor:
                     version = None
                     component = None
                     etype = None
+                    target_version = None
                     abstract = parts[-1] if len(parts) > 3 else None
 
                 return EtrackInfo(
@@ -566,6 +580,7 @@ class EtrackExecutor:
                     version=version,
                     component=component,
                     type=etype,
+                    target_version=target_version,
                 )
 
         return None
@@ -591,7 +606,7 @@ class EtrackExecutor:
             batch = incident_nos[i:i + batch_size]
             in_list = ','.join(batch)
             query = (
-                f"SELECT incident, assigned_to, state, severity, priority, version, component, abstract "
+                f"SELECT incident, assigned_to, state, severity, priority, version, component, type, target_version, abstract "
                 f"FROM incident WHERE incident IN ({in_list})"
             )
 
@@ -661,13 +676,26 @@ class EtrackExecutor:
                     priority = None
                     version = None
                     component = None
+                    etype = None
+                    target_version = None
                     abstract = parts[3]
-                elif len(parts) >= 8:
-                    # Full format: incident, assigned_to, state, severity, priority, version, component, abstract
+                elif len(parts) >= 10:
+                    # Full format: incident, assigned_to, state, severity, priority, version, component, type, target_version, abstract
                     severity = parts[3] if parts[3] else None
                     priority = parts[4] if parts[4] else None
                     version = parts[5] if parts[5] else None
                     component = parts[6] if parts[6] else None
+                    etype = parts[7] if parts[7] else None
+                    target_version = parts[8] if parts[8] else None
+                    abstract = parts[9] if len(parts) > 9 else None
+                elif len(parts) >= 8:
+                    # Old format: incident, assigned_to, state, severity, priority, version, component, abstract
+                    severity = parts[3] if parts[3] else None
+                    priority = parts[4] if parts[4] else None
+                    version = parts[5] if parts[5] else None
+                    component = parts[6] if parts[6] else None
+                    etype = None
+                    target_version = None
                     abstract = parts[7] if len(parts) > 7 else None
                 elif len(parts) >= 7:
                     # Old format without component: incident, assigned_to, state, severity, priority, version, abstract
@@ -675,6 +703,8 @@ class EtrackExecutor:
                     priority = parts[4] if parts[4] else None
                     version = parts[5] if parts[5] else None
                     component = None
+                    etype = None
+                    target_version = None
                     abstract = parts[6] if len(parts) > 6 else None
                 else:
                     # Partial - fields may be empty/collapsed, last field is likely abstract
@@ -682,6 +712,8 @@ class EtrackExecutor:
                     priority = None
                     version = None
                     component = None
+                    etype = None
+                    target_version = None
                     abstract = parts[-1] if len(parts) > 3 else None
 
                 results[incident_no] = EtrackInfo(
@@ -693,6 +725,8 @@ class EtrackExecutor:
                     abstract=abstract,
                     version=version,
                     component=component,
+                    type=etype,
+                    target_version=target_version,
                 )
 
             for incident_no in batch:

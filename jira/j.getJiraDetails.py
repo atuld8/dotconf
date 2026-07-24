@@ -428,6 +428,7 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Tuple[Dict[str, L
     - customfield_36508: Etrack Ref/Alt
     - Field named "NBU R&D Ticket" (or "NBU R&D Ticket:")
     - Field named "Etrack Incident (Internal)" (or "Etrack Incident (Internal):")
+    - Field named "Progress Status" / "PVM Progress Status" / "Vulnerability Progress Status"
 
     Returns:
         Tuple of:
@@ -464,7 +465,7 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Tuple[Dict[str, L
                     return (True, et_match.group(1), None)
                 return (False, None, f"Value '{value_str}' does not match etrack format")
 
-    def add_ids(raw_value: Any, source_name: str):
+    def add_ids(raw_value: Any, source_name: str, suppress_non_numeric_errors: bool = False):
         if raw_value:
             raw_str = str(raw_value).strip()
             # Handle comma/space-separated multiple values
@@ -480,9 +481,11 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Tuple[Dict[str, L
                             sources[extracted] = []
                         if source_name not in sources[extracted]:
                             sources[extracted].append(source_name)
-                elif error_msg and val:
+                elif error_msg and val and not suppress_non_numeric_errors:
                     # Value exists but doesn't match etrack criteria
-                    errors.append(f"[{source_name}] {error_msg}")
+                    # Skip reporting non-numeric values as errors (e.g., branch names)
+                    if re.match(r'^\d', val):  # Only report if starts with digit
+                        errors.append(f"[{source_name}] {error_msg}")
 
     # Check known customfield IDs
     add_ids(fields.get("customfield_33802"), "EI")
@@ -495,6 +498,9 @@ def _extract_etrack_ids_with_sources(issue: Dict[str, Any]) -> Tuple[Dict[str, L
         "nbu r&d ticket:": "RD",
         "etrack incident (internal)": "INT",
         "etrack incident (internal):": "INT",
+        "progress status": "PS",
+        "pvm progress status": "PS",
+        "vulnerability progress status": "PS",
     }
     for key, mapped_name in names.items():
         if not isinstance(mapped_name, str):
@@ -779,6 +785,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                     "severity": "-",
                     "priority": "-",
                     "version": "-",
+                    "target_version": "-",
                     "component": "-",
                     "abstract": f"Etrack module unavailable: {exc}",
                 }
@@ -794,6 +801,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "severity": "-",
                 "priority": "-",
                 "version": "-",
+                "target_version": "-",
                 "component": "-",
                 "abstract": f"Unable to initialize Etrack executor: {exc}",
             }
@@ -818,6 +826,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "severity": info.severity or "-",
                 "priority": info.priority or "-",
                 "version": info.version or "-",
+                "target_version": info.target_version or "-",
                 "component": info.component or "-",
                 "type": et_type,
                 "type_warning": type_warning,
@@ -830,6 +839,7 @@ def _fetch_etrack_details(etrack_ids: List[str]) -> Dict[str, Dict[str, str]]:
                 "severity": "-",
                 "priority": "-",
                 "version": "-",
+                "target_version": "-",
                 "component": "-",
                 "type": "-",
                 "type_warning": "",
@@ -3680,18 +3690,19 @@ def main() -> int:
                         info.get("severity", "-"),
                         info.get("priority", "-"),
                         info.get("version", "-"),
+                        info.get("target_version", "-"),
                         info.get("component", "-"),
                         info.get("assignee", "-"),
                         info.get("abstract", "-"),
                     ])
-                _print_table(rows, ["Incident", "Src", "State", "Type", "Severity", "Priority", "Version", "Component", "Assignee", "Abstract"], md_format=is_md_format)
+                _print_table(rows, ["Incident", "Src", "State", "Type", "Sev", "Pri", "Version", "TgtVer", "Component", "Assignee", "Abstract"], md_format=is_md_format)
                 if is_md_format:
-                    print("\n> **Legend:** EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
+                    print("\n> **Legend:** EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal), PS=Progress Status")
                 else:
-                    print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal)")
+                    print("  Legend: EI=Etrack Incident, ER=Etrack Ref, RD=NBU R&D Ticket, INT=Etrack Incident (Internal), PS=Progress Status")
 
-                # Show type warnings if any etrack is not SERVICE_REQUEST
-                if type_warnings:
+                # Show type warnings if any etrack is not SERVICE_REQUEST (FI profile only)
+                if type_warnings and profile_type == "fi":
                     if is_md_format:
                         print("\n**⚠️ Etrack type warnings (expected SERVICE_REQUEST):**\n")
                     else:
@@ -3699,8 +3710,8 @@ def main() -> int:
                     for warning in type_warnings:
                         print(warning)
 
-                # Show FI vs Etrack comparison for mismatches
-                if etrack_info:
+                # Show FI vs Etrack comparison for mismatches (FI profile only)
+                if etrack_info and profile_type == "fi":
                     comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids, fuzzy_match=args.fuzzy_match)
                     _print_etrack_fi_comparison(comparison_results, show_all=False)
 
