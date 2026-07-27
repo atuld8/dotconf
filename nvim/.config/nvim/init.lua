@@ -471,6 +471,12 @@ if vim.env.TMUX == nil or vim.env.TMUX == "" then
   vim.opt.clipboard:append("unnamed")
 end
 
+-- Enable mouse support
+vim.opt.mouse = "a"
+
+-- Use system clipboard
+vim.opt.clipboard:append("unnamedplus")
+
 -- Global variables to configure C toolchain integrations
 vim.g.C_UseTool_cmake   = "yes"
 vim.g.C_UseTool_doxygen = "yes"
