@@ -129,6 +129,17 @@ try:
 except ImportError:
     PrettyTable = None
 
+# Force line-buffered stdout/stderr so progress prints appear immediately
+# even when output is piped or redirected to a file (instead of being
+# fully buffered and only flushed at process exit).
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except AttributeError:
+    # Python < 3.7 fallback
+    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', buffering=1)
+    sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', buffering=1)
+
 # Load the environment variables configured on the system
 load_dotenv()
 
@@ -279,13 +290,36 @@ class JiraClient:
         response.raise_for_status()
         return response.json()
 
+    @staticmethod
+    def _describe_error(response: requests.Response) -> str:
+        """Extract a human-readable error message from a Jira API error response."""
+        try:
+            error_data = response.json()
+            error_msgs = error_data.get('errorMessages', [])
+            errors = error_data.get('errors', {})
+            parts = []
+            if error_msgs:
+                parts.append('; '.join(error_msgs))
+            if errors:
+                parts.append('; '.join(f"{k}: {v}" for k, v in errors.items()))
+            if parts:
+                return '; '.join(parts)
+        except Exception:
+            pass
+        text = (response.text or '').strip()
+        return text if text else f"HTTP {response.status_code}"
+
     def update_issue(self, issue_key: str, fields: Dict) -> bool:
         """Update issue fields."""
         url = f"{self.base_url}/rest/api/2/issue/{issue_key}"
         data = json.dumps({"fields": fields})
 
         response = self._request_with_retry('PUT', url, data=data, operation=f'Update {issue_key}')
-        return response.status_code == 204
+        if response.status_code == 204:
+            return True
+        print(f"  Update failed for {issue_key} (HTTP {response.status_code}): "
+              f"{self._describe_error(response)}", file=sys.stderr)
+        return False
 
     def get_user(self, username: str) -> Optional[Dict]:
         """Fetch user details by username."""
@@ -373,7 +407,11 @@ class JiraClient:
             'POST', url, data=json.dumps(username),
             operation=f'Add watcher {username} to {issue_key}'
         )
-        return response.status_code in (200, 204)
+        if response.status_code in (200, 204):
+            return True
+        print(f"  Add watcher {username} failed for {issue_key} (HTTP {response.status_code}): "
+              f"{self._describe_error(response)}", file=sys.stderr)
+        return False
 
     def remove_builtin_watcher(self, issue_key: str, username: str) -> bool:
         """Remove a watcher using the built-in watchers API."""
@@ -383,7 +421,11 @@ class JiraClient:
             'DELETE', url, params=params,
             operation=f'Remove watcher {username} from {issue_key}'
         )
-        return response.status_code in (200, 204)
+        if response.status_code in (200, 204):
+            return True
+        print(f"  Remove watcher {username} failed for {issue_key} (HTTP {response.status_code}): "
+              f"{self._describe_error(response)}", file=sys.stderr)
+        return False
 
 
 # ---------------------------------------------------------------------------
