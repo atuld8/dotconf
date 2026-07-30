@@ -58,6 +58,7 @@ BULK OPERATIONS
 
   Issues from File:
     j.manageWatchers.py -f issues.txt -a user1
+    j.manageWatchers.py -f $op/pvms -a new.user1 new.user2 -r old.user1 old.user2 -w SIW
 
   Issues from JQL:
     j.manageWatchers.py -q "project = PROJ AND status = Open" -a user1
@@ -247,6 +248,14 @@ class JiraClient:
                     time.sleep(wait)
                     continue
 
+                if response.status_code == 401:
+                    # Auth failure applies to every subsequent call too - fail fast
+                    # instead of retrying or continuing through the rest of the batch.
+                    print(f"\nError: {operation} failed with HTTP 401 Unauthorized.\n"
+                          f"Your JIRA_ACC_TOKEN is missing, invalid, or expired. "
+                          f"Please refresh it and try again.", file=sys.stderr)
+                    sys.exit(1)
+
                 return response
 
             except requests.exceptions.SSLError as exc:
@@ -277,6 +286,16 @@ class JiraClient:
             raise last_exc
         raise RuntimeError(f"{operation}: Max retries exceeded")
 
+    @staticmethod
+    def _friendly_check(response: requests.Response, operation: str) -> None:
+        """Raise a clean, user-friendly error (no traceback) for non-2xx responses."""
+        if response.ok:
+            return
+        reason = JiraClient._describe_error(response)
+        print(f"\nError: {operation} failed (HTTP {response.status_code}): {reason}",
+              file=sys.stderr)
+        sys.exit(1)
+
     def get_issue(self, issue_key: str, fields: Optional[List[str]] = None) -> Optional[Dict]:
         """Fetch a single issue by key."""
         url = f"{self.base_url}/rest/api/2/issue/{issue_key}"
@@ -287,7 +306,7 @@ class JiraClient:
         response = self._request_with_retry('GET', url, params=params, operation=f'Fetch {issue_key}')
         if response.status_code == 404:
             return None
-        response.raise_for_status()
+        self._friendly_check(response, f'Fetch {issue_key}')
         return response.json()
 
     @staticmethod
@@ -329,7 +348,7 @@ class JiraClient:
         response = self._request_with_retry('GET', url, params=params, operation=f'Fetch user {username}')
         if response.status_code == 404:
             return None
-        response.raise_for_status()
+        self._friendly_check(response, f'Fetch user {username}')
         return response.json()
 
     def search_issues(self, jql: str, fields: List[str], max_results: int = 0) -> List[Dict]:
@@ -362,7 +381,7 @@ class JiraClient:
                     print(f"Error: Bad request (400)", file=sys.stderr)
                 sys.exit(1)
 
-            response.raise_for_status()
+            self._friendly_check(response, 'Issue search')
 
             payload = response.json()
             issues = payload.get('issues', [])
@@ -395,7 +414,7 @@ class JiraClient:
         response = self._request_with_retry('GET', url, operation=f'Get watchers {issue_key}')
         if response.status_code == 404:
             return []
-        response.raise_for_status()
+        self._friendly_check(response, f'Get watchers {issue_key}')
         data = response.json()
         return data.get('watchers', [])
 
@@ -1116,8 +1135,15 @@ def main():
     # From file
     if args.file:
         file_content = ""
-        with open(args.file, 'r', encoding='utf-8') as f:
-            file_content = f.read()
+        try:
+            with open(args.file, 'r', encoding='utf-8') as f:
+                file_content = f.read()
+        except FileNotFoundError:
+            print(f"Error: Issue file not found: {args.file}", file=sys.stderr)
+            sys.exit(1)
+        except PermissionError:
+            print(f"Error: Permission denied reading issue file: {args.file}", file=sys.stderr)
+            sys.exit(1)
         file_keys = parse_issue_keys_from_text(file_content)
         issue_keys.extend(file_keys)
         if not args.quiet:
@@ -1279,4 +1305,28 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nCancelled by user.", file=sys.stderr)
+        sys.exit(130)
+    except requests.exceptions.ConnectionError:
+        print(f"\nError: Could not connect to Jira server ({JIRA_URL}). "
+              f"Check the server name and your network connection.", file=sys.stderr)
+        sys.exit(1)
+    except requests.exceptions.Timeout:
+        print(f"\nError: Request to Jira server ({JIRA_URL}) timed out. "
+              f"The server may be slow or unreachable; try again.", file=sys.stderr)
+        sys.exit(1)
+    except requests.exceptions.SSLError as exc:
+        print(f"\nError: SSL/TLS connection to Jira server failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except requests.exceptions.RequestException as exc:
+        print(f"\nError: Jira request failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
+        print(f"\nError: Unexpected failure: {exc}", file=sys.stderr)
+        if os.getenv('JIRA_DEBUG'):
+            raise
+        print("Set JIRA_DEBUG=1 to see the full traceback.", file=sys.stderr)
+        sys.exit(1)
