@@ -222,13 +222,38 @@ end, {})
 
 -- Commands to manage iskeyword and completeopt
 vim.api.nvim_create_user_command("SetWORDcomplete", function()
-    vim.opt.iskeyword:append({ "@", ".", "-", "_" })
+    vim.opt.iskeyword:append({ "@", ".", "-", "_", "/", "~", ":", "$" })
     vim.opt.completeopt:append("menuone")
 end, {})
 
 vim.api.nvim_create_user_command("UnsetWORDcomplete", function()
-    vim.opt.iskeyword:remove({ ".", "-" })
+    vim.opt.iskeyword:remove({ ".", "-", "/", "~", ":", "$" })
     vim.opt.completeopt:remove("menuone")
+end, {})
+
+-- Context-specific iskeyword commands
+vim.api.nvim_create_user_command("SetPathComplete", function()
+    vim.opt.iskeyword:append({ "/", "~", "." })
+end, {})
+
+vim.api.nvim_create_user_command("UnsetPathComplete", function()
+    vim.opt.iskeyword:remove({ "/", "~", "." })
+end, {})
+
+vim.api.nvim_create_user_command("SetURLComplete", function()
+    vim.opt.iskeyword:append({ "/", ":", ".", "?", "&", "=", "%" })
+end, {})
+
+vim.api.nvim_create_user_command("UnsetURLComplete", function()
+    vim.opt.iskeyword:remove({ "/", ":", ".", "?", "&", "=", "%" })
+end, {})
+
+vim.api.nvim_create_user_command("SetCodeComplete", function()
+    vim.opt.iskeyword:append({ "_", "$", ":" })
+end, {})
+
+vim.api.nvim_create_user_command("UnsetCodeComplete", function()
+    vim.opt.iskeyword:remove({ "$", ":" })
 end, {})
 
 vim.api.nvim_create_user_command("ShowKeywords", function()
