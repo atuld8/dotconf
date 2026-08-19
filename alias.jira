@@ -29,6 +29,17 @@ alias j.3.put='function af.jira_rest_call() { REST_ARG=$1; shift; curl $JIRA_ALI
 alias jq.fmt.issue_basic_details='jq -jr '"'"'"JiraID:\t\t",.key,"\n\n", "Summary:\t",.fields.summary,"\n\n", "Assignee:\t",.fields.assignee.name,"\n\n", "Reporter:\t",.fields.reporter.name,"\n\n", "IssueType:\t",.fields.issuetype.name,"\n\n", "IssueStatus:\t",.fields.status.name,"\n\n", "Labels:\t\t",(.fields.labels|join (" , ")),"\n\n", "Description: \n--------------------------------------------------------------------------------------------\n",.fields.description,"\n--------------------------------------------------------------------------------------------\n"'"'"''
 alias jq.fmt.issue_basic_summary='jq -jr '"'"'"JiraID:\t\t",.key,"\n", "Summary:\t",.fields.summary,"\n", "Assignee:\t",.fields.assignee.name,"\n", "Reporter:\t",.fields.reporter.name,"\n", "IssueType:\t",.fields.issuetype.name,"\n", "IssueStatus:\t",.fields.status.name,"\n", "Labels:\t\t",(.fields.labels|join (" , ")),"\n", "\n--------------\n"'"'"''
 alias jq.fmt.comments='jq '"'"'[.fields.comment.comments[].body]'"'"''
+jq.vrfy() {
+    if [[ $# -gt 0 ]]; then
+        [[ -f "$1" ]] || { echo "Not found: $1" >&2; return 2; }
+        jq -e . "$1" >/dev/null 2>&1 && echo "Valid JSON" || { echo "Invalid JSON"; return 1; }
+    elif [[ ! -t 0 ]]; then
+        jq -e . - >/dev/null 2>&1 && echo "Valid JSON" || { echo "Invalid JSON"; return 1; }
+    else
+        echo "Usage: jq.vrfy [file]   or   ... | jq.vrfy" >&2
+        return 2
+    fi
+}
 
 alias j.getDet='function af.jira_get_issue() { j.2.get issue/$1 | jq.fmt.issue_basic_details; }; af.jira_get_issue'
 alias j.getSum='function af.jira_get_issue() { j.2.get issue/$1 | jq.fmt.issue_basic_summary; }; af.jira_get_issue'

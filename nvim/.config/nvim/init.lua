@@ -47,6 +47,8 @@ require("lazy").setup({
   { import = "plugins.ai.copilot" },
   { import = "plugins.ai.copilot_cmp" },
   { import = "plugins.ai.copilot_chat" },
+  { import = "plugins.ai.codecompanion" },
+  { import = "plugins.ai.cursor_cli" },
 })
 
 -- Load basic configs

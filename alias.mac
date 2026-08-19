@@ -5,6 +5,7 @@ export onedrvsfdc="$HOME/Library/CloudStorage/OneDrive-Cohesity/MonthReportData/
 alias mc.sleepscreen='/System/Library/CoreServices/"Menu Extras"/User.menu/Contents/Resources/CGSession -suspend'
 alias mc.lockscreen='/System/Library/Frameworks/ScreenSaver.framework/Resources/ScreenSaverEngine.app/Contents/MacOS/ScreenSaverEngine'
 alias mc.edit='open -a MacVim.app $*'
+alias mc.md='open -a MarkViewer.app $*'
 alias mc.notesmv='open -a MacVim.app  $HOME/.notes_flist --args -n'
 alias mc.tags='cat ~/.tagfiles | grep Tag= | grep -v ".tagfiles" | sed -e"s/Tag=//"'
 #alias mc.worknotes='(cd ~/workspace/worknotes.links/ && fzf --preview "bat --color=always {}" --prompt "Search Code: " --border --layout=reverse --bind "enter:execute(nvim {})")'
