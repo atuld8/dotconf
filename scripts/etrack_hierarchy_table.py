@@ -20,10 +20,13 @@ Examples:
 """
 
 import argparse
+import hashlib
+import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set, Tuple
@@ -31,8 +34,31 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 VALID_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 HIERARCHY_SOURCES = ("inc-bottom-up", "incident-view", "eprint")
+DELIVERABLE_DETAIL_SOURCES = ("esql", "eprint", "auto")
 DEFAULT_HIERARCHY_SOURCE = "inc-bottom-up"
 DEFAULT_DELIVERABLE_PARALLEL = 8
+DEFAULT_DELIVERABLE_DETAILS_SOURCE = "esql"
+DEFAULT_COMMAND_RETRIES = 3
+DEFAULT_RETRY_DELAY = 2.0
+
+SSH_ERROR_RULES: List[Tuple[re.Pattern[str], str, bool]] = [
+    (re.compile(r"Could not resolve hostname", re.I), "dns", True),
+    (re.compile(r"nodename nor servname provided", re.I), "dns", True),
+    (re.compile(r"Temporary failure in name resolution", re.I), "dns", True),
+    (re.compile(r"Connection timed out", re.I), "timeout", True),
+    (re.compile(r"Operation timed out", re.I), "timeout", True),
+    (re.compile(r"Connection reset", re.I), "network", True),
+    (re.compile(r"Broken pipe", re.I), "network", True),
+    (re.compile(r"Connection refused", re.I), "network", True),
+    (re.compile(r"No route to host", re.I), "network", True),
+    (re.compile(r"Network is unreachable", re.I), "network", True),
+    (re.compile(r"Control socket connect", re.I), "multiplex", True),
+    (re.compile(r"ControlMaster", re.I), "multiplex", True),
+    (re.compile(r"Permission denied", re.I), "auth", False),
+    (re.compile(r"Host key verification failed", re.I), "hostkey", False),
+    (re.compile(r"Authentication failed", re.I), "auth", False),
+    (re.compile(r"Could not resolve address", re.I), "dns", True),
+]
 
 DEFAULT_COLUMNS = [
     "INCIDENT",
@@ -82,6 +108,99 @@ class EtrackHierarchyError(Exception):
     pass
 
 
+class CommandTimeoutError(EtrackHierarchyError):
+    pass
+
+
+def _ssh_host_from_target(ssh_target: Optional[str]) -> str:
+    if not ssh_target:
+        return "remote host"
+    return ssh_target.split("@", 1)[-1]
+
+
+def classify_command_error(stderr: str, returncode: int) -> Tuple[str, bool]:
+    text = stderr or ""
+    for pattern, category, retryable in SSH_ERROR_RULES:
+        if pattern.search(text):
+            return category, retryable
+    if returncode == 255 and re.search(r"\bssh\b", text, re.I):
+        return "ssh", True
+    return "unknown", False
+
+
+def format_command_error(
+    error_label: str,
+    ssh_target: Optional[str],
+    detail: str,
+    category: str,
+    context: Optional[str] = None,
+) -> str:
+    host = _ssh_host_from_target(ssh_target)
+    lines = [f"{error_label} failed"]
+    if ssh_target:
+        lines[0] += f" via SSH to {ssh_target}"
+    if context:
+        lines.append(f"  Context: {context}")
+
+    hints: List[str] = []
+    if category == "dns":
+        lines.append("  Cause: hostname could not be resolved (DNS)")
+        hints = [
+            "Connect to corporate VPN",
+            f"Verify: nslookup {host}",
+            "Check: echo $ENGVM_HOST (or your --ssh target)",
+            f"Optional: add {host} to /etc/hosts if you know the IP",
+        ]
+    elif category == "timeout":
+        if ssh_target:
+            lines.append("  Cause: SSH connection timed out")
+        else:
+            lines.append("  Cause: command timed out")
+        hints = [
+            "Verify VPN/network connectivity" if ssh_target else None,
+            f"Test: ssh -o ConnectTimeout=10 {ssh_target} true" if ssh_target else None,
+            "Try increasing --timeout",
+        ]
+        hints = [hint for hint in hints if hint]
+    elif category == "network":
+        lines.append("  Cause: network connection error")
+        hints = [
+            "Verify VPN/network connectivity",
+            f"Test: ssh {ssh_target or host} true",
+        ]
+    elif category == "multiplex":
+        lines.append("  Cause: stale SSH multiplex (ControlMaster) socket")
+        hints = [
+            "Retry usually succeeds automatically",
+            "Or disable multiplex: --no-ssh-multiplex / -X",
+        ]
+    elif category == "auth":
+        lines.append("  Cause: SSH authentication failed")
+        hints = [
+            "Verify SSH keys/agent: ssh-add -l",
+            f"Test: ssh {ssh_target or host} true",
+        ]
+    elif category == "hostkey":
+        lines.append("  Cause: SSH host key verification failed")
+        hints = [
+            f"Update known_hosts for {host}",
+            f"Test: ssh {ssh_target or host} true",
+        ]
+    elif category == "ssh":
+        lines.append("  Cause: SSH connection error")
+
+    if detail:
+        first_line = detail.splitlines()[0].strip()
+        if first_line:
+            lines.append(f"  Detail: {first_line}")
+
+    if hints:
+        lines.append("  Try:")
+        lines.extend(f"    - {hint}" for hint in hints)
+
+    return "\n".join(lines)
+
+
 TRENCHER_COMMENT_HEADER_RE = re.compile(
     r"^\((\d+)\)\s+@\s+svc_rmntrencher\s+"
     r"(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}\s+\w+)\s*$",
@@ -99,6 +218,7 @@ URL_RE = re.compile(r"https://[^\s\]>]+")
 class ConstituentRef:
     incident: str
     embedded_version: Optional[int] = None
+    in_bundle_contains: bool = True
 
 
 @dataclass
@@ -167,6 +287,19 @@ class TrencherDeliverableParser:
         versions.sort(key=lambda item: item.eeb_version)
         return versions
 
+    def detect_kinds(self, comments_text: str, incident: str) -> List[str]:
+        blocks = self._extract_service_request_blocks(comments_text, incident)
+        kinds: List[str] = []
+        seen: Set[str] = set()
+        for _, _, block in blocks:
+            if EEB_PKG_MARKER in block and "eeb-pkg" not in seen:
+                seen.add("eeb-pkg")
+                kinds.append("eeb-pkg")
+            if EEB_BUNDLE_MARKER in block and "bundle" not in seen:
+                seen.add("bundle")
+                kinds.append("bundle")
+        return kinds
+
     def _extract_service_request_blocks(
         self,
         comments_text: str,
@@ -224,7 +357,7 @@ class TrencherDeliverableParser:
         constituents = (
             self._parse_pkg_constituents(block)
             if kind == "eeb-pkg"
-            else self._parse_bundle_constituents(block)
+            else self._parse_bundle_constituents(block, incident=incident)
         )
         readme_notes = self._extract_section(block, "Readme Notes:")
         problem_description = self._extract_section(block, "Problem Description:")
@@ -239,7 +372,9 @@ class TrencherDeliverableParser:
             comment_date=comment_date,
             constituents=constituents,
             artifacts=self._parse_artifacts(block),
-            platform_packages=self._parse_platform_packages(block),
+            platform_packages=self._dedupe_platform_packages(
+                self._parse_platform_packages(block)
+            ),
             links=self._parse_links(block),
             readme_notes=readme_notes,
             problem_description=problem_description,
@@ -261,9 +396,45 @@ class TrencherDeliverableParser:
             )
         return constituents
 
-    def _parse_bundle_constituents(self, block: str) -> List[ConstituentRef]:
-        constituents: List[ConstituentRef] = []
+    @staticmethod
+    def _sanitize_text_for_incident_scan(text: str) -> str:
+        cleaned = re.sub(r"pid=\d+", " ", text, flags=re.IGNORECASE)
+        cleaned = re.sub(r"https?://\S+", " ", cleaned)
+        return cleaned
+
+    @classmethod
+    def _extract_readme_extra_incidents(
+        cls,
+        section: str,
+        *,
+        exclude: Set[str],
+    ) -> List[str]:
+        """Extract ETs referenced as line headers: '4220256: description...'."""
+        if not section:
+            return []
+
+        extras: List[str] = []
         seen: Set[str] = set()
+        cleaned = cls._sanitize_text_for_incident_scan(section)
+
+        for match in re.finditer(r"(?m)^\s*(\d{6,7})\s*:", cleaned):
+            token = match.group(1)
+            if token in exclude or token in seen:
+                continue
+            seen.add(token)
+            extras.append(token)
+
+        return extras
+
+    def _parse_bundle_constituents(
+        self,
+        block: str,
+        incident: str = "",
+    ) -> List[ConstituentRef]:
+        bundle_list: List[ConstituentRef] = []
+        extras: List[ConstituentRef] = []
+        seen_in_bundle: Set[str] = set()
+        seen_all: Set[str] = set()
 
         list_match = re.search(
             r"The bundle contains the following Etracks:\s*(.*?)(?:\n\s*\n|\nCompleted Testing Steps:)",
@@ -272,20 +443,52 @@ class TrencherDeliverableParser:
         )
         if list_match:
             for match in ET_CONSTITUENT_RE.finditer(list_match.group(1)):
-                incident = match.group(1)
-                if incident not in seen:
-                    seen.add(incident)
-                    constituents.append(ConstituentRef(incident=incident))
+                incident_id = match.group(1)
+                if incident_id not in seen_in_bundle:
+                    seen_in_bundle.add(incident_id)
+                    seen_all.add(incident_id)
+                    bundle_list.append(
+                        ConstituentRef(
+                            incident=incident_id,
+                            in_bundle_contains=True,
+                        )
+                    )
 
-        if constituents:
-            return constituents
+        exclude = set(seen_all)
+        if incident:
+            exclude.add(incident)
 
-        bundle_line = self._extract_section(block, "Problem Description:")
-        for token in re.findall(r"\b\d{6,}\b", bundle_line):
-            if token not in seen:
-                seen.add(token)
-                constituents.append(ConstituentRef(incident=token))
-        return constituents
+        for section in (
+            self._extract_section_raw(block, "Readme Notes:"),
+            self._extract_section_raw(block, "Problem Description:"),
+        ):
+            for token in self._extract_readme_extra_incidents(section, exclude=exclude):
+                if token in seen_all:
+                    continue
+                seen_all.add(token)
+                exclude.add(token)
+                extras.append(
+                    ConstituentRef(
+                        incident=token,
+                        in_bundle_contains=False,
+                    )
+                )
+
+        return bundle_list + extras
+
+    @staticmethod
+    def _dedupe_platform_packages(
+        packages: List[PlatformPackage],
+    ) -> List[PlatformPackage]:
+        deduped: List[PlatformPackage] = []
+        seen: Set[Tuple[str, str]] = set()
+        for package in packages:
+            key = (package.platform, package.package_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(package)
+        return deduped
 
     def _parse_artifacts(self, block: str) -> List[ArtifactRow]:
         artifacts: List[ArtifactRow] = []
@@ -337,7 +540,7 @@ class TrencherDeliverableParser:
         return links
 
     @staticmethod
-    def _extract_section(block: str, heading: str) -> str:
+    def _extract_section_raw(block: str, heading: str) -> str:
         match = re.search(
             rf"{re.escape(heading)}\s*(.*?)(?:\n[A-Z][A-Za-z /']+:|$)",
             block,
@@ -345,7 +548,32 @@ class TrencherDeliverableParser:
         )
         if not match:
             return ""
-        return " ".join(match.group(1).split())
+        return match.group(1)
+
+    @staticmethod
+    def _extract_section(block: str, heading: str) -> str:
+        raw = TrencherDeliverableParser._extract_section_raw(block, heading)
+        if not raw:
+            return ""
+        return " ".join(raw.split())
+
+
+def _format_chunked_list(
+    items: Sequence[str],
+    prefix: str,
+    per_line: int = 7,
+    continuation_indent: str = "         ",
+) -> List[str]:
+    if not items:
+        return []
+    lines: List[str] = []
+    for index in range(0, len(items), per_line):
+        chunk = ", ".join(items[index : index + per_line])
+        if index == 0:
+            lines.append(f"{prefix}{chunk}")
+        else:
+            lines.append(f"{continuation_indent}{chunk}")
+    return lines
 
 
 class DeliverableReporter:
@@ -361,6 +589,7 @@ class DeliverableReporter:
     ]
     BUNDLE_CONSTITUENT_COLUMNS = [
         "ET",
+        "SOURCE",
         "LATEST_EEB",
         "TYPE",
         "STATE",
@@ -374,6 +603,7 @@ class DeliverableReporter:
         enriched: Dict[str, Dict[str, str]],
         latest_versions: Dict[str, Optional[int]],
         include_details: bool = False,
+        stale_only: bool = False,
     ) -> str:
         sections: List[str] = []
         for version in versions:
@@ -383,9 +613,99 @@ class DeliverableReporter:
                     enriched,
                     latest_versions,
                     include_details=include_details,
+                    stale_only=stale_only,
                 )
             )
         return "\n".join(sections)
+
+    def render_hints(
+        self,
+        incident: str,
+        versions_by_kind: Dict[str, List[DeliverableVersion]],
+    ) -> str:
+        if not versions_by_kind:
+            return ""
+
+        has_bundle = "bundle" in versions_by_kind
+        has_pkg = "eeb-pkg" in versions_by_kind
+        if has_bundle and has_pkg:
+            suggest = "-A"
+            kind_label = "EEB BUNDLE + EEB PACKAGE"
+        elif has_bundle:
+            suggest = "-B"
+            kind_label = "EEB BUNDLE"
+        else:
+            suggest = "-P"
+            kind_label = "EEB PACKAGE"
+
+        hint_rows: List[Dict[str, str]] = []
+        for kind in ("eeb-pkg", "bundle"):
+            for version in versions_by_kind.get(kind, []):
+                comment_date = version.comment_date.split()[0] if version.comment_date else "?"
+                row: Dict[str, str] = {
+                    "KIND": "PKG" if kind == "eeb-pkg" else "BUNDLE",
+                    "VER": str(version.eeb_version),
+                    "COMMENT": f"#{version.comment_num} {comment_date}",
+                    "PRODUCT": version.product_version,
+                    "PRIMARY": version.primary,
+                    "ETs": str(len(version.constituents)),
+                }
+                if has_bundle:
+                    if kind == "bundle":
+                        in_bundle = sum(
+                            1 for c in version.constituents if c.in_bundle_contains
+                        )
+                        row["BUNDLE"] = str(in_bundle)
+                        row["README*"] = str(len(version.constituents) - in_bundle)
+                    else:
+                        row["BUNDLE"] = ""
+                        row["README*"] = ""
+                hint_rows.append(row)
+
+        columns = ["KIND", "VER", "COMMENT", "PRODUCT", "PRIMARY", "ETs"]
+        if has_bundle:
+            columns.extend(["BUNDLE", "README*"])
+
+        renderer = TableRenderer(columns)
+        renderer.widths.update(
+            {
+                "KIND": 7,
+                "VER": 4,
+                "COMMENT": 18,
+                "PRODUCT": 20,
+                "PRIMARY": 10,
+                "ETs": 4,
+                "BUNDLE": 7,
+                "README*": 8,
+            }
+        )
+
+        lines = [
+            f"\n{'=' * 72}",
+            f"DELIVERABLE SUMMARY — ET {incident} ({kind_label})",
+            f"Full report: re-run with {suggest}",
+            f"{'=' * 72}",
+            renderer.render_with_count(hint_rows),
+        ]
+
+        if has_pkg:
+            for version in versions_by_kind.get("eeb-pkg", []):
+                if not version.constituents:
+                    continue
+                embedded = [
+                    f"{c.incident}(v{c.embedded_version})"
+                    if c.embedded_version is not None
+                    else c.incident
+                    for c in version.constituents
+                ]
+                lines.extend(
+                    _format_chunked_list(
+                        embedded,
+                        prefix=f"v{version.eeb_version} EEBs: ",
+                    )
+                )
+
+        return "\n".join(lines)
 
     def _render_version(
         self,
@@ -393,6 +713,7 @@ class DeliverableReporter:
         enriched: Dict[str, Dict[str, str]],
         latest_versions: Dict[str, Optional[int]],
         include_details: bool = False,
+        stale_only: bool = False,
     ) -> str:
         title = (
             "EEB PACKAGE"
@@ -415,6 +736,7 @@ class DeliverableReporter:
                     latest_versions,
                     self.PKG_CONSTITUENT_COLUMNS,
                     include_embedded=True,
+                    stale_only=stale_only,
                 )
             )
         else:
@@ -425,6 +747,16 @@ class DeliverableReporter:
                     latest_versions,
                     self.BUNDLE_CONSTITUENT_COLUMNS,
                     include_embedded=False,
+                    stale_only=False,
+                )
+            )
+
+        if version.kind == "eeb-pkg":
+            lines.append(
+                self._render_status_summary(
+                    version,
+                    latest_versions,
+                    stale_only=stale_only,
                 )
             )
 
@@ -450,13 +782,25 @@ class DeliverableReporter:
             {"FIELD": "Product Version", "VALUE": version.product_version},
             {"FIELD": "EEB Version", "VALUE": str(version.eeb_version)},
             {"FIELD": "Constituents", "VALUE": str(len(version.constituents))},
-            {"FIELD": "Problem Description", "VALUE": version.problem_description[:120]},
-            {"FIELD": "Readme Notes", "VALUE": version.readme_notes[:120]},
         ]
+        if version.kind == "bundle":
+            in_bundle = sum(1 for c in version.constituents if c.in_bundle_contains)
+            extras = len(version.constituents) - in_bundle
+            rows.append({"FIELD": "In bundle contains", "VALUE": str(in_bundle)})
+            rows.append({"FIELD": "Extra (readme/desc)", "VALUE": str(extras)})
+        rows.extend(
+            [
+                {
+                    "FIELD": "Problem Description",
+                    "VALUE": version.problem_description[:120],
+                },
+                {"FIELD": "Readme Notes", "VALUE": version.readme_notes[:120]},
+            ]
+        )
         renderer = TableRenderer(["FIELD", "VALUE"])
         renderer.widths["FIELD"] = 20
         renderer.widths["VALUE"] = 64
-        return "\nSUMMARY:\n" + renderer.render(rows)
+        return "\nSUMMARY:\n" + renderer.render_with_count(rows)
 
     def _render_constituent_table(
         self,
@@ -465,6 +809,7 @@ class DeliverableReporter:
         latest_versions: Dict[str, Optional[int]],
         columns: List[str],
         include_embedded: bool,
+        stale_only: bool = False,
     ) -> str:
         rows: List[Dict[str, str]] = []
         for constituent in version.constituents:
@@ -481,19 +826,82 @@ class DeliverableReporter:
                 embedded = constituent.embedded_version
                 row["EMBEDDED"] = str(embedded) if embedded is not None else ""
                 row["LATEST"] = str(latest) if latest is not None else ""
-                row["STATUS"] = self._version_status(embedded, latest)
+                status = self._version_status(embedded, latest)
+                row["STATUS"] = status
+                if stale_only and not status.startswith("STALE"):
+                    continue
             else:
                 row["LATEST_EEB"] = str(latest) if latest is not None else ""
+                if version.kind == "bundle":
+                    row["SOURCE"] = (
+                        "BUNDLE" if constituent.in_bundle_contains else "README*"
+                    )
             rows.append(row)
 
         renderer = TableRenderer(columns)
         renderer.widths["ABSTRACT"] = 80
+        if version.kind == "bundle":
+            renderer.widths["SOURCE"] = 8
         title = (
             "CONSTITUENT EEBs:"
             if version.kind == "eeb-pkg"
             else "CONSTITUENT ETRACKS:"
         )
-        return f"\n{title}\n" + renderer.render(rows)
+        if stale_only and not rows:
+            return f"\n{title}\n(no stale constituents for this version)\nTotal rows: 0"
+
+        output = f"\n{title}\n" + renderer.render_with_count(rows)
+        if version.kind == "bundle":
+            extras = [
+                constituent.incident
+                for constituent in version.constituents
+                if not constituent.in_bundle_contains
+            ]
+            if extras:
+                output += (
+                    "\nNote: SOURCE=README* means ET appears only in Problem "
+                    "Description/Readme Notes, NOT in the trusted 'bundle contains' "
+                    f"list: {', '.join(extras)}"
+                )
+        return output
+
+    def _render_status_summary(
+        self,
+        version: DeliverableVersion,
+        latest_versions: Dict[str, Optional[int]],
+        stale_only: bool = False,
+    ) -> str:
+        current = 0
+        stale = 0
+        unknown = 0
+        newer = 0
+        stale_items: List[str] = []
+
+        for constituent in version.constituents:
+            latest = latest_versions.get(constituent.incident)
+            status = self._version_status(constituent.embedded_version, latest)
+            if status == "CURRENT":
+                current += 1
+            elif status.startswith("STALE"):
+                stale += 1
+                stale_items.append(
+                    f"{constituent.incident} v{constituent.embedded_version}"
+                    f"→latest v{latest}"
+                )
+            elif status.startswith("NEWER"):
+                newer += 1
+            else:
+                unknown += 1
+
+        summary = (
+            f"VERSION SUMMARY: {current} CURRENT, {stale} STALE, "
+            f"{unknown} UNKNOWN, {newer} NEWER"
+        )
+        if stale_items:
+            summary += f" | Stale: {', '.join(stale_items)}"
+        if stale_only:
+            summary += " | (filtered to STALE only)"
+        return f"\n{summary}\n"
 
     @staticmethod
     def _version_status(
@@ -512,21 +920,21 @@ class DeliverableReporter:
         rows = [
             {
                 "PLATFORM": pkg.platform,
-                "SECURE_FILE": pkg.secure_file,
                 "PACKAGE_NAME": pkg.package_name,
             }
-            for pkg in version.platform_packages
+            for pkg in TrencherDeliverableParser._dedupe_platform_packages(
+                version.platform_packages
+            )
         ]
-        renderer = TableRenderer(["PLATFORM", "SECURE_FILE", "PACKAGE_NAME"])
-        renderer.widths["SECURE_FILE"] = 24
+        renderer = TableRenderer(["PLATFORM", "PACKAGE_NAME"])
         renderer.widths["PACKAGE_NAME"] = 48
-        return "\nPLATFORM PACKAGES:\n" + renderer.render(rows)
+        return "\nPLATFORM PACKAGES:\n" + renderer.render_with_count(rows)
 
     def _render_links(self, version: DeliverableVersion) -> str:
         rows = [{"TYPE": key.upper(), "URL": url} for key, url in version.links.items()]
         renderer = TableRenderer(["TYPE", "URL"])
         renderer.widths["URL"] = 72
-        return "\nLINKS:\n" + renderer.render(rows)
+        return "\nLINKS:\n" + renderer.render_with_count(rows)
 
     def _render_artifacts(self, version: DeliverableVersion) -> str:
         rows = [
@@ -540,7 +948,7 @@ class DeliverableReporter:
         ]
         renderer = TableRenderer(["PLATFORM", "FILE", "SIZE", "CHECKSUM"])
         renderer.widths["FILE"] = 48
-        return "\nARTIFACTS:\n" + renderer.render(rows)
+        return "\nARTIFACTS:\n" + renderer.render_with_count(rows)
 
 
 class TableRenderer:
@@ -572,6 +980,9 @@ class TableRenderer:
         output.append(sep)
         return "\n".join(output)
 
+    def render_with_count(self, rows: List[Dict[str, str]]) -> str:
+        return f"{self.render(rows)}\nTotal rows: {len(rows)}"
+
 
 class EtrackHierarchyFetcher:
     def __init__(
@@ -581,29 +992,196 @@ class EtrackHierarchyFetcher:
         debug: bool = False,
         command_timeout: int = 20,
         deliverable_parallel: int = DEFAULT_DELIVERABLE_PARALLEL,
+        ssh_multiplex: bool = True,
+        max_retries: int = DEFAULT_COMMAND_RETRIES,
+        retry_delay: float = DEFAULT_RETRY_DELAY,
     ):
         self.ssh_target = ssh_target
         self.verbose = verbose
         self.debug = debug
         self.command_timeout = command_timeout
         self.deliverable_parallel = max(1, deliverable_parallel)
+        self.ssh_multiplex = ssh_multiplex
+        self.max_retries = max(0, max_retries)
+        self.retry_delay = max(0.0, retry_delay)
+        self._ssh_multiplex_disabled = False
         self._details_cache: Dict[str, str] = {}
         self._parsed_details_cache: Dict[str, Dict[str, str]] = {}
         self._comments_cache: Dict[str, str] = {}
         self._latest_eeb_version_cache: Dict[str, Optional[int]] = {}
         self._query_count = 0
 
+    def _ssh_multiplex_active(self) -> bool:
+        return bool(
+            self.ssh_target
+            and self.ssh_multiplex
+            and not self._ssh_multiplex_disabled
+        )
+
+    def _ssh_control_path(self) -> str:
+        assert self.ssh_target is not None
+        digest = hashlib.sha256(self.ssh_target.encode("utf-8")).hexdigest()[:16]
+        cache_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".cache",
+            "etrack_hierarchy_table",
+        )
+        os.makedirs(cache_dir, exist_ok=True)
+        return os.path.join(cache_dir, f"ssh-{digest}")
+
+    def _ssh_options(self, for_close: bool = False) -> List[str]:
+        options = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+        use_multiplex = for_close or self._ssh_multiplex_active()
+        if self.ssh_target and self.ssh_multiplex and use_multiplex:
+            options.extend(
+                [
+                    "-o",
+                    "ControlMaster=auto",
+                    "-o",
+                    f"ControlPath={self._ssh_control_path()}",
+                    "-o",
+                    "ControlPersist=300",
+                ]
+            )
+        return options
+
+    def _ssh_command_prefix(self) -> List[str]:
+        if not self.ssh_target:
+            return []
+        return ["ssh", *self._ssh_options(), self.ssh_target]
+
+    def _recover_ssh_multiplex(self) -> None:
+        if self.verbose:
+            print(
+                "[WARN] Stale SSH multiplex socket; resetting connection...",
+                file=sys.stderr,
+            )
+        self.close_ssh()
+        self._ssh_multiplex_disabled = True
+
+    def close_ssh(self) -> None:
+        if not self.ssh_target or not self.ssh_multiplex:
+            return
+        subprocess.run(
+            [
+                "ssh",
+                *self._ssh_options(for_close=True),
+                "-O",
+                "exit",
+                self.ssh_target,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+    def _run_subprocess(
+        self,
+        cmd: Sequence[str],
+        *,
+        timeout: int,
+        input_data: Optional[bytes] = None,
+        allow_failure: bool = False,
+        acceptable_returncodes: Tuple[int, ...] = (0,),
+        error_label: str = "Command",
+        context: Optional[str] = None,
+        retry_on_timeout: bool = False,
+    ) -> subprocess.CompletedProcess[bytes]:
+        last_detail = ""
+        last_category = "unknown"
+
+        for attempt in range(self.max_retries + 1):
+            if attempt > 0:
+                delay = self.retry_delay * (2 ** (attempt - 1))
+                if self.verbose:
+                    print(
+                        f"[WARN] {error_label} transient failure "
+                        f"(retry {attempt}/{self.max_retries}): {last_detail}",
+                        file=sys.stderr,
+                    )
+                    print(f"       Retrying in {delay:.0f}s...", file=sys.stderr)
+                time.sleep(delay)
+
+            try:
+                result = subprocess.run(
+                    list(cmd),
+                    input=input_data,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                last_detail = f"timed out after {timeout}s"
+                last_category = "timeout"
+                if retry_on_timeout and attempt < self.max_retries:
+                    continue
+                raise CommandTimeoutError(
+                    format_command_error(
+                        error_label,
+                        self.ssh_target,
+                        last_detail,
+                        "timeout",
+                        context=context,
+                    )
+                ) from exc
+            except OSError as exc:
+                last_detail = str(exc)
+                last_category = "network"
+                if attempt < self.max_retries and self.ssh_target:
+                    continue
+                raise EtrackHierarchyError(
+                    format_command_error(
+                        error_label,
+                        self.ssh_target,
+                        last_detail,
+                        last_category,
+                        context=context,
+                    )
+                ) from exc
+
+            if result.returncode in acceptable_returncodes or allow_failure:
+                return result
+
+            stderr = result.stderr.decode("utf-8", errors="replace").strip()
+            stdout = result.stdout.decode("utf-8", errors="replace").strip()
+            last_detail = stderr or stdout or f"exit code {result.returncode}"
+            last_category, retryable = classify_command_error(
+                last_detail,
+                result.returncode,
+            )
+
+            if last_category == "multiplex" and retryable:
+                self._recover_ssh_multiplex()
+                if attempt < self.max_retries:
+                    continue
+
+            if retryable and attempt < self.max_retries:
+                continue
+
+            raise EtrackHierarchyError(
+                format_command_error(
+                    error_label,
+                    self.ssh_target,
+                    last_detail,
+                    last_category,
+                    context=context,
+                )
+            )
+
+        raise EtrackHierarchyError(
+            format_command_error(
+                error_label,
+                self.ssh_target,
+                last_detail or "unknown error",
+                last_category,
+                context=context,
+            )
+        )
+
     def _resolve_esql_command(self) -> List[str]:
         if self.ssh_target:
-            return [
-                "ssh",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=10",
-                self.ssh_target,
-                "esql",
-            ]
+            return self._ssh_command_prefix() + ["esql"]
 
         local_esql = shutil.which("esql")
         if local_esql:
@@ -612,7 +1190,6 @@ class EtrackHierarchyFetcher:
         raise EtrackHierarchyError("esql command not found. Install esql or use --ssh user@host.")
 
     def _run_esql(self, sql: str) -> str:
-        import time
         cmd = self._resolve_esql_command()
         self._query_count += 1
         if self.verbose and not self.debug:
@@ -623,43 +1200,52 @@ class EtrackHierarchyFetcher:
             print(f"---", file=sys.stderr)
 
         start_time = time.time()
-
-        timeouts = [self.command_timeout, max(self.command_timeout * 3, self.command_timeout + 30)]
+        timeouts = [
+            self.command_timeout,
+            max(self.command_timeout * 3, self.command_timeout + 30),
+        ]
         result: Optional[subprocess.CompletedProcess[bytes]] = None
+        last_timeout_error: Optional[EtrackHierarchyError] = None
+
         for attempt, timeout_s in enumerate(timeouts, start=1):
             try:
-                result = subprocess.run(
+                result = self._run_subprocess(
                     cmd,
-                    input=sql.encode("utf-8"),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
                     timeout=timeout_s,
-                    check=False,
+                    input_data=sql.encode("utf-8"),
+                    error_label=f"ESQL #{self._query_count}",
+                    context="esql query",
+                    retry_on_timeout=False,
                 )
                 break
-            except subprocess.TimeoutExpired:
-                if attempt == len(timeouts):
-                    raise EtrackHierarchyError(
-                        f"esql query timed out after {timeout_s}s. "
-                        "Try increasing --timeout."
-                    )
-                if self.verbose:
-                    print(
-                        f"[WARN] esql timed out at {timeout_s}s, retrying once with a larger timeout...",
-                        file=sys.stderr,
-                    )
-                continue
-            except OSError as exc:
-                raise EtrackHierarchyError(f"Unable to execute esql: {exc}") from exc
+            except CommandTimeoutError as exc:
+                if attempt < len(timeouts):
+                    last_timeout_error = exc
+                    if self.verbose:
+                        print(
+                            f"[WARN] esql timed out at {timeout_s}s, retrying once "
+                            f"with a larger timeout...",
+                            file=sys.stderr,
+                        )
+                    continue
+                raise
 
         if result is None:
+            if last_timeout_error is not None:
+                raise last_timeout_error
             raise EtrackHierarchyError("esql execution failed unexpectedly.")
 
         elapsed = time.time() - start_time
         if self.debug:
-            print(f"[ESQL #{self._query_count}] Completed in {elapsed:.2f}s", file=sys.stderr)
+            print(
+                f"[ESQL #{self._query_count}] Completed in {elapsed:.2f}s",
+                file=sys.stderr,
+            )
         elif self.verbose:
-            print(f"[ESQL #{self._query_count}] Completed in {elapsed:.2f}s", file=sys.stderr)
+            print(
+                f"[ESQL #{self._query_count}] Completed in {elapsed:.2f}s",
+                file=sys.stderr,
+            )
 
         if result.returncode != 0:
             stderr = result.stderr.decode("utf-8", errors="replace").strip()
@@ -799,18 +1385,9 @@ class EtrackHierarchyFetcher:
         return str(int(incident))
 
     def _run_command(self, cmd: Sequence[str]) -> str:
-        import time
-
         full_cmd = list(cmd)
         if self.ssh_target:
-            full_cmd = [
-                "ssh",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=10",
-                self.ssh_target,
-            ] + list(cmd)
+            full_cmd = self._ssh_command_prefix() + list(cmd)
 
         start_time = time.time()
         if self.verbose and not self.debug:
@@ -818,30 +1395,13 @@ class EtrackHierarchyFetcher:
         if self.debug:
             print(f"[INFO] Running: {' '.join(full_cmd)}", file=sys.stderr)
 
-        try:
-            result = subprocess.run(
-                full_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-                timeout=self.command_timeout,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise EtrackHierarchyError(
-                f"Command timed out after {self.command_timeout}s: {' '.join(full_cmd)}"
-            ) from exc
-        except OSError as exc:
-            raise EtrackHierarchyError(
-                f"Unable to run command {' '.join(full_cmd)}: {exc}"
-            ) from exc
-
-        if result.returncode != 0:
-            stderr = result.stderr.decode("utf-8", errors="replace").strip()
-            stdout = result.stdout.decode("utf-8", errors="replace").strip()
-            msg = stderr or stdout or f"Exit code {result.returncode}"
-            raise EtrackHierarchyError(
-                f"Command failed ({' '.join(full_cmd)}): {msg}"
-            )
+        display_cmd = " ".join(cmd)
+        result = self._run_subprocess(
+            full_cmd,
+            timeout=self.command_timeout,
+            error_label="Command",
+            context=display_cmd,
+        )
 
         elapsed = time.time() - start_time
         if self.verbose:
@@ -855,19 +1415,9 @@ class EtrackHierarchyFetcher:
         timeout: Optional[int] = None,
         allow_failure: bool = False,
     ) -> str:
-        import time
-
         timeout = timeout or self.command_timeout
         if self.ssh_target:
-            cmd = [
-                "ssh",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=10",
-                self.ssh_target,
-                shell_cmd,
-            ]
+            cmd = self._ssh_command_prefix() + [shell_cmd]
         else:
             cmd = ["bash", "-lc", shell_cmd]
 
@@ -878,43 +1428,23 @@ class EtrackHierarchyFetcher:
             print(f"[INFO] Shell pipeline: {shell_cmd}", file=sys.stderr)
 
         try:
-            result = subprocess.run(
+            result = self._run_subprocess(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
                 timeout=timeout,
+                allow_failure=allow_failure,
+                acceptable_returncodes=(0, 1),
+                error_label="Shell pipeline",
+                context=shell_cmd,
             )
-        except subprocess.TimeoutExpired:
+        except EtrackHierarchyError:
             if allow_failure:
                 if self.verbose:
                     print(
-                        f"[WARN] Filtered command timed out after {timeout}s",
+                        f"[WARN] Filtered command failed after retries: {shell_cmd}",
                         file=sys.stderr,
                     )
                 return ""
-            raise EtrackHierarchyError(
-                f"Command timed out after {timeout}s: {shell_cmd}"
-            ) from None
-        except OSError as exc:
-            if allow_failure:
-                if self.verbose:
-                    print(
-                        f"[WARN] Filtered command failed: {exc}",
-                        file=sys.stderr,
-                    )
-                return ""
-            raise EtrackHierarchyError(
-                f"Unable to run shell pipeline: {exc}"
-            ) from exc
-
-        if result.returncode not in (0, 1) and not allow_failure:
-            stderr = result.stderr.decode("utf-8", errors="replace").strip()
-            stdout = result.stdout.decode("utf-8", errors="replace").strip()
-            msg = stderr or stdout or f"Exit code {result.returncode}"
-            raise EtrackHierarchyError(
-                f"Shell pipeline failed ({shell_cmd}): {msg}"
-            )
+            raise
 
         elapsed = time.time() - start_time
         if self.verbose:
@@ -1055,6 +1585,40 @@ class EtrackHierarchyFetcher:
                 )
         return parsed
 
+    def detect_deliverable_kinds(self, incident: str) -> List[str]:
+        comments = self.get_trencher_comments(incident)
+        return TrencherDeliverableParser().detect_kinds(comments, incident)
+
+    def render_deliverable_hints(self, incident: str) -> str:
+        try:
+            comments = self.get_trencher_comments(incident)
+        except EtrackHierarchyError as exc:
+            summary = str(exc).splitlines()[0]
+            print(
+                f"[WARN] Could not fetch trencher comments for ET {incident}; "
+                f"skipping DELIVERABLE SUMMARY: {summary}",
+                file=sys.stderr,
+            )
+            return ""
+
+        parser = TrencherDeliverableParser()
+        kinds = parser.detect_kinds(comments, incident)
+        if not kinds:
+            return ""
+
+        versions_by_kind: Dict[str, List[DeliverableVersion]] = {}
+        for kind in kinds:
+            versions_by_kind[kind] = parser.parse(comments, incident, kind)
+
+        if self.verbose:
+            print(
+                f"[INFO] Deliverable hints for ET {incident}: "
+                f"{', '.join(versions_by_kind.keys())}",
+                file=sys.stderr,
+            )
+
+        return DeliverableReporter().render_hints(incident, versions_by_kind)
+
     def fetch_incident_details_map(
         self,
         incidents: List[str],
@@ -1079,8 +1643,9 @@ class EtrackHierarchyFetcher:
         self,
         incident: str,
         kind: str,
-        use_esql: bool,
+        deliverable_use_esql: bool,
         include_details: bool = False,
+        stale_only: bool = False,
     ) -> str:
         comments = self.get_trencher_comments(incident)
         versions = TrencherDeliverableParser().parse(comments, incident, kind)
@@ -1105,14 +1670,28 @@ class EtrackHierarchyFetcher:
                 file=sys.stderr,
             )
 
-        enriched = self.fetch_incident_details_map(constituent_ids, use_esql=use_esql)
-        latest_versions = self.get_latest_eeb_versions_batch(constituent_ids)
+        enriched: Dict[str, Dict[str, str]] = {}
+        latest_versions: Dict[str, Optional[int]] = {}
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            details_future = pool.submit(
+                self.fetch_incident_details_map,
+                constituent_ids,
+                deliverable_use_esql,
+            )
+            latest_future = pool.submit(
+                self.get_latest_eeb_versions_batch,
+                constituent_ids,
+            )
+            enriched = details_future.result()
+            latest_versions = latest_future.result()
 
         return DeliverableReporter().render(
             versions,
             enriched,
             latest_versions,
             include_details=include_details,
+            stale_only=stale_only,
         )
 
     def _extract_first_line(self, text: str) -> str:
@@ -1793,11 +2372,48 @@ def _resolve_output_columns(
     return result
 
 
+def _resolve_deliverable_use_esql(args: argparse.Namespace) -> bool:
+    source = args.deliverable_details_source
+    if source == "auto":
+        return args.use_esql
+    return source == "esql"
+
+
+def _resolve_deliverable_kinds(
+    fetcher: EtrackHierarchyFetcher,
+    incident: str,
+    args: argparse.Namespace,
+) -> List[str]:
+    kinds: List[str] = []
+    if args.as_eeb_pkg:
+        kinds.append("eeb-pkg")
+    if args.as_bundle:
+        kinds.append("bundle")
+    if args.auto_deliverable:
+        for kind in fetcher.detect_deliverable_kinds(incident):
+            if kind not in kinds:
+                kinds.append(kind)
+
+    ordered: List[str] = []
+    for kind in ("eeb-pkg", "bundle"):
+        if kind in kinds:
+            ordered.append(kind)
+    return ordered
+
+
 def _validate_incident(value: str, option_name: str) -> str:
     incident = value.strip()
     if not incident or not incident.isdigit():
         raise EtrackHierarchyError(f"Invalid {option_name}: '{value}'. Must be numeric.")
     return incident
+
+
+def _format_elapsed(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    remainder = seconds % 60
+    return f"{minutes}m {remainder:.1f}s"
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -1811,13 +2427,21 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "  %(prog)s 4203299 --use-eprint\n"
             "  %(prog)s 4203299 --include-cols INCIDENT,SINCIDENT,STATE,ABSTRACT\n"
             "  %(prog)s 4203299 --exclude-cols VERSION,TARGET_VERSION\n"
-            "  %(prog)s 4203299 -P -N -R user@server\n"
-            "  %(prog)s 4232810 -B -N -v\n"
-            "  %(prog)s 4230893 -P -D -j 12\n"
+            "  %(prog)s 4232810 -R user@server\n"
+            "  %(prog)s 4232810 -R user@server -B\n"
+            "  %(prog)s 4230893 -A -N -R user@server\n"
+            "  %(prog)s 4230893 -P -N -G eprint -F\n"
             "\n"
-            "Short options: -S as-super, -I/-E cols, -R ssh, -P eeb-pkg, -B bundle,\n"
-            "  -N skip-hierarchy, -D deliverable-details, -p use-eprint, -y hierarchy-source,\n"
-            "  -t htree, -m max-nodes, -T timeout, -j parallel, -v verbose, -d debug\n"
+            "Default run prints hierarchy plus a lightweight DELIVERABLE SUMMARY\n"
+            "for the input ET when svc_rmntrencher comments indicate bundle/pkg.\n"
+            "Use -A/-B/-P for full constituent reports.\n"
+            "\n"
+            "Short options: -S as-super, -I/-E cols, -R ssh, -A auto-deliverable,\n"
+            "  -P eeb-pkg, -B bundle, -N skip-hierarchy, -D deliverable-details,\n"
+            "  -G deliverable-details-source, -F stale-only, -X no-ssh-multiplex,\n"
+            "  -p use-eprint, -y hierarchy-source, -t htree, -m max-nodes, -T timeout,\n"
+            "  --retries/--retry-delay for SSH resilience,\n"
+            "  -j parallel, -v verbose, -d debug\n"
             "\n"
             "Hierarchy sources (--hierarchy-source):\n"
             "  inc-bottom-up  fast INC_BOTTOM_UP esql query (default)\n"
@@ -1859,12 +2483,22 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--auto-deliverable",
+        "-A",
+        action="store_true",
+        help=(
+            "Auto-detect EEB package vs bundle from svc_rmntrencher deliverable "
+            "comments and print full per-version reports. -P/-B override or add "
+            "to detected kinds."
+        ),
+    )
+    parser.add_argument(
         "--as-eeb-pkg",
         "-P",
         action="store_true",
         help=(
-            "Also parse svc_rmntrencher EEB Package deliverable comments and "
-            "print per-version package tables with constituent version checks."
+            "Parse svc_rmntrencher EEB Package deliverable comments and print "
+            "per-version package tables with constituent version checks."
         ),
     )
     parser.add_argument(
@@ -1872,8 +2506,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "-B",
         action="store_true",
         help=(
-            "Also parse svc_rmntrencher EEB Bundle deliverable comments and "
-            "print per-version bundle tables with constituent ET details."
+            "Parse svc_rmntrencher EEB Bundle deliverable comments and print "
+            "per-version bundle tables with constituent ET details."
         ),
     )
     parser.add_argument(
@@ -1881,9 +2515,35 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "-N",
         action="store_true",
         help=(
-            "Skip hierarchy table/tree output (use with -P/-B for deliverable-only "
+            "Skip hierarchy table/tree output (use for deliverable-only "
             "reports; much faster)."
         ),
+    )
+    parser.add_argument(
+        "--deliverable-details-source",
+        "-G",
+        choices=list(DELIVERABLE_DETAIL_SOURCES),
+        default=DEFAULT_DELIVERABLE_DETAILS_SOURCE,
+        help=(
+            "Source for constituent TYPE/STATE/ABSTRACT in package/bundle reports "
+            "(default: esql). Use 'auto' to follow hierarchy mode, or 'eprint' "
+            "when esql is unavailable."
+        ),
+    )
+    parser.add_argument(
+        "--stale-only",
+        "-F",
+        action="store_true",
+        help=(
+            "In EEB package reports, show only constituents whose embedded EEB "
+            "version is older than the latest available."
+        ),
+    )
+    parser.add_argument(
+        "--no-ssh-multiplex",
+        "-X",
+        action="store_true",
+        help="Disable SSH connection reuse (ControlMaster) for remote commands.",
     )
     parser.add_argument(
         "--use-eprint",
@@ -1930,6 +2590,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Per-command timeout in seconds (default: 180).",
     )
     parser.add_argument(
+        "--retries",
+        type=int,
+        default=DEFAULT_COMMAND_RETRIES,
+        help=(
+            "Max retries for transient SSH/network failures "
+            f"(default: {DEFAULT_COMMAND_RETRIES}). Use 0 to disable."
+        ),
+    )
+    parser.add_argument(
+        "--retry-delay",
+        type=float,
+        default=DEFAULT_RETRY_DELAY,
+        help=(
+            "Base delay in seconds between retries; doubles each attempt "
+            f"(default: {DEFAULT_RETRY_DELAY})."
+        ),
+    )
+    parser.add_argument(
         "--deliverable-parallel",
         "-j",
         type=int,
@@ -1956,7 +2634,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    start_time = time.perf_counter()
     args = parse_args(argv)
+    fetcher: Optional[EtrackHierarchyFetcher] = None
+    exit_code = 1
 
     try:
         input_incident = _validate_incident(args.incident, "incident")
@@ -1966,11 +2647,50 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             debug=args.debug,
             command_timeout=args.timeout,
             deliverable_parallel=args.deliverable_parallel,
+            ssh_multiplex=not args.no_ssh_multiplex,
+            max_retries=args.retries,
+            retry_delay=args.retry_delay,
         )
+        deliverable_kinds = _resolve_deliverable_kinds(fetcher, input_incident, args)
+        deliverable_use_esql = _resolve_deliverable_use_esql(args)
 
-        if args.skip_hierarchy and not (args.as_eeb_pkg or args.as_bundle):
+        if args.skip_hierarchy and not deliverable_kinds:
             raise EtrackHierarchyError(
-                "--skip-hierarchy/-N requires --as-eeb-pkg/-P or --as-bundle/-B."
+                "--skip-hierarchy/-N requires --auto-deliverable/-A, "
+                "--as-eeb-pkg/-P, or --as-bundle/-B."
+            )
+
+        if (
+            args.skip_hierarchy
+            and args.auto_deliverable
+            and not (args.as_eeb_pkg or args.as_bundle)
+            and not deliverable_kinds
+        ):
+            raise EtrackHierarchyError(
+                f"No EEB package or bundle deliverable comments found for ET "
+                f"{input_incident}."
+            )
+
+        if args.stale_only and "eeb-pkg" not in deliverable_kinds:
+            if deliverable_kinds:
+                print(
+                    "[WARN] --stale-only/-F applies to EEB package reports only.",
+                    file=sys.stderr,
+                )
+            else:
+                raise EtrackHierarchyError(
+                    "--stale-only/-F requires an EEB package report (-P or -A)."
+                )
+
+        if deliverable_kinds and args.verbose:
+            print(
+                f"[INFO] Deliverable kinds: {', '.join(deliverable_kinds)}",
+                file=sys.stderr,
+            )
+            print(
+                f"[INFO] Deliverable details source: "
+                f"{'esql' if deliverable_use_esql else 'eprint'}",
+                file=sys.stderr,
             )
 
         if args.skip_hierarchy and args.verbose:
@@ -2041,12 +2761,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     row["PARENT_FLAG"] = ""
 
             renderer = TableRenderer(columns)
-            print(renderer.render(rows))
-            print(f"\nTotal rows: {len(rows)}")
-            print(
-                "\nNote: '*' in PARENT_FLAG column indicates incident is a "
-                "parent to other incidents in hierarchy"
-            )
+            print(renderer.render_with_count(rows))
+            if args.verbose:
+                print(
+                    "\nNote: '*' in PAR column = parent incident in hierarchy",
+                    file=sys.stderr,
+                )
 
             if args.htree:
                 print(f"\n{'='*80}")
@@ -2065,27 +2785,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 file=sys.stderr,
             )
 
-        if args.as_eeb_pkg:
-            print(fetcher.render_deliverable_report(
-                input_incident,
-                kind="eeb-pkg",
-                use_esql=args.use_esql,
-                include_details=args.include_deliverable_details,
-            ))
+        if deliverable_kinds:
+            for kind in deliverable_kinds:
+                print(fetcher.render_deliverable_report(
+                    input_incident,
+                    kind=kind,
+                    deliverable_use_esql=deliverable_use_esql,
+                    include_details=args.include_deliverable_details,
+                    stale_only=args.stale_only and kind == "eeb-pkg",
+                ))
+        elif not args.skip_hierarchy:
+            hints = fetcher.render_deliverable_hints(input_incident)
+            if hints:
+                print(hints)
 
-        if args.as_bundle:
-            print(fetcher.render_deliverable_report(
-                input_incident,
-                kind="bundle",
-                use_esql=args.use_esql,
-                include_details=args.include_deliverable_details,
-            ))
-
-        return 0
+        exit_code = 0
 
     except EtrackHierarchyError as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        return 1
+        exit_code = 1
+    finally:
+        elapsed = time.perf_counter() - start_time
+        print(f"\nTotal time: {_format_elapsed(elapsed)}", file=sys.stderr)
+        if fetcher is not None:
+            fetcher.close_ssh()
+
+    return exit_code
 
 
 if __name__ == "__main__":
