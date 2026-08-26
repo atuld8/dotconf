@@ -11,6 +11,8 @@ Default columns:
 
 Examples:
     ./etrack_hierarchy_table.py 4203299
+    ./etrack_hierarchy_table.py 4203299 --hierarchy-source incident-view
+    ./etrack_hierarchy_table.py 4203299 --use-eprint
     ./etrack_hierarchy_table.py 4203299 --include-cols INCIDENT,SINCIDENT,STATE,ABSTRACT
     ./etrack_hierarchy_table.py 4203299 --exclude-cols TARGET_VERSION,VERSION
     ./etrack_hierarchy_table.py 4203299 --as-super
@@ -26,6 +28,9 @@ from collections import deque
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 VALID_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+HIERARCHY_SOURCES = ("inc-bottom-up", "incident-view", "eprint")
+DEFAULT_HIERARCHY_SOURCE = "inc-bottom-up"
 
 DEFAULT_COLUMNS = [
     "INCIDENT",
@@ -212,11 +217,15 @@ class EtrackHierarchyFetcher:
             if "row selected" in lower or "rows selected" in lower or lower.startswith("warning:"):
                 continue
 
-            if "|" in stripped:
+            # esql output is tab-delimited; pipe characters may appear inside
+            # field values (e.g. "[PVM-6926|8.8]" in ABSTRACT).
+            if "\t" in stripped:
+                parts = [part.strip() for part in stripped.split("\t")]
+            elif "|" in stripped:
                 parts = [part.strip() for part in re.split(r"\|", stripped)]
                 parts = [part for part in parts if part != ""]
             else:
-                parts = [part.strip() for part in stripped.split("\t")]
+                parts = [part.strip() for part in stripped.split()]
 
             if not parts:
                 continue
@@ -545,15 +554,46 @@ class EtrackHierarchyFetcher:
                 children.append(value)
         return children
 
-    def fetch_all_hierarchy_esql(self, root_incident: str) -> Tuple[List[str], Dict[str, str]]:
-        """Fetch all incidents under a single SUPERINCIDENT with one query."""
+    def fetch_all_hierarchy_inc_bottom_up(
+        self, root_incident: str
+    ) -> Tuple[List[str], Dict[str, str]]:
+        """Fetch hierarchy members and parent links from INC_BOTTOM_UP (fast)."""
+        sql = (
+            "SELECT INCIDENT, TO_NUMBER, TOP FROM INC_BOTTOM_UP "
+            f"WHERE TOP = {self._safe_sql_incident(root_incident)}"
+        )
+        rows = self._parse_esql_output(
+            self._run_esql(sql), ["INCIDENT", "TO_NUMBER", "TOP"]
+        )
+
+        incidents: List[str] = [root_incident]
+        seen: Set[str] = {root_incident}
+        parent_map: Dict[str, str] = {root_incident: root_incident}
+
+        for row in rows:
+            incident = str(row.get("INCIDENT", "")).strip()
+            to_number = str(row.get("TO_NUMBER", "")).strip()
+            if incident.isdigit() and incident not in seen:
+                incidents.append(incident)
+                seen.add(incident)
+                if to_number.isdigit():
+                    parent_map[incident] = to_number
+                else:
+                    parent_map[incident] = root_incident
+
+        return incidents, parent_map
+
+    def fetch_all_hierarchy_incident_view(
+        self, root_incident: str
+    ) -> Tuple[List[str], Dict[str, str]]:
+        """Fetch all incidents under a single SUPERINCIDENT via INCIDENT_VIEW (slow)."""
         sql = (
             "SELECT INCIDENT FROM INCIDENT_VIEW "
             f"WHERE SUPERINCIDENT = {self._safe_sql_incident(root_incident)}"
         )
         rows = self._parse_esql_output(self._run_esql(sql), ["INCIDENT"])
 
-        incidents: List[str] = [root_incident]  # Include the root
+        incidents: List[str] = [root_incident]
         seen: Set[str] = {root_incident}
         parent_map: Dict[str, str] = {root_incident: root_incident}
 
@@ -566,41 +606,52 @@ class EtrackHierarchyFetcher:
 
         return incidents, parent_map
 
-    def fetch_hierarchy(
-        self,
-        root_incident: str,
-        max_nodes: int = 5000,
-        use_esql: bool = False,
+    def fetch_hierarchy_eprint(
+        self, root_incident: str
     ) -> Tuple[List[str], Dict[str, str]]:
-        if use_esql:
-            # Single esql query: fetch all incidents under root SUPERINCIDENT
-            incidents, parent_map = self.fetch_all_hierarchy_esql(root_incident)
-            if len(incidents) > max_nodes:
-                raise EtrackHierarchyError(
-                    f"Hierarchy exceeded max node limit ({max_nodes})."
-                )
-            return incidents, parent_map
-
-        # Non-esql: fast eprint path using one -a and batched -vdK prefetch.
+        """Fetch hierarchy using eprint -a and batched -vdK prefetch."""
         hierarchy_raw = self._run_command(["eprint", "-a", root_incident])
         hierarchy_line = self._extract_first_line(hierarchy_raw)
-        incidents = self._parse_hierarchy_from_eprint_a_line(hierarchy_line, root_incident)
+        incidents = self._parse_hierarchy_from_eprint_a_line(
+            hierarchy_line, root_incident
+        )
 
-        if len(incidents) > max_nodes:
-            raise EtrackHierarchyError(
-                f"Hierarchy exceeded max node limit ({max_nodes})."
-            )
-
-        # Initialize parent_map with root pointing to itself.
         parent_map: Dict[str, str] = {root_incident: root_incident}
         for incident in incidents:
             if incident != root_incident:
                 parent_map[incident] = root_incident
 
-        # Single/batched prefetch of details and extract parent_incident relationships.
         parent_incident_map = self._bulk_prefetch_details_vdk(incidents)
-        # Override parent_map with actual immediate parents where available.
         parent_map.update(parent_incident_map)
+
+        return incidents, parent_map
+
+    def fetch_hierarchy(
+        self,
+        root_incident: str,
+        max_nodes: int = 5000,
+        hierarchy_source: str = DEFAULT_HIERARCHY_SOURCE,
+    ) -> Tuple[List[str], Dict[str, str]]:
+        if hierarchy_source == "inc-bottom-up":
+            incidents, parent_map = self.fetch_all_hierarchy_inc_bottom_up(
+                root_incident
+            )
+        elif hierarchy_source == "incident-view":
+            incidents, parent_map = self.fetch_all_hierarchy_incident_view(
+                root_incident
+            )
+        elif hierarchy_source == "eprint":
+            incidents, parent_map = self.fetch_hierarchy_eprint(root_incident)
+        else:
+            raise EtrackHierarchyError(
+                f"Unknown hierarchy source: {hierarchy_source}. "
+                f"Choose from: {', '.join(HIERARCHY_SOURCES)}"
+            )
+
+        if len(incidents) > max_nodes:
+            raise EtrackHierarchyError(
+                f"Hierarchy exceeded max node limit ({max_nodes})."
+            )
 
         return incidents, parent_map
 
@@ -810,7 +861,7 @@ class EtrackHierarchyFetcher:
         sql_incidents = ", ".join(self._safe_sql_incident(incident) for incident in incidents)
         sql = (
             "SELECT INCIDENT, TO_NUMBER, TOP FROM INC_BOTTOM_UP "
-            f"WHERE TO_NUMBER IN ({sql_incidents})"
+            f"WHERE INCIDENT IN ({sql_incidents})"
         )
 
         import time
@@ -1023,10 +1074,16 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "Examples:\n"
             "  %(prog)s 4203299\n"
             "  %(prog)s 4203299 --as-super\n"
+            "  %(prog)s 4203299 --hierarchy-source incident-view\n"
             "  %(prog)s 4203299 --use-eprint\n"
             "  %(prog)s 4203299 --include-cols INCIDENT,SINCIDENT,STATE,ABSTRACT\n"
             "  %(prog)s 4203299 --exclude-cols VERSION,TARGET_VERSION\n"
-            "  %(prog)s 4203299 --ssh user@server"
+            "  %(prog)s 4203299 --ssh user@server\n"
+            "\n"
+            "Hierarchy sources (--hierarchy-source):\n"
+            "  inc-bottom-up  fast INC_BOTTOM_UP esql query (default)\n"
+            "  incident-view  slow INCIDENT_VIEW esql query\n"
+            "  eprint         eprint -a based discovery"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -1055,9 +1112,23 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--use-eprint",
         dest="use_esql",
         action="store_false",
-        help="Use legacy eprint-based hierarchy/details fetch.",
+        help=(
+            "Use eprint for hierarchy discovery and incident details "
+            "(equivalent to --hierarchy-source eprint with no esql detail fetch)."
+        ),
     )
     parser.set_defaults(use_esql=True)
+    parser.add_argument(
+        "--hierarchy-source",
+        choices=list(HIERARCHY_SOURCES),
+        default=DEFAULT_HIERARCHY_SOURCE,
+        help=(
+            "How to discover hierarchy members (default: inc-bottom-up). "
+            "inc-bottom-up uses fast INC_BOTTOM_UP esql; "
+            "incident-view uses slow INCIDENT_VIEW esql; "
+            "eprint uses eprint -a. Ignored when --use-eprint is set."
+        ),
+    )
     parser.add_argument(
         "--htree",
         dest="htree",
@@ -1114,13 +1185,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 treat_as_super=args.as_super,
             )
 
+        hierarchy_source = (
+            "eprint" if not args.use_esql else args.hierarchy_source
+        )
+
         if args.verbose:
             print(f"[INFO] Resolved SINCIDENT: {root_incident}", file=sys.stderr)
+            print(
+                f"[INFO] Hierarchy source: {hierarchy_source}",
+                file=sys.stderr,
+            )
 
         hierarchy_incidents, parent_map = fetcher.fetch_hierarchy(
             root_incident,
             max_nodes=args.max_nodes,
-            use_esql=args.use_esql,
+            hierarchy_source=hierarchy_source,
         )
 
         columns = _resolve_output_columns(
@@ -1131,15 +1210,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         if args.use_esql:
             rows = fetcher.fetch_records_esql(hierarchy_incidents, parent_map)
-            parent_overrides, _ = fetcher.fetch_parent_incidents_esql(
-                hierarchy_incidents
-            )
-            for row in rows:
-                incident = row.get("INCIDENT", "")
-                if incident in parent_overrides:
-                    row["SINCIDENT"] = parent_overrides[incident]
-            # Update parent_map with SQL-derived parents for accurate parent flags/tree.
-            parent_map.update(parent_overrides)
+            if hierarchy_source == "incident-view":
+                parent_overrides, _ = fetcher.fetch_parent_incidents_esql(
+                    hierarchy_incidents
+                )
+                for row in rows:
+                    incident = row.get("INCIDENT", "")
+                    if incident in parent_overrides:
+                        row["SINCIDENT"] = parent_overrides[incident]
+                parent_map.update(parent_overrides)
         else:
             rows = fetcher.fetch_records_eprint_cached(hierarchy_incidents, parent_map)
 
