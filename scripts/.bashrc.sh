@@ -236,7 +236,11 @@ SetLongTrap()
 {
     export TMUX_WINIDX=""
     if [ ! -z "$TMUX" ]; then
-        export TMUX_WINIDX="["$(tmux display-message -p '#I')"."$(tmux display-message -p '#P')"] "
+        local win_idx=$(tmux display-message -p '#I')
+        local pane_idx=$(tmux display-message -p '#P')
+        local total_wins=$(tmux display-message -p '#{session_windows}')
+        local total_panes=$(tmux display-message -p '#{window_panes}')
+        export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
     fi
     if [ ! -z "$WINDOW" ]; then
         export TMUX_WINIDX="[$WINDOW] "
@@ -250,7 +254,11 @@ CurrDirDepth() {
 
 UpdateTmuxWinIdx () {
     if [ ! -z "$TMUX" ]; then
-        export TMUX_WINIDX="["$(tmux display-message -p '#I')"."$(tmux display-message -p '#P')"] "
+        local win_idx=$(tmux display-message -p '#I')
+        local pane_idx=$(tmux display-message -p '#P')
+        local total_wins=$(tmux display-message -p '#{session_windows}')
+        local total_panes=$(tmux display-message -p '#{window_panes}')
+        export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
     fi
     if [ ! -z "$WINDOW" ]; then
         export TMUX_WINIDX="[$WINDOW] "
@@ -265,7 +273,11 @@ SetShortTrap()
    export PROMPT_DIRTRIM=3
    export TMUX_WINIDX=""
    if [ ! -z "$TMUX" ]; then
-       export TMUX_WINIDX="["$(tmux display-message -p '#I')"."$(tmux display-message -p '#P')"] "
+       local win_idx=$(tmux display-message -p '#I')
+       local pane_idx=$(tmux display-message -p '#P')
+       local total_wins=$(tmux display-message -p '#{session_windows}')
+       local total_panes=$(tmux display-message -p '#{window_panes}')
+       export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
    fi
    if [ ! -z "$WINDOW" ]; then
        export TMUX_WINIDX="[$WINDOW] "
@@ -279,7 +291,11 @@ SetBasicTrap()
    export PROMPT_DIRTRIM=3
    export TMUX_WINIDX=""
    if [ ! -z "$TMUX" ]; then
-       export TMUX_WINIDX="["$(tmux display-message -p '#I')"."$(tmux display-message -p '#P')"] "
+       local win_idx=$(tmux display-message -p '#I')
+       local pane_idx=$(tmux display-message -p '#P')
+       local total_wins=$(tmux display-message -p '#{session_windows}')
+       local total_panes=$(tmux display-message -p '#{window_panes}')
+       export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
    fi
    if [ ! -z "$WINDOW" ]; then
        export TMUX_WINIDX="[$WINDOW] "
