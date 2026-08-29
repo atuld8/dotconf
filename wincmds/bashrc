@@ -218,7 +218,7 @@ SetShortTrap()
    local DOName=""
    export PROMPT_DIRTRIM=3
    UpdateTmuxWinIdx > /dev/null
-   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} ${PROPCOLOR}\$(_prompt_file_counts) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/.vim/scripts/rootDiskUsage.sh ] && ~/.vim/scripts/rootDiskUsage.sh || [ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PURPLE}${BG}\$(GetGBaseParent)${NC}${PROPNAMECOLOR}${COLOR_USER}${BG}${USERNAME}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ "' DEBUG
+   trap '_cmd_timer_start; PS1="\n${CYAN}\${EXEC_TIME_DISPLAY}${NC}${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} ${PROPCOLOR}\$(_prompt_file_counts) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/.vim/scripts/rootDiskUsage.sh ] && ~/.vim/scripts/rootDiskUsage.sh || [ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PURPLE}${BG}\$(GetGBaseParent)${NC}${PROPNAMECOLOR}${COLOR_USER}${BG}${USERNAME}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ "' DEBUG
 }
 
 SetBasicTrap()
@@ -226,7 +226,7 @@ SetBasicTrap()
    local DOName=""
    export PROMPT_DIRTRIM=3
    UpdateTmuxWinIdx > /dev/null
-   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) $(((SHLVL>1))&&echo "SL:$SHLVL ")${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PURPLE}${BG}\$(GetGBaseParent)${NC}${PROPNAMECOLOR}${COLOR_USER}${BG}${USERNAME}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ "' DEBUG
+   trap '_cmd_timer_start; PS1="\n${CYAN}\${EXEC_TIME_DISPLAY}${NC}${PROPNAMECOLOR}${BG}(\$((\! -1)) $(((SHLVL>1))&&echo "SL:$SHLVL ")${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PURPLE}${BG}\$(GetGBaseParent)${NC}${PROPNAMECOLOR}${COLOR_USER}${BG}${USERNAME}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ "' DEBUG
 }
 
 SetBasicTrap
@@ -386,6 +386,150 @@ function gstashclone () {
 
 if [ -f /usr/bin/banner ]; then banner "wel-come" && banner "$USER"; fi
 
+##########################
+# ENHANCEMENTS START
+##########################
+
+# --- Timezone shortcuts ---
+alias tz.ist='TZ="Asia/Kolkata" date +"%Y-%m-%d %H:%M:%S %Z"'
+alias tz.utc='TZ="UTC" date +"%Y-%m-%d %H:%M:%S %Z"'
+alias tz.pst='TZ="America/Los_Angeles" date +"%Y-%m-%d %H:%M:%S %Z"'
+alias tz.est='TZ="America/New_York" date +"%Y-%m-%d %H:%M:%S %Z"'
+alias tz.cst='TZ="America/Chicago" date +"%Y-%m-%d %H:%M:%S %Z"'
+alias tz.all='echo "Local: $(date +"%Y-%m-%d %H:%M:%S %Z")"; echo "UTC:   $(TZ=UTC date +"%Y-%m-%d %H:%M:%S %Z")"; echo "IST:   $(TZ=Asia/Kolkata date +"%Y-%m-%d %H:%M:%S %Z")"; echo "PST:   $(TZ=America/Los_Angeles date +"%Y-%m-%d %H:%M:%S %Z")"'
+
+# --- SSH Agent Management ---
+_start_ssh_agent() {
+    if [[ -z "$SSH_AUTH_SOCK" ]] || ! ssh-add -l &>/dev/null; then
+        local agent_file="$HOME/.ssh/agent.env"
+        if [[ -f "$agent_file" ]]; then
+            source "$agent_file" &>/dev/null
+        fi
+        if ! ssh-add -l &>/dev/null; then
+            eval "$(ssh-agent -s)" > /dev/null
+            echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK" > "$agent_file"
+            echo "export SSH_AGENT_PID=$SSH_AGENT_PID" >> "$agent_file"
+            chmod 600 "$agent_file"
+            [[ -f ~/.ssh/id_rsa ]] && ssh-add ~/.ssh/id_rsa 2>/dev/null
+            [[ -f ~/.ssh/id_ed25519 ]] && ssh-add ~/.ssh/id_ed25519 2>/dev/null
+        fi
+    fi
+}
+[[ $- == *i* ]] && _start_ssh_agent
+alias ssh.keys='ssh-add -l'
+alias ssh.add='ssh-add'
+
+# --- FZF Keybindings ---
+if [[ -f ~/.fzf.bash ]]; then
+    source ~/.fzf.bash
+elif [[ -f /usr/share/fzf/key-bindings.bash ]]; then
+    source /usr/share/fzf/key-bindings.bash
+    source /usr/share/fzf/completion.bash 2>/dev/null
+elif [[ -f /opt/homebrew/opt/fzf/shell/key-bindings.bash ]]; then
+    source /opt/homebrew/opt/fzf/shell/key-bindings.bash
+    source /opt/homebrew/opt/fzf/shell/completion.bash 2>/dev/null
+elif [[ -f /usr/local/opt/fzf/shell/key-bindings.bash ]]; then
+    source /usr/local/opt/fzf/shell/key-bindings.bash
+    source /usr/local/opt/fzf/shell/completion.bash 2>/dev/null
+fi
+export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border'
+export FZF_CTRL_R_OPTS='--sort --exact'
+
+# --- Directory Bookmarks ---
+export DIRMARKS_DIR="$HOME/.dirmarks"
+[[ -d "$DIRMARKS_DIR" ]] || mkdir -p "$DIRMARKS_DIR"
+
+mark() {
+    local name="${1:-$(basename "$PWD")}"
+    ln -sfn "$PWD" "$DIRMARKS_DIR/$name"
+    echo "Bookmarked: $name -> $PWD"
+}
+
+jump() {
+    local target="$DIRMARKS_DIR/$1"
+    if [[ -L "$target" ]]; then
+        cd -P "$target" || return 1
+    else
+        echo "Bookmark not found: $1"
+        marks
+        return 1
+    fi
+}
+
+marks() {
+    echo "Directory bookmarks:"
+    for f in "$DIRMARKS_DIR"/*; do
+        [[ -L "$f" ]] && printf "  %-15s -> %s\n" "$(basename "$f")" "$(readlink "$f")"
+    done
+}
+
+unmark() {
+    if [[ -L "$DIRMARKS_DIR/$1" ]]; then
+        rm "$DIRMARKS_DIR/$1"
+        echo "Removed bookmark: $1"
+    else
+        echo "Bookmark not found: $1"
+    fi
+}
+
+_dirmarks_complete() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    COMPREPLY=($(compgen -W "$(ls "$DIRMARKS_DIR" 2>/dev/null)" -- "$cur"))
+}
+complete -F _dirmarks_complete jump unmark
+
+# --- Command Execution Time ---
+_cmd_timer_start() {
+    _cmd_start_time=${_cmd_start_time:-$SECONDS}
+}
+
+_cmd_timer_stop() {
+    local elapsed=$((SECONDS - ${_cmd_start_time:-$SECONDS}))
+    unset _cmd_start_time
+    if [[ $elapsed -ge 12 ]]; then
+        if [[ $elapsed -ge 3600 ]]; then
+            _last_cmd_time="$(($elapsed/3600))h$((($elapsed%3600)/60))m$(($elapsed%60))s"
+        elif [[ $elapsed -ge 60 ]]; then
+            _last_cmd_time="$(($elapsed/60))m$(($elapsed%60))s"
+        else
+            _last_cmd_time="${elapsed}s"
+        fi
+        export EXEC_TIME_DISPLAY="⏱ ${_last_cmd_time} "
+    else
+        export EXEC_TIME_DISPLAY=""
+    fi
+}
+
+# Set PROMPT_COMMAND for timer stop (timer start is integrated into Set*Trap functions)
+PROMPT_COMMAND="_cmd_timer_stop${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+
+# --- Kubernetes Context ---
+_k8s_context() {
+    if command -v kubectl &>/dev/null && [[ -f ~/.kube/config ]]; then
+        local ctx ns
+        ctx=$(kubectl config current-context 2>/dev/null)
+        if [[ -n "$ctx" ]]; then
+            ns=$(kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null)
+            echo "⎈ ${ctx}/${ns:-default} "
+        fi
+    fi
+}
+
+if command -v kubectl &>/dev/null; then
+    alias k='kubectl'
+    alias kgp='kubectl get pods'
+    alias kgs='kubectl get svc'
+    alias kgn='kubectl get nodes'
+    alias kga='kubectl get all'
+    alias kctx='kubectl config get-contexts'
+    alias kns='kubectl config set-context --current --namespace'
+    alias klog='kubectl logs -f'
+    alias kexec='kubectl exec -it'
+fi
+
+##########################
+# ENHANCEMENTS END
+##########################
 
 myhelp () {
 echo "Below are the alias and functions you have"
@@ -396,6 +540,10 @@ echo "********************"
 echo function name
 echo "   bcd # == back to # no dir"
 echo "   mcd <path> == create dirs and cd to newly creared dir"
+echo "   mark [name] == bookmark current directory"
+echo "   jump <name> == jump to bookmarked directory"
+echo "   marks == list all bookmarks"
+echo "   tz.ist/tz.utc/tz.pst/tz.all == timezone shortcuts"
 echo "********************"
 declare -F
 echo "********************"
