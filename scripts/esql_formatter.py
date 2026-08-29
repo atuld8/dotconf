@@ -60,7 +60,7 @@ SORT (-S / --sort):
 OUTPUT / CACHE:
     -c, --cols          Columns to show or emit (with -o / -O csv)
     -o, --raw           Emit filtered TSV only (no table)
-    -O, --output        Output format: table (default) or csv
+    -O, --output        Output format: table (default), csv, or markdown
     -W, --no-truncate   Expand table columns to full field width
     -n, --count         Print record count only
     -v, --verbose       Show cache path, SSH target, parsed filters on stderr
@@ -326,7 +326,8 @@ class EsqlFormatter:
 
     def __init__(self, headers: List[str], columns: Optional[List[str]] = None,
                  custom_widths: Optional[Dict[str, int]] = None,
-                 no_truncate: bool = False):
+                 no_truncate: bool = False,
+                 output_format: str = 'table'):
         """
         Initialize formatter with specified headers and optional column selection.
 
@@ -335,11 +336,13 @@ class EsqlFormatter:
             columns: List of column names to display, or None for all columns
             custom_widths: Dict mapping header names to custom widths (optional)
             no_truncate: When True, expand columns to fit full field text
+            output_format: table or markdown
         """
         self.headers = headers
         self.columns = columns
         self.custom_widths = custom_widths or {}
         self.no_truncate = no_truncate
+        self.output_format = output_format
         self.column_indices = {}
         self.display_columns = []
         self.column_widths = {}
@@ -402,12 +405,13 @@ class EsqlFormatter:
             print(f' {truncated:<{width}} |', end='')
         print()
 
-    def format_data(self, lines: List[str]) -> None:
+    def format_data(self, lines: List[str], title: Optional[str] = None) -> None:
         """
         Format and print the data.
 
         Args:
             lines: List of data lines (NO header line)
+            title: Optional Markdown document title (# heading)
         """
         if not lines:
             print("No data to format")
@@ -415,6 +419,10 @@ class EsqlFormatter:
 
         if not self.display_columns:
             print("No valid columns to display")
+            return
+
+        if self.output_format == 'markdown':
+            self._format_data_markdown(lines, title=title)
             return
 
         if self.no_truncate:
@@ -437,6 +445,40 @@ class EsqlFormatter:
         # Print footer
         self.print_separator()
         print(f"\nTotal number of records: {record_count}")
+
+    @staticmethod
+    def _escape_md_cell(value: str) -> str:
+        return str(value).replace("|", "\\|").replace("\n", " ")
+
+    def _format_data_markdown(
+        self,
+        lines: List[str],
+        title: Optional[str] = None,
+    ) -> None:
+        if title:
+            print(f"# {title}\n")
+
+        header = "| " + " | ".join(self.display_columns) + " |"
+        separator = "| " + " | ".join("---" for _ in self.display_columns) + " |"
+        print(header)
+        print(separator)
+
+        record_count = 0
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            values = line.split('\t')
+            cells = []
+            for col in self.display_columns:
+                idx = self.column_indices[col]
+                value = values[idx] if idx < len(values) else ""
+                value = value.replace("\n", " ")
+                cells.append(self._escape_md_cell(value))
+            print("| " + " | ".join(cells) + " |")
+            record_count += 1
+
+        print(f"\n*Total rows: {record_count}*")
 
     def _expand_column_widths(self, lines: List[str]) -> None:
         """Widen display columns to fit the longest value in the data."""
@@ -1687,9 +1729,9 @@ Cache: ~/.cache/esql_formatter/  (-N/--no-cache skip save, -d/--cache-dir,
     )
     output_group.add_argument(
         '-O', '--output',
-        choices=('table', 'csv'),
+        choices=('table', 'csv', 'markdown'),
         default='table',
-        help='Output format (default: table; csv emits header row for Excel)'
+        help='Output format (default: table; csv for Excel; markdown for Neovim folding)'
     )
     output_group.add_argument(
         '-W', '--no-truncate',
@@ -1819,6 +1861,8 @@ Cache: ~/.cache/esql_formatter/  (-N/--no-cache skip save, -d/--cache-dir,
 
     if args.count and (args.raw or args.output == 'csv'):
         parser.error('--count is incompatible with -o/--raw or -O/--output csv')
+    if args.output == 'markdown' and args.no_truncate:
+        print('[WARN] -W/--no-truncate is ignored for -O markdown', file=sys.stderr)
 
     if args.save_as:
         try:
@@ -2005,13 +2049,25 @@ Cache: ~/.cache/esql_formatter/  (-N/--no-cache skip save, -d/--cache-dir,
         emit_csv(lines, headers=headers, columns=display_cols)
         return
 
+    title = None
+    if args.output == 'markdown':
+        if args.query:
+            title = args.query
+        elif args.command:
+            title = args.command
+        elif last_meta:
+            title = last_meta.get('query') or last_meta.get('command')
+        elif args.file:
+            title = Path(args.file).stem
+
     formatter = EsqlFormatter(
         headers=headers,
         columns=columns,
         custom_widths=custom_widths,
         no_truncate=args.no_truncate,
+        output_format=args.output,
     )
-    formatter.format_data(lines)
+    formatter.format_data(lines, title=title)
 
 
 if __name__ == '__main__':

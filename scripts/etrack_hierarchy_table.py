@@ -35,7 +35,7 @@ Examples:
     ./etrack_hierarchy_table.py 4230893 -P -N -D
     ./etrack_hierarchy_table.py 4234410 -A -N -D
     ./etrack_hierarchy_table.py 4234410 -C -N -D
-    ./etrack_hierarchy_table.py 4230893 -P -N -G eprint -F
+    ./etrack_hierarchy_table.py 4230893 -P -N -D -M
 """
 
 import argparse
@@ -58,7 +58,7 @@ OPTION GROUPS (every long option has a short form):
   Input & scope:       -S/--as-super  -1/--single  -N/--skip-hierarchy
   Output format:       -I/--include-cols  -E/--exclude-cols  -t/--htree
                        -D/--include-deliverable-details  -U/--full-deliverable-details
-                       -F/--stale-only
+                       -M/--markdown  -F/--stale-only
   Deliverable reports: -A/--auto-deliverable  -P/--as-eeb-pkg  -B/--as-bundle
                        -C/--as-standard-eeb  -G/--deliverable-details-source
                        -j/--deliverable-parallel
@@ -76,6 +76,7 @@ HIERARCHY_USAGE = """%(prog)s INCIDENT [-h]
         [-C, --as-standard-eeb]
         [-D, --include-deliverable-details]
         [-U, --full-deliverable-details]
+        [-M, --markdown]
         [-G SRC, --deliverable-details-source SRC] [-F, --stale-only]
         [-j N, --deliverable-parallel N]
         [-y SRC, --hierarchy-source SRC] [-p, --use-eprint]
@@ -131,6 +132,9 @@ DEFAULT_HIERARCHY_SOURCE = "inc-bottom-up"
 DEFAULT_DELIVERABLE_PARALLEL = 8
 DEFAULT_DELIVERABLE_DETAILS_SOURCE = "esql"
 DELIVERABLE_FULL_DETAIL_ROW_LIMIT = 24
+OUTPUT_FORMAT_ASCII = "ascii"
+OUTPUT_FORMAT_MARKDOWN = "markdown"
+OUTPUT_FORMATS = (OUTPUT_FORMAT_ASCII, OUTPUT_FORMAT_MARKDOWN)
 DEFAULT_COMMAND_RETRIES = 3
 DEFAULT_RETRY_DELAY = 2.0
 
@@ -963,6 +967,44 @@ def _classify_platform_package(name: str) -> str:
     return "other"
 
 
+def _escape_md_cell(value: str) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _format_heading(output_format: str, level: int, title: str) -> str:
+    clean = title.rstrip(":").strip()
+    if output_format == OUTPUT_FORMAT_MARKDOWN:
+        return f"\n{'#' * min(max(level, 1), 6)} {clean}\n"
+    if level <= 1:
+        width = 88 if len(clean) > 60 else 72
+        bar = "=" * width
+        return f"\n{bar}\n{clean}\n{bar}\n"
+    return f"\n{clean}:\n"
+
+
+def _format_subtitle(output_format: str, text: str) -> str:
+    if output_format == OUTPUT_FORMAT_MARKDOWN:
+        return f"*{text.strip()}*\n"
+    return f"{text}\n"
+
+
+def _format_note(output_format: str, text: str) -> str:
+    if output_format == OUTPUT_FORMAT_MARKDOWN:
+        return f"> {text.strip()}\n"
+    return f"{text}\n"
+
+
+def _format_report_header(
+    output_format: str,
+    title: str,
+    subtitle: str = "",
+) -> str:
+    header = _format_heading(output_format, 1, title)
+    if subtitle:
+        header += "\n" + _format_subtitle(output_format, subtitle)
+    return header
+
+
 class DeliverableReporter:
     PKG_SR_DETAIL_COLUMNS = [
         "ET",
@@ -991,6 +1033,30 @@ class DeliverableReporter:
         "ABSTRACT",
     ]
     BUNDLE_CONSTITUENT_COLUMNS = BUNDLE_SR_DETAIL_COLUMNS  # backward-compatible alias
+
+    def __init__(self, output_format: str = OUTPUT_FORMAT_ASCII) -> None:
+        self.output_format = output_format
+
+    def _markdown(self) -> bool:
+        return self.output_format == OUTPUT_FORMAT_MARKDOWN
+
+    def _renderer(self, columns: List[str]) -> "TableRenderer":
+        return TableRenderer(columns, output_format=self.output_format)
+
+    def _heading(self, level: int, title: str) -> str:
+        return _format_heading(self.output_format, level, title)
+
+    def _note(self, text: str) -> str:
+        return _format_note(self.output_format, text)
+
+    def _full_listing_note(self, row_count: int) -> str:
+        text = (
+            f"(Full listing: {row_count} rows; "
+            "use --full-deliverable-details to show all)"
+        )
+        if self._markdown():
+            return self._note(text)
+        return text
 
     def render(
         self,
@@ -1069,7 +1135,7 @@ class DeliverableReporter:
         if has_bundle:
             columns.extend(["BUNDLE", "README*"])
 
-        renderer = TableRenderer(columns)
+        renderer = self._renderer(columns)
         renderer.widths.update(
             {
                 "TYPE": 9,
@@ -1084,10 +1150,11 @@ class DeliverableReporter:
         )
 
         lines = [
-            f"\n{'=' * 72}",
-            f"DELIVERABLE SUMMARY — ET {incident} ({kind_label})",
-            f"Full report: re-run with {suggest}",
-            f"{'=' * 72}",
+            _format_report_header(
+                self.output_format,
+                f"DELIVERABLE SUMMARY — ET {incident} ({kind_label})",
+            ).rstrip("\n"),
+            self._note(f"Full report: re-run with {suggest}").rstrip("\n"),
             renderer.render_with_count(hint_rows),
         ]
 
@@ -1135,11 +1202,18 @@ class DeliverableReporter:
         stale_only: bool = False,
     ) -> str:
         title = deliverable_kind_label(version.kind)
+        report_title = (
+            f"{title} REPORT - ET {version.incident} - EEB v{version.eeb_version}"
+        )
+        comment_meta = (
+            f"Comment #{version.comment_num} @ {version.comment_date}"
+        )
         lines = [
-            f"\n{'=' * 88}",
-            f"{title} REPORT - ET {version.incident} - EEB v{version.eeb_version}",
-            f"Comment #{version.comment_num} @ {version.comment_date}",
-            f"{'=' * 88}",
+            _format_report_header(
+                self.output_format,
+                report_title,
+                comment_meta,
+            ).rstrip("\n"),
             self._render_summary_table(version, enriched),
         ]
 
@@ -1262,10 +1336,10 @@ class DeliverableReporter:
                 {"FIELD": "Readme Notes", "VALUE": version.readme_notes[:120]},
             ]
         )
-        renderer = TableRenderer(["FIELD", "VALUE"])
+        renderer = self._renderer(["FIELD", "VALUE"])
         renderer.widths["FIELD"] = 20
         renderer.widths["VALUE"] = 64
-        return "\nSUMMARY:\n" + renderer.render_with_count(rows)
+        return self._heading(2, "Summary") + renderer.render_with_count(rows)
 
     def _render_constituent_table(
         self,
@@ -1306,24 +1380,29 @@ class DeliverableReporter:
                     )
             rows.append(row)
 
-        renderer = TableRenderer(columns)
+        renderer = self._renderer(columns)
         renderer.widths["ABSTRACT"] = 80
         renderer.widths["ASSIGNED_TO"] = 18
         renderer.widths["RESOLUTION"] = 16
         renderer.widths["TARGET_VERSION"] = 12
         if version.kind == "bundle":
             renderer.widths["SOURCE"] = 8
-        title = (
-            "SR DETAILS (SERVICE REQUESTS IN PACKAGE):"
-            if version.kind == "eeb-pkg"
-            else "SR DETAILS (SERVICE REQUESTS IN BUNDLE):"
-            if version.kind == "bundle"
-            else "CONSTITUENT ETRACKS:"
-        )
+        if version.kind == "eeb-pkg":
+            section = "SR Details (Service Requests in Package)"
+        elif version.kind == "bundle":
+            section = "SR Details (Service Requests in Bundle)"
+        else:
+            section = "Constituent ETracks"
         if stale_only and not rows:
-            return f"\n{title}\n(no stale constituents for this version)\nTotal rows: 0"
+            empty = "(no stale constituents for this version)"
+            if self._markdown():
+                return (
+                    self._heading(2, section)
+                    + f"\n{empty}\n\n*Total rows: 0*"
+                )
+            return f"\n{section.upper()}:\n{empty}\nTotal rows: 0"
 
-        output = f"\n{title}\n" + renderer.render_with_count(rows)
+        output = self._heading(2, section) + renderer.render_with_count(rows)
         if version.kind == "bundle":
             extras = [
                 constituent.incident
@@ -1331,11 +1410,12 @@ class DeliverableReporter:
                 if not constituent.in_bundle_contains
             ]
             if extras:
-                output += (
-                    "\nNote: SOURCE=README* means ET appears only in Problem "
+                note = (
+                    "SOURCE=README* means ET appears only in Problem "
                     "Description/Readme Notes, NOT in the trusted 'bundle contains' "
                     f"list: {', '.join(extras)}"
                 )
+                output += "\n" + self._note(note).rstrip("\n")
         return output
 
     def _render_status_summary(
@@ -1374,6 +1454,10 @@ class DeliverableReporter:
             summary += f" | Stale: {', '.join(stale_items)}"
         if stale_only:
             summary += " | (filtered to STALE only)"
+        prefix = self._heading(2, "Version Summary").rstrip("\n")
+        if self._markdown():
+            body = summary.replace("VERSION SUMMARY: ", "", 1)
+            return f"{prefix}\n\n{body}\n"
         return f"\n{summary}\n"
 
     @staticmethod
@@ -1436,11 +1520,13 @@ class DeliverableReporter:
 
     def _sr_shipping_heading(self, version: DeliverableVersion) -> str:
         if version.kind == "bundle":
-            return (
-                "SR SHIPPING (binaries in bundle; shared files labeled "
-                f"BUNDLE/{version.incident}):"
+            title = (
+                "SR Shipping (binaries in bundle; shared files labeled "
+                f"BUNDLE/{version.incident})"
             )
-        return "SR SHIPPING (binaries per service request in package):"
+        else:
+            title = "SR Shipping (binaries per service request in package)"
+        return self._heading(2, title).rstrip("\n")
 
     def _render_sr_shipping_summary(self, rows: List[Dict[str, str]]) -> str:
         by_sr: Dict[str, List[Dict[str, str]]] = {}
@@ -1465,7 +1551,7 @@ class DeliverableReporter:
                 }
             )
 
-        renderer = TableRenderer(
+        renderer = self._renderer(
             ["SR", "PLATFORMS", "FILES", "TOTAL_SIZE", "ARTIFACT_TYPES"]
         )
         renderer.widths.update(
@@ -1477,7 +1563,10 @@ class DeliverableReporter:
                 "ARTIFACT_TYPES": 44,
             }
         )
-        return "SR SHIPPING SUMMARY:\n" + renderer.render_with_count(summary_rows)
+        return (
+            self._heading(3, "SR Shipping Summary")
+            + renderer.render_with_count(summary_rows)
+        )
 
     def _render_sr_shipping_details(
         self,
@@ -1486,18 +1575,19 @@ class DeliverableReporter:
         full_details: bool = False,
     ) -> str:
         rows = shipping_rows if shipping_rows is not None else self._build_sr_shipping_rows(version)
-        parts = [f"\n{self._sr_shipping_heading(version)}", self._render_sr_shipping_summary(rows)]
+        parts = [self._sr_shipping_heading(version), self._render_sr_shipping_summary(rows)]
 
         show_full = full_details or len(rows) <= DELIVERABLE_FULL_DETAIL_ROW_LIMIT
         if show_full:
-            renderer = TableRenderer(["SR", "PLATFORM", "FILE", "SIZE", "CHECKSUM"])
+            renderer = self._renderer(["SR", "PLATFORM", "FILE", "SIZE", "CHECKSUM"])
             renderer.widths["SR"] = 14
             renderer.widths["FILE"] = 48
-            parts.append("\nSR SHIPPING DETAILS (full):\n" + renderer.render_with_count(rows))
-        elif rows:
             parts.append(
-                f"(Full listing: {len(rows)} rows; use --full-deliverable-details to show all)"
+                self._heading(3, "SR Shipping Details (full)")
+                + renderer.render_with_count(rows)
             )
+        elif rows:
+            parts.append(self._full_listing_note(len(rows)))
         return "\n".join(parts)
 
     def _build_platform_package_full_rows(
@@ -1546,7 +1636,7 @@ class DeliverableReporter:
     def _render_platform_packages_summary(
         self, summary_rows: List[Dict[str, str]]
     ) -> str:
-        renderer = TableRenderer(["PACKAGE_NAME", "TYPE", "PLATFORMS"])
+        renderer = self._renderer(["PACKAGE_NAME", "TYPE", "PLATFORMS"])
         renderer.widths.update(
             {
                 "PACKAGE_NAME": 48,
@@ -1554,7 +1644,10 @@ class DeliverableReporter:
                 "PLATFORMS": 12,
             }
         )
-        return "PLATFORM PACKAGES SUMMARY:\n" + renderer.render_with_count(summary_rows)
+        return (
+            self._heading(3, "Platform Packages Summary")
+            + renderer.render_with_count(summary_rows)
+        )
 
     def _render_platform_packages(
         self, version: DeliverableVersion, full_details: bool = False
@@ -1562,31 +1655,33 @@ class DeliverableReporter:
         full_rows = self._build_platform_package_full_rows(version)
         summary_rows = self._build_platform_package_summary_rows(full_rows)
         unique_count = len(summary_rows)
+        heading = self._heading(
+            2,
+            f"Platform Packages ({unique_count} unique packages, "
+            f"{len(full_rows)} platform entries)",
+        ).rstrip("\n")
         parts = [
-            f"\nPLATFORM PACKAGES ({unique_count} unique packages, "
-            f"{len(full_rows)} platform entries):",
+            heading,
             self._render_platform_packages_summary(summary_rows),
         ]
 
         show_full = full_details or len(full_rows) <= DELIVERABLE_FULL_DETAIL_ROW_LIMIT
         if show_full:
-            renderer = TableRenderer(["PLATFORM", "PACKAGE_NAME"])
+            renderer = self._renderer(["PLATFORM", "PACKAGE_NAME"])
             renderer.widths["PACKAGE_NAME"] = 48
             parts.append(
-                "\nPLATFORM PACKAGES (full):\n" + renderer.render_with_count(full_rows)
+                self._heading(3, "Platform Packages (full)")
+                + renderer.render_with_count(full_rows)
             )
         elif full_rows:
-            parts.append(
-                f"(Full listing: {len(full_rows)} rows; "
-                "use --full-deliverable-details to show all)"
-            )
+            parts.append(self._full_listing_note(len(full_rows)))
         return "\n".join(parts)
 
     def _render_links(self, version: DeliverableVersion) -> str:
         rows = [{"TYPE": key.upper(), "URL": url} for key, url in version.links.items()]
-        renderer = TableRenderer(["TYPE", "URL"])
+        renderer = self._renderer(["TYPE", "URL"])
         renderer.widths["URL"] = 72
-        return "\nLINKS:\n" + renderer.render_with_count(rows)
+        return self._heading(2, "Links") + renderer.render_with_count(rows)
 
     def _render_artifacts_summary(
         self,
@@ -1619,7 +1714,7 @@ class DeliverableReporter:
                 }
             )
 
-        renderer = TableRenderer(
+        renderer = self._renderer(
             ["PLATFORM", "FILES", "SRs", "TOTAL_SIZE", "ARTIFACT_TYPES"]
         )
         renderer.widths.update(
@@ -1631,7 +1726,11 @@ class DeliverableReporter:
                 "ARTIFACT_TYPES": 44,
             }
         )
-        return "\nARTIFACTS SUMMARY:\n" + renderer.render_with_count(summary_rows)
+        return (
+            self._heading(2, "Artifacts")
+            + self._heading(3, "Artifacts Summary").lstrip("\n")
+            + renderer.render_with_count(summary_rows)
+        )
 
     def _render_artifacts(
         self,
@@ -1652,22 +1751,31 @@ class DeliverableReporter:
 
         show_full = full_details or len(rows) <= DELIVERABLE_FULL_DETAIL_ROW_LIMIT
         if show_full:
-            renderer = TableRenderer(["PLATFORM", "FILE", "SIZE", "CHECKSUM"])
+            renderer = self._renderer(["PLATFORM", "FILE", "SIZE", "CHECKSUM"])
             renderer.widths["FILE"] = 48
-            parts.append("\nARTIFACTS (full):\n" + renderer.render_with_count(rows))
-        elif rows:
             parts.append(
-                f"(Full listing: {len(rows)} rows; use --full-deliverable-details to show all)"
+                self._heading(3, "Artifacts (full)")
+                + renderer.render_with_count(rows)
             )
+        elif rows:
+            parts.append(self._full_listing_note(len(rows)))
         return "\n".join(parts)
 
 
 class TableRenderer:
-    def __init__(self, columns: List[str]):
+    def __init__(
+        self,
+        columns: List[str],
+        output_format: str = OUTPUT_FORMAT_ASCII,
+    ):
         self.columns = columns
+        self.output_format = output_format
         self.widths = {
             col: COLUMN_WIDTHS.get(col, COLUMN_WIDTHS["DEFAULT"]) for col in columns
         }
+
+    def _markdown(self) -> bool:
+        return self.output_format == OUTPUT_FORMAT_MARKDOWN
 
     def _separator(self) -> str:
         return "+" + "+".join("-" * (self.widths[c] + 2) for c in self.columns) + "+"
@@ -1682,9 +1790,21 @@ class TableRenderer:
             cells.append(value.ljust(width))
         return "| " + " | ".join(cells) + " |"
 
+    def _md_row(self, row: Dict[str, str]) -> str:
+        cells = [_escape_md_cell(row.get(col, "")) for col in self.columns]
+        return "| " + " | ".join(cells) + " |"
+
     def render(self, rows: List[Dict[str, str]]) -> str:
+        if self._markdown():
+            header = self._md_row({col: col for col in self.columns})
+            separator = "| " + " | ".join("---" for _ in self.columns) + " |"
+            output = [header, separator]
+            for row in rows:
+                output.append(self._md_row(row))
+            return "\n".join(output)
+
         sep = self._separator()
-        header = self._row({c: c for c in self.columns})
+        header = self._row({col: col for col in self.columns})
         output = [sep, header, sep]
         for row in rows:
             output.append(self._row(row))
@@ -1692,7 +1812,10 @@ class TableRenderer:
         return "\n".join(output)
 
     def render_with_count(self, rows: List[Dict[str, str]]) -> str:
-        return f"{self.render(rows)}\nTotal rows: {len(rows)}"
+        body = self.render(rows)
+        if self._markdown():
+            return f"{body}\n\n*Total rows: {len(rows)}*"
+        return f"{body}\nTotal rows: {len(rows)}"
 
 
 class EtrackHierarchyFetcher:
@@ -2307,7 +2430,11 @@ class EtrackHierarchyFetcher:
         comments = self.get_trencher_comments(incident)
         return TrencherDeliverableParser().detect_kinds(comments, incident)
 
-    def render_deliverable_hints(self, incident: str) -> str:
+    def render_deliverable_hints(
+        self,
+        incident: str,
+        output_format: str = OUTPUT_FORMAT_ASCII,
+    ) -> str:
         try:
             comments = self.get_trencher_comments(incident)
         except EtrackHierarchyError as exc:
@@ -2335,7 +2462,9 @@ class EtrackHierarchyFetcher:
                 file=sys.stderr,
             )
 
-        return DeliverableReporter().render_hints(incident, versions_by_kind)
+        return DeliverableReporter(output_format=output_format).render_hints(
+            incident, versions_by_kind
+        )
 
     def fetch_incident_details_map(
         self,
@@ -2365,6 +2494,7 @@ class EtrackHierarchyFetcher:
         include_details: bool = False,
         full_details: bool = False,
         stale_only: bool = False,
+        output_format: str = OUTPUT_FORMAT_ASCII,
     ) -> str:
         comments = self.get_trencher_comments(incident)
         versions = TrencherDeliverableParser().parse(comments, incident, kind)
@@ -2404,7 +2534,7 @@ class EtrackHierarchyFetcher:
             enriched = details_future.result()
             latest_versions = latest_future.result()
 
-        return DeliverableReporter().render(
+        return DeliverableReporter(output_format=output_format).render(
             versions,
             enriched,
             latest_versions,
@@ -2949,6 +3079,48 @@ class EtrackHierarchyFetcher:
 
         return tree
 
+    def format_hierarchy_tree(
+        self,
+        root: str,
+        tree: Dict[str, List[str]],
+        depth: int = 0,
+        visited: Optional[Set[str]] = None,
+    ) -> str:
+        if visited is None:
+            visited = set()
+
+        indent = "  " * depth
+        prefix = "+-- " if depth > 0 else ""
+        lines: List[str] = []
+
+        if root in visited:
+            lines.append(f"{indent}{prefix}{root} (cycle)")
+            return "\n".join(lines)
+
+        details = self._parsed_details_cache.get(root, {})
+        incident_type = details.get("TYPE", "")
+        version = details.get("VERSION", "")
+        target_version = details.get("TARGET_VERSION", "")
+        state = details.get("STATE", "")
+
+        details_str = ""
+        if incident_type or version or target_version or state:
+            details_str = (
+                f" (T:{incident_type} V:{version} TV:{target_version} S:{state})"
+            )
+
+        lines.append(f"{indent}{prefix}{root}{details_str}")
+        visited.add(root)
+
+        if root in tree:
+            for child in tree[root]:
+                lines.append(
+                    self.format_hierarchy_tree(child, tree, depth + 1, visited)
+                )
+
+        visited.remove(root)
+        return "\n".join(lines)
+
     def print_hierarchy_tree(
         self,
         root: str,
@@ -2957,37 +3129,7 @@ class EtrackHierarchyFetcher:
         visited: Optional[Set[str]] = None,
     ) -> None:
         """Print hierarchy tree in nested format with incident details."""
-        if visited is None:
-            visited = set()
-
-        indent = "  " * depth
-        prefix = "+-- " if depth > 0 else ""
-
-        if root in visited:
-            print(f"{indent}{prefix}{root} (cycle)", flush=True)
-            return
-
-        # Extract incident details for display
-        details = self._parsed_details_cache.get(root, {})
-        incident_type = details.get("TYPE", "")
-        version = details.get("VERSION", "")
-        target_version = details.get("TARGET_VERSION", "")
-        state = details.get("STATE", "")
-
-        # Format: incident (T:type V:version TV:target_version S:state)
-        details_str = ""
-        if incident_type or version or target_version or state:
-            details_str = f" (T:{incident_type} V:{version} TV:{target_version} S:{state})"
-
-        print(f"{indent}{prefix}{root}{details_str}", flush=True)
-        visited.add(root)
-
-        if root in tree:
-            children = tree[root]
-            for child in children:
-                self.print_hierarchy_tree(child, tree, depth + 1, visited)
-
-        visited.remove(root)
+        print(self.format_hierarchy_tree(root, tree, depth, visited), flush=True)
 
     def fetch_records_esql(
         self,
@@ -3137,6 +3279,10 @@ def _format_elapsed(seconds: float) -> str:
     return f"{minutes}m {remainder:.1f}s"
 
 
+def _resolve_output_format(args: argparse.Namespace) -> str:
+    return OUTPUT_FORMAT_MARKDOWN if args.markdown else OUTPUT_FORMAT_ASCII
+
+
 def _render_single_et_table(
     fetcher: EtrackHierarchyFetcher,
     input_incident: str,
@@ -3158,7 +3304,7 @@ def _render_single_et_table(
         row["SINCIDENT"] = input_incident
         row["PARENT_FLAG"] = ""
 
-    renderer = TableRenderer(columns)
+    renderer = TableRenderer(columns, output_format=_resolve_output_format(args))
     print(renderer.render_with_count(rows))
 
 
@@ -3184,13 +3330,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "  %(prog)s 4230893 -P -N -D\n"
             "  %(prog)s 4234410 -A -N -D\n"
             "  %(prog)s 4234410 -C -N -D\n"
+            "  %(prog)s 4230893 -P -N -D -M\n"
             "  %(prog)s 4230893 -P -N -G eprint -F\n"
             "\n"
             "Default run prints hierarchy plus a lightweight DELIVERABLE SUMMARY\n"
             "for the input ET when svc_rmntrencher comments indicate pkg/bundle/standard.\n"
             "Deliverable types: EEB PACKAGE (-P), EEB BUNDLE (-B), STANDARD EEB (-C).\n"
             "Use -A to auto-detect type; add -D for SR shipping details per constituent,\n"
-            "PLATFORM PACKAGES, LINKS, and full ARTIFACTS list.\n"
+            "PLATFORM PACKAGES, LINKS, and full ARTIFACTS list. Use -M for Markdown output.\n"
             "Note: -F/--stale-only applies to EEB package (-P/-A) reports only.\n"
             "\n"
             + HIERARCHY_SHORT_OPTIONS_HELP
@@ -3271,6 +3418,16 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help=(
             "With -D, also print full per-file SR SHIPPING DETAILS and ARTIFACTS tables "
             f"(default: full tables only when row count ≤ {DELIVERABLE_FULL_DETAIL_ROW_LIMIT})."
+        ),
+    )
+    format_group.add_argument(
+        "-M",
+        "--markdown",
+        action="store_true",
+        help=(
+            "Emit Markdown output (#/##/### headings, pipe tables) for folding "
+            "and navigation in Neovim/Vim (gabrielelana/vim-markdown or built-in "
+            "markdown fold)."
         ),
     )
     format_group.add_argument(
@@ -3611,7 +3768,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 else:
                     row["PARENT_FLAG"] = ""
 
-            renderer = TableRenderer(columns)
+            output_format = _resolve_output_format(args)
+            if output_format == OUTPUT_FORMAT_MARKDOWN:
+                print(_format_heading(output_format, 1, "Hierarchy").rstrip("\n"))
+
+            renderer = TableRenderer(columns, output_format=output_format)
             print(renderer.render_with_count(rows))
             if args.debug:
                 print(
@@ -3620,15 +3781,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 )
 
             if args.htree:
-                print(f"\n{'='*80}")
-                print("HIERARCHY TREE:")
-                print(f"{'='*80}")
                 tree = fetcher.build_hierarchy_tree(
                     hierarchy_incidents,
                     parent_map,
                     root_incident,
                 )
-                fetcher.print_hierarchy_tree(root_incident, tree)
+                tree_text = fetcher.format_hierarchy_tree(root_incident, tree)
+                if output_format == OUTPUT_FORMAT_MARKDOWN:
+                    print(_format_heading(output_format, 2, "Hierarchy Tree").rstrip("\n"))
+                    print("```")
+                    print(tree_text)
+                    print("```")
+                else:
+                    print(f"\n{'='*80}")
+                    print("HIERARCHY TREE:")
+                    print(f"{'='*80}")
+                    print(tree_text)
 
         if args.use_esql and args.debug:
             print(
@@ -3637,6 +3805,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
 
         if deliverable_kinds:
+            output_format = _resolve_output_format(args)
             for kind in deliverable_kinds:
                 print(fetcher.render_deliverable_report(
                     input_incident,
@@ -3645,9 +3814,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     include_details=args.include_deliverable_details,
                     full_details=args.full_deliverable_details,
                     stale_only=args.stale_only and kind == "eeb-pkg",
+                    output_format=output_format,
                 ))
         elif not args.skip_hierarchy or show_single_row:
-            hints = fetcher.render_deliverable_hints(input_incident)
+            hints = fetcher.render_deliverable_hints(
+                input_incident,
+                output_format=_resolve_output_format(args),
+            )
             if hints:
                 print(hints)
 

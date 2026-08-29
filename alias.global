@@ -214,7 +214,7 @@ alias .lsw='af.ew() { which $1 && less -R  -I -g -r $(which $1) || echo "$1 is n
 alias .lsf='fzf --preview "less -R {}" --bind "ctrl-o:execute(less -I -g -r {})"'
 alias .ls.users='.ls ~/.usersdetails'
 alias .lss.users='.lss ~/.usersdetails'
-alias .hlp='function af.help() { $@ 2>&1 | less -I -g -J -N -X -F;}; af.help '
+alias .hlp='function af.help() { "$@" 2>&1 | less -i -g -J -N -F -R -S -M -W -Q --mouse; }; af.help'
 alias .dushlog='function af.dushlog() { date +"%Y.%m.%d %H.%M.%S" | tee du.sh.log; echo | tee -a du.sh.log;  du -sh ${1:-*} ${@:2} | tee -a du.sh.log;}; af.dushlog'
 alias .json='python -mjson.tool'
 alias .json.paths='jq -r '"'"' paths(scalars) as $p | [ ( [ $p[] | tostring ] | join(".") ) , ( getpath($p) | tojson ) ] | join(": ")'"'"''
@@ -222,10 +222,20 @@ alias .jq.keys='jq '"'"'path(..) | map(tostring) | join(".")'"'"''
 alias .fzf="fzf --border --preview 'command -v bat &>/dev/null && bat --style=header,numbers --color=always --line-range=:100 {} || less -R {}' \
     --bind 'enter:execute(vim {})' \
         --bind 'ctrl-o:execute(command -v bat &>/dev/null && bat --style=header,numbers --color=always {} || less -I -g -r {})'"
-alias .bt='bat --style=header,numbers --color=always --paging=always --tabs=4 --wrap=auto'
-alias .btm='bat --style=full --color=always --paging=always --tabs=4 --wrap=auto'
-alias .btp='bat --style=plain --color=always --paging=always --tabs=4 --wrap=auto'
-alias .btd='bat --style=header,numbers,changes --color=always --paging=always --tabs=4 --wrap=auto'
+
+# bat aliases - base styles
+alias .bt='bat --style=header,numbers,grid,changes --color=always --paging=always --tabs=4 --wrap=auto --italic-text=always --decorations=always'
+alias .btg='bat --style=header,numbers,changes --color=always --paging=always --tabs=4 --wrap=auto'
+alias .btm='bat --style=full --color=always --paging=always --tabs=4 --wrap=auto --italic-text=always --decorations=always'
+alias .btp='bat --plain --paging=always --tabs=4 --wrap=auto'
+alias .btc='bat --plain --paging=never'
+
+# bat aliases - utilities
+alias .btdiff='bat --diff'
+alias .btl='.bt -l'
+alias .bth='.bt --highlight-line'
+alias .bthelp='function _bthelp() { "$@" --help 2>&1 | .bt -l help; }; _bthelp'
+
 alias .jbt='sed -E -e "s/^(JiraID:|Summary:|Assignee:|Reporter:|IssueType:|Labels:|Description:|> > > > -+)/\x1b[32m\1\x1b[0m/" | .bt'
 alias .btw='af.ew() { which $1 && .bt $(which $1) || echo "$1 is not a file"; }; af.ew'
 alias .btwa='af.ewa() { echo .bt $(grep -l "\s$1=" ~/.alias* ~/.vim/alias*);}; af.ewa'

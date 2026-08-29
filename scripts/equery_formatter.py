@@ -67,14 +67,17 @@ class EqueryFormatter:
         'VERSION': 8,
     }
 
-    def __init__(self, columns: Optional[List[str]] = None):
+    def __init__(self, columns: Optional[List[str]] = None,
+                 output_format: str = 'table'):
         """
         Initialize formatter with specified columns.
 
         Args:
             columns: List of column names to display, or None for all columns
+            output_format: table or markdown
         """
         self.columns = columns
+        self.output_format = output_format
         self.headers = []
         self.column_indices = {}
         self.display_columns = []
@@ -137,12 +140,13 @@ class EqueryFormatter:
             print(f' {truncated:<{width}} |', end='')
         print()
 
-    def format_data(self, lines: List[str]) -> None:
+    def format_data(self, lines: List[str], title: Optional[str] = None) -> None:
         """
         Format and print the data.
 
         Args:
             lines: List of lines from equery output
+            title: Optional Markdown document title (# heading)
         """
         if not lines:
             print("No data to format")
@@ -153,6 +157,10 @@ class EqueryFormatter:
 
         if not self.display_columns:
             print("No valid columns to display")
+            return
+
+        if self.output_format == 'markdown':
+            self._format_data_markdown(lines[1:], title=title)
             return
 
         # Print header
@@ -172,6 +180,39 @@ class EqueryFormatter:
         # Print footer
         self.print_separator()
         print(f"\nTotal number of records: {record_count}")
+
+    @staticmethod
+    def _escape_md_cell(value: str) -> str:
+        return str(value).replace("|", "\\|").replace("\n", " ")
+
+    def _format_data_markdown(
+        self,
+        data_lines: List[str],
+        title: Optional[str] = None,
+    ) -> None:
+        if title:
+            print(f"# {title}\n")
+
+        header = "| " + " | ".join(self.display_columns) + " |"
+        separator = "| " + " | ".join("---" for _ in self.display_columns) + " |"
+        print(header)
+        print(separator)
+
+        record_count = 0
+        for line in data_lines:
+            line = line.strip()
+            if not line:
+                continue
+            values = line.split('\t')
+            cells = []
+            for col in self.display_columns:
+                idx = self.column_indices[col]
+                value = values[idx] if idx < len(values) else ""
+                cells.append(self._escape_md_cell(value))
+            print("| " + " | ".join(cells) + " |")
+            record_count += 1
+
+        print(f"\n*Total rows: {record_count}*")
 
 
 def run_equery(query_name: str, ssh_target: Optional[str] = None,
@@ -323,6 +364,7 @@ Examples:
   # REMOTE EXECUTION - Run equery on remote server via SSH
   %(prog)s my_query --ssh user@server.com
   %(prog)s my_query --ssh user@server.com --cols INCIDENT,STATE
+  %(prog)s my_query -O markdown --cols INCIDENT,STATE,ABSTRACT > report.md
   %(prog)s my_query --ssh user@server.com -u username --cols INCIDENT,STATE
 
   # FILE INPUT - Process an existing file
@@ -380,6 +422,12 @@ Shell function equivalents:
         help='Comma-separated column names to display (use "*" for all columns)',
         default=None
     )
+    parser.add_argument(
+        '-O', '--output',
+        choices=('table', 'markdown'),
+        default='table',
+        help='Output format (default: table; markdown for Neovim folding)',
+    )
 
     args = parser.parse_args()
 
@@ -401,8 +449,13 @@ Shell function equivalents:
         lines = run_equery(args.query_name, ssh_target=args.ssh, user_flag=args.user)
 
     # Format and display
-    formatter = EqueryFormatter(columns=columns)
-    formatter.format_data(lines)
+    title = args.query_name
+    if not title and args.file:
+        import os
+        title = os.path.splitext(os.path.basename(args.file))[0]
+
+    formatter = EqueryFormatter(columns=columns, output_format=args.output)
+    formatter.format_data(lines, title=title)
 
 
 if __name__ == '__main__':

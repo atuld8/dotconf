@@ -39,5 +39,16 @@ function! s:ExecuteCommand(window_type, ...)
     execute l:window_type
 
     execute 'read !' .  l:silent_cmd
+    if l:cmd_args =~# '\s-M\b\|--markdown\|\s-O markdown\|\s-O\s*markdown'
+        setlocal filetype=markdown
+        setlocal foldlevel=1
+    elseif l:cmd =~# 'etrack_hierarchy_table\|esql_formatter\|equery_formatter'
+        setlocal filetype=etrack-report
+        setlocal foldlevel=1
+    endif
 endfunction
+
+" Run an eTrack report command and open with folding + syntax
+command! -nargs=+ EtrackReport Ncmd <args>
+command! -nargs=+ EtrackReportV Vncmd <args>
 
