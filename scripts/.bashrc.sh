@@ -231,36 +231,34 @@ bcd() {
     cd $bcdpath || break
 }
 
+# Helper: Get file counts efficiently (avoids duplicate ls calls)
+_prompt_file_counts() {
+    local all_count=$(ls -A 2>/dev/null | wc -l | tr -d ' ')
+    local visible_count=$(ls 2>/dev/null | wc -l | tr -d ' ')
+    echo "Files:${all_count} Hdn:$((all_count - visible_count))"
+}
+
 # IST:${blue}${BG}`TZ=Asia/Calcutta date "+%e-%B-%G %H:%M:%S"`
 SetLongTrap()
 {
-    export TMUX_WINIDX=""
-    if [ ! -z "$TMUX" ]; then
-        local win_idx=$(tmux display-message -p '#I')
-        local pane_idx=$(tmux display-message -p '#P')
-        local total_wins=$(tmux display-message -p '#{session_windows}')
-        local total_panes=$(tmux display-message -p '#{window_panes}')
-        export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
-    fi
-    if [ ! -z "$WINDOW" ]; then
-        export TMUX_WINIDX="[$WINDOW] "
-    fi
-    trap 'PS1="\n${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*} ${PURPLE}${BG}(\$((\! -1)):\#) ${PROPNAMECOLOR}${BG}[Date:${PROPCOLOR}${BG}\D{%e-%B-%G} ${PROPNAMECOLOR}${BG}Time:${PROPCOLOR}${BG}\t ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG}] ${PROPNAMECOLOR}${BG}[OS:${PROPCOLOR}${BG}${OSName} ${PROPNAMECOLOR}${BG}Ver:${PROPCOLOR}${BG}${OSVer}${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Proc:${PROPCOLOR}${BG}${PROCName}${PROPNAMECOLOR}${BG}${DARWIN_DATA}${PROPNAMECOLOR}${BG}TTY:${PROPCOLOR}${BG}${TTYNAME}${PROPNAMECOLOR}${BG}] [FileEntries:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HiddenEntries:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) ))${PROPNAMECOLOR}] ${NBU_DATA} \n${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\$PWD ${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
+    UpdateTmuxWinIdx > /dev/null
+    trap 'PS1="\n${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*} ${PURPLE}${BG}(\$((\! -1)):\#) ${PROPNAMECOLOR}${BG}[Date:${PROPCOLOR}${BG}\D{%e-%B-%G} ${PROPNAMECOLOR}${BG}Time:${PROPCOLOR}${BG}\t ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG}] ${PROPNAMECOLOR}${BG}[OS:${PROPCOLOR}${BG}${OSName} ${PROPNAMECOLOR}${BG}Ver:${PROPCOLOR}${BG}${OSVer}${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Proc:${PROPCOLOR}${BG}${PROCName}${PROPNAMECOLOR}${BG}${DARWIN_DATA}${PROPNAMECOLOR}${BG}TTY:${PROPCOLOR}${BG}${TTYNAME}${PROPNAMECOLOR}${BG}] [${PROPCOLOR}\$(_prompt_file_counts)${PROPNAMECOLOR}] ${NBU_DATA} \n${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\$PWD ${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 CurrDirDepth() {
     echo `pwd | awk -F"/" '{print NF - 1 ; }'`
 }
 
+# Single source of truth for TMUX window/pane index
 UpdateTmuxWinIdx () {
-    if [ ! -z "$TMUX" ]; then
+    export TMUX_WINIDX=""
+    if [[ -n "$TMUX" ]]; then
         local win_idx=$(tmux display-message -p '#I')
         local pane_idx=$(tmux display-message -p '#P')
         local total_wins=$(tmux display-message -p '#{session_windows}')
         local total_panes=$(tmux display-message -p '#{window_panes}')
         export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
-    fi
-    if [ ! -z "$WINDOW" ]; then
+    elif [[ -n "$WINDOW" ]]; then
         export TMUX_WINIDX="[$WINDOW] "
     fi
     echo "$TMUX_WINIDX"
@@ -271,35 +269,15 @@ SetShortTrap()
 {
    local DOName=""
    export PROMPT_DIRTRIM=3
-   export TMUX_WINIDX=""
-   if [ ! -z "$TMUX" ]; then
-       local win_idx=$(tmux display-message -p '#I')
-       local pane_idx=$(tmux display-message -p '#P')
-       local total_wins=$(tmux display-message -p '#{session_windows}')
-       local total_panes=$(tmux display-message -p '#{window_panes}')
-       export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
-   fi
-   if [ ! -z "$WINDOW" ]; then
-       export TMUX_WINIDX="[$WINDOW] "
-   fi
-   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} Files:${PROPCOLOR}$(( $( ls -A | wc -l ) - 0 )) ${PROPNAMECOLOR}HdnFiles:${PROPCOLOR}$(( $( ls -A | wc -l ) - $( ls | wc -l ) )) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
+   UpdateTmuxWinIdx > /dev/null
+   trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) ${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG} ${PROPCOLOR}\$(_prompt_file_counts) ${PROPNAMECOLOR}pushd:${PROPCOLOR}$(( $( dirs -v | wc -l ) - 1 )) ${PROPNAMECOLOR}${BG}DskUsg:${PROPCOLOR}${BG}\$([ -f ~/.vim/scripts/rootDiskUsage.sh ] && ~/.vim/scripts/rootDiskUsage.sh || [ -f ~/bin/rootDiskUsage.sh ] && ~/bin/rootDiskUsage.sh)${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 SetBasicTrap()
 {
    local DOName=""
    export PROMPT_DIRTRIM=3
-   export TMUX_WINIDX=""
-   if [ ! -z "$TMUX" ]; then
-       local win_idx=$(tmux display-message -p '#I')
-       local pane_idx=$(tmux display-message -p '#P')
-       local total_wins=$(tmux display-message -p '#{session_windows}')
-       local total_panes=$(tmux display-message -p '#{window_panes}')
-       export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
-   fi
-   if [ ! -z "$WINDOW" ]; then
-       export TMUX_WINIDX="[$WINDOW] "
-   fi
+   UpdateTmuxWinIdx > /dev/null
    trap 'PS1="\n${PROPNAMECOLOR}${BG}(\$((\! -1)) $(((SHLVL>1))&&echo "SL:$SHLVL ")${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*}${PROPNAMECOLOR}${BG}) ${PROPNAMECOLOR}${BG}Date:${PROPCOLOR}${BG}\D{%d-%b-%y} \D{%T %Z} ${PROPNAMECOLOR}${BG}Os:${PROPCOLOR}${BG}$OSVer${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME%%.*}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\w${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
