@@ -6,17 +6,36 @@ This script accepts an incident ID, resolves the super incident (unless explicit
 provided as super), recursively fetches all child incidents, gathers details per
 incident, and prints a configurable table.
 
+USAGE:
+    etrack_hierarchy_table.py INCIDENT [options]
+
+    Quick flags: -S/--as-super  -1/--single  -N/--skip-hierarchy  -R/--ssh
+                 -A/-P/-B/-C deliverable  -q/--quiet  -v/--verbose  -d/--debug
+                 (full list: run with -h)
+
 Default columns:
-    INCIDENT,SINCIDENT,TYPE,VERSION,TARGET_VERSION,TARGET_BUILD,ASSIGNED_TO,STATE,RESOLUTION,ABSTRACT
+    INCIDENT,SINCIDENT,PARENT_FLAG,TYPE,VERSION,TARGET_VERSION,TARGET_BUILD,
+    ASSIGNED_TO,STATE,RESOLUTION,ABSTRACT
+
+When -R/--ssh is omitted, auto-SSH uses ETRACK_SSH, ENGVM_HOST, or NIS_USER@NIS_SERVER.
 
 Examples:
     ./etrack_hierarchy_table.py 4203299
-    ./etrack_hierarchy_table.py 4203299 --hierarchy-source incident-view
-    ./etrack_hierarchy_table.py 4203299 --use-eprint
-    ./etrack_hierarchy_table.py 4203299 --include-cols INCIDENT,SINCIDENT,STATE,ABSTRACT
-    ./etrack_hierarchy_table.py 4203299 --exclude-cols TARGET_VERSION,VERSION
-    ./etrack_hierarchy_table.py 4203299 --as-super
-    ./etrack_hierarchy_table.py 4203299 --ssh user@server
+    ./etrack_hierarchy_table.py 4203299 -1
+    ./etrack_hierarchy_table.py 4203299 -N
+    ./etrack_hierarchy_table.py 4203299 -q
+    ./etrack_hierarchy_table.py 4203299 -y incident-view
+    ./etrack_hierarchy_table.py 4203299 -p
+    ./etrack_hierarchy_table.py 4203299 -I INCIDENT,SINCIDENT,STATE,ABSTRACT
+    ./etrack_hierarchy_table.py 4203299 -E TARGET_VERSION,VERSION
+    ./etrack_hierarchy_table.py 4203299 -S
+    ./etrack_hierarchy_table.py 4203299 -R user@server
+    ./etrack_hierarchy_table.py 4232810 -R user@server -B -N
+    ./etrack_hierarchy_table.py 4230893 -A -N
+    ./etrack_hierarchy_table.py 4230893 -P -N -D
+    ./etrack_hierarchy_table.py 4234410 -A -N -D
+    ./etrack_hierarchy_table.py 4234410 -C -N -D
+    ./etrack_hierarchy_table.py 4230893 -P -N -G eprint -F
 """
 
 import argparse
@@ -27,17 +46,91 @@ import shutil
 import subprocess
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 VALID_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+HIERARCHY_SHORT_OPTIONS_HELP = """
+OPTION GROUPS (every long option has a short form):
+  Input & scope:       -S/--as-super  -1/--single  -N/--skip-hierarchy
+  Output format:       -I/--include-cols  -E/--exclude-cols  -t/--htree
+                       -D/--include-deliverable-details  -U/--full-deliverable-details
+                       -F/--stale-only
+  Deliverable reports: -A/--auto-deliverable  -P/--as-eeb-pkg  -B/--as-bundle
+                       -C/--as-standard-eeb  -G/--deliverable-details-source
+                       -j/--deliverable-parallel
+  Data source:         -y/--hierarchy-source  -p/--use-eprint
+  Remote access:       -R/--ssh  -Z/--no-auto-ssh  -X/--no-ssh-multiplex
+  Performance:         -m/--max-nodes  -T/--timeout  -z/--retries  -g/--retry-delay
+  Logging:             -q/--quiet  -v/--verbose  -d/--debug
+"""
+
+HIERARCHY_USAGE = """%(prog)s INCIDENT [-h]
+        [-S, --as-super] [-1, --single] [-N, --skip-hierarchy] [-t, --htree]
+        [-I COLS, --include-cols COLS] [-E COLS, --exclude-cols COLS]
+        [-R SSH, --ssh SSH] [-Z, --no-auto-ssh] [-X, --no-ssh-multiplex]
+        [-A, --auto-deliverable] [-P, --as-eeb-pkg] [-B, --as-bundle]
+        [-C, --as-standard-eeb]
+        [-D, --include-deliverable-details]
+        [-U, --full-deliverable-details]
+        [-G SRC, --deliverable-details-source SRC] [-F, --stale-only]
+        [-j N, --deliverable-parallel N]
+        [-y SRC, --hierarchy-source SRC] [-p, --use-eprint]
+        [-m N, --max-nodes N] [-T SEC, --timeout SEC]
+        [-z N, --retries N] [-g SEC, --retry-delay SEC]
+        [-q, --quiet] [-v, --verbose] [-d, --debug]"""
+
+
+class ShortLongHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Show short before long as '-S, --as-super' in usage and option help."""
+
+    def _format_action_invocation(self, action):
+        if not action.option_strings:
+            return super()._format_action_invocation(action)
+
+        opts = sorted(
+            action.option_strings,
+            key=lambda option: (option.startswith('--'), option),
+        )
+
+        if action.nargs == 0:
+            return ', '.join(opts)
+
+        if action.metavar is not None:
+            metavar = action.metavar
+        elif action.choices is not None:
+            metavar = '{' + ','.join(map(str, action.choices)) + '}'
+        else:
+            metavar = self._get_default_metavar_for_optional(action)
+
+        if metavar:
+            if isinstance(metavar, tuple):
+                return ', '.join(opts) + ' ' + ' '.join(metavar)
+            return ', '.join(opts) + ' ' + str(metavar)
+        return ', '.join(opts)
+
+    def _format_actions_usage(self, actions, groups):
+        """Include long option names in the usage summary (argparse uses short only)."""
+        parts: List[str] = []
+        for action in actions:
+            if action.option_strings:
+                parts.append('[%s]' % self._format_action_invocation(action))
+            elif action.metavar:
+                parts.append(action.metavar)
+            else:
+                parts.append(action.dest)
+        return ' '.join(parts)
+
+
 HIERARCHY_SOURCES = ("inc-bottom-up", "incident-view", "eprint")
 DELIVERABLE_DETAIL_SOURCES = ("esql", "eprint", "auto")
 DEFAULT_HIERARCHY_SOURCE = "inc-bottom-up"
 DEFAULT_DELIVERABLE_PARALLEL = 8
 DEFAULT_DELIVERABLE_DETAILS_SOURCE = "esql"
+DELIVERABLE_FULL_DETAIL_ROW_LIMIT = 24
 DEFAULT_COMMAND_RETRIES = 3
 DEFAULT_RETRY_DELAY = 2.0
 
@@ -118,12 +211,56 @@ def _ssh_host_from_target(ssh_target: Optional[str]) -> str:
     return ssh_target.split("@", 1)[-1]
 
 
+def normalize_ssh_target(target: Optional[str]) -> Optional[str]:
+    """Normalize -R/--ssh to user@host; prepend NIS_USER/USER when host has no @."""
+    if not target:
+        return None
+    target = target.strip()
+    if not target:
+        return None
+    if "@" in target:
+        return target
+    login = (
+        os.environ.get("NIS_USER")
+        or os.environ.get("USER")
+        or os.environ.get("LOGNAME")
+    )
+    if login:
+        return f"{login.strip()}@{target}"
+    return target
+
+
+def default_ssh_target() -> Optional[str]:
+    """
+    Default etrack SSH target from environment.
+
+    Priority: ETRACK_SSH, USER@ENGVM_HOST, NIS_USER@NIS_SERVER.
+    """
+    explicit = os.environ.get("ETRACK_SSH", "").strip()
+    if explicit:
+        return explicit
+
+    engvm_host = os.environ.get("ENGVM_HOST", "").strip()
+    if engvm_host:
+        login = os.environ.get("NIS_USER") or os.environ.get("USER") or os.environ.get("LOGNAME")
+        if login and "@" not in engvm_host:
+            return f"{login.strip()}@{engvm_host}"
+        return engvm_host
+
+    nis_user = os.environ.get("NIS_USER", "").strip()
+    nis_server = os.environ.get("NIS_SERVER", "").strip()
+    if nis_user and nis_server:
+        return f"{nis_user}@{nis_server}"
+
+    return None
+
+
 def classify_command_error(stderr: str, returncode: int) -> Tuple[str, bool]:
     text = stderr or ""
     for pattern, category, retryable in SSH_ERROR_RULES:
         if pattern.search(text):
             return category, retryable
-    if returncode == 255 and re.search(r"\bssh\b", text, re.I):
+    if returncode == 255 and (re.search(r"\bssh\b", text, re.I) or not text.strip()):
         return "ssh", True
     return "unknown", False
 
@@ -188,6 +325,17 @@ def format_command_error(
         ]
     elif category == "ssh":
         lines.append("  Cause: SSH connection error")
+        hints = [
+            "Verify VPN/network connectivity",
+            f"Test: ssh -o ConnectTimeout=10 {ssh_target or host} true",
+            "Or disable multiplex: --no-ssh-multiplex / -X",
+        ]
+    elif category == "unknown" and "exit code 255" in detail:
+        lines.append("  Cause: remote command failed (often SSH)")
+        hints = [
+            f"Test: ssh -o ConnectTimeout=10 {ssh_target or host} true",
+            "Or disable multiplex: --no-ssh-multiplex / -X",
+        ]
 
     if detail:
         first_line = detail.splitlines()[0].strip()
@@ -206,12 +354,40 @@ TRENCHER_COMMENT_HEADER_RE = re.compile(
     r"(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}\s+\w+)\s*$",
     re.MULTILINE,
 )
+EPRINT_COMMENT_HEADER_RE = re.compile(
+    r"^\(\d+\)\s+@\s+\S+",
+    re.MULTILINE,
+)
 EEB_PKG_MARKER = "*** This is an EEB Package"
 EEB_BUNDLE_MARKER = "*** This is an EEB Bundle"
+EEB_VERSION_RE = re.compile(r"This is EEB version\s*:\s*(\d+)", re.IGNORECASE)
 EEB_CONSTITUENT_RE = re.compile(r"EEB\s+et\s+(\d+)\s+v(\d+)", re.IGNORECASE)
 ET_CONSTITUENT_RE = re.compile(r"\bET\s+(\d+)\b", re.IGNORECASE)
 ARTIFACT_LINE_RE = re.compile(r"^(\d+)\s+(\d+)\s+(\S+/)(.+)$")
 URL_RE = re.compile(r"https://[^\s\]>]+")
+
+# Internal kind ids (stable in code) -> user-facing labels
+DELIVERABLE_KINDS: Tuple[str, ...] = ("eeb-pkg", "bundle", "eeb-standard")
+DELIVERABLE_KIND_LABELS: Dict[str, str] = {
+    "eeb-pkg": "EEB PACKAGE",
+    "bundle": "EEB BUNDLE",
+    "eeb-standard": "STANDARD EEB",
+}
+DELIVERABLE_KIND_HINT_CODES: Dict[str, str] = {
+    "eeb-pkg": "PKG",
+    "bundle": "BUNDLE",
+    "eeb-standard": "STANDARD",
+}
+
+
+def deliverable_kind_label(kind: str) -> str:
+    """User-facing deliverable type name for reports and errors."""
+    return DELIVERABLE_KIND_LABELS.get(kind, kind.upper())
+
+
+def deliverable_kind_hint_code(kind: str) -> str:
+    """Short type code for DELIVERABLE SUMMARY tables."""
+    return DELIVERABLE_KIND_HINT_CODES.get(kind, kind.upper()[:8])
 
 
 @dataclass
@@ -258,22 +434,64 @@ class DeliverableVersion:
     links: Dict[str, str] = field(default_factory=dict)
     readme_notes: str = ""
     problem_description: str = ""
+    submission_type: str = ""
+    install_on: str = ""
+
+
+def extract_trencher_comments(comments_text: str) -> str:
+    """Return concatenated svc_rmntrencher comment blocks from full eprint -c output."""
+    headers = list(EPRINT_COMMENT_HEADER_RE.finditer(comments_text))
+    if not headers:
+        return ""
+
+    parts: List[str] = []
+    for index, match in enumerate(headers):
+        if "svc_rmntrencher" not in match.group(0):
+            continue
+        start = match.start()
+        end = (
+            headers[index + 1].start()
+            if index + 1 < len(headers)
+            else len(comments_text)
+        )
+        parts.append(comments_text[start:end])
+    return "".join(parts)
 
 
 class TrencherDeliverableParser:
+    @staticmethod
+    def _block_has_eeb_version(block: str) -> bool:
+        return EEB_VERSION_RE.search(block) is not None
+
+    @classmethod
+    def _is_standard_eeb_block(cls, block: str) -> bool:
+        """Standard single-ET deliverable (no Package/Bundle marker)."""
+        if EEB_PKG_MARKER in block or EEB_BUNDLE_MARKER in block:
+            return False
+        return cls._block_has_eeb_version(block)
+
     def parse(
         self,
         comments_text: str,
         incident: str,
         kind: str,
     ) -> List[DeliverableVersion]:
-        marker = EEB_PKG_MARKER if kind == "eeb-pkg" else EEB_BUNDLE_MARKER
         blocks = self._extract_service_request_blocks(comments_text, incident)
         versions: List[DeliverableVersion] = []
 
         for comment_num, comment_date, block in blocks:
-            if marker not in block:
+            if kind == "eeb-pkg":
+                if EEB_PKG_MARKER not in block:
+                    continue
+            elif kind == "bundle":
+                if EEB_BUNDLE_MARKER not in block:
+                    continue
+            elif kind == "eeb-standard":
+                if not self._is_standard_eeb_block(block):
+                    continue
+            else:
                 continue
+
             parsed = self._parse_block(
                 block,
                 incident=incident,
@@ -298,6 +516,9 @@ class TrencherDeliverableParser:
             if EEB_BUNDLE_MARKER in block and "bundle" not in seen:
                 seen.add("bundle")
                 kinds.append("bundle")
+            if self._is_standard_eeb_block(block) and "eeb-standard" not in seen:
+                seen.add("eeb-standard")
+                kinds.append("eeb-standard")
         return kinds
 
     def _extract_service_request_blocks(
@@ -313,22 +534,24 @@ class TrencherDeliverableParser:
             comments_text,
             re.MULTILINE,
         ):
-            start = match.start()
+            service_start = match.start()
             comment_num = "?"
             comment_date = "?"
+            block_start = service_start
             for header in headers:
-                if header.start() < start:
+                if header.start() < service_start:
                     comment_num = header.group(1)
                     comment_date = header.group(2)
+                    block_start = header.start()
                 else:
                     break
 
             tail = comments_text[match.end() :]
             end_offset = len(tail)
-            next_header = TRENCHER_COMMENT_HEADER_RE.search(tail)
+            next_header = EPRINT_COMMENT_HEADER_RE.search(tail)
             if next_header:
                 end_offset = next_header.start()
-            block = comments_text[start : match.end() + end_offset]
+            block = comments_text[block_start : match.end() + end_offset]
             blocks.append((comment_num, comment_date, block))
 
         return blocks
@@ -341,7 +564,7 @@ class TrencherDeliverableParser:
         comment_num: str,
         comment_date: str,
     ) -> Optional[DeliverableVersion]:
-        eeb_version_match = re.search(r"This is EEB version\s*:\s*(\d+)", block)
+        eeb_version_match = EEB_VERSION_RE.search(block)
         product_match = re.search(
             r"This EEB is built for Product version\s*:\s*(.+)$",
             block,
@@ -351,21 +574,39 @@ class TrencherDeliverableParser:
             r"Service request's primary:\s*(\d+)",
             block,
         )
+        submission_match = re.search(
+            r"Submission Type:\s*(.+)$",
+            block,
+            re.MULTILINE,
+        )
+        install_on_match = re.search(
+            r"Install on:\s*(.+)$",
+            block,
+            re.MULTILINE,
+        )
         if not eeb_version_match:
             return None
 
-        constituents = (
-            self._parse_pkg_constituents(block)
-            if kind == "eeb-pkg"
-            else self._parse_bundle_constituents(block, incident=incident)
-        )
+        eeb_version = int(eeb_version_match.group(1))
+        if kind == "eeb-pkg":
+            constituents = self._parse_pkg_constituents(block)
+        elif kind == "bundle":
+            constituents = self._parse_bundle_constituents(block, incident=incident)
+        else:
+            constituents = [
+                ConstituentRef(
+                    incident=incident,
+                    embedded_version=eeb_version,
+                )
+            ]
+
         readme_notes = self._extract_section(block, "Readme Notes:")
         problem_description = self._extract_section(block, "Problem Description:")
 
         return DeliverableVersion(
             kind=kind,
             incident=incident,
-            eeb_version=int(eeb_version_match.group(1)),
+            eeb_version=eeb_version,
             product_version=(product_match.group(1).strip() if product_match else ""),
             primary=(primary_match.group(1) if primary_match else ""),
             comment_num=comment_num,
@@ -378,6 +619,10 @@ class TrencherDeliverableParser:
             links=self._parse_links(block),
             readme_notes=readme_notes,
             problem_description=problem_description,
+            submission_type=(
+                submission_match.group(1).strip() if submission_match else ""
+            ),
+            install_on=(install_on_match.group(1).strip() if install_on_match else ""),
         )
 
     def _parse_pkg_constituents(self, block: str) -> List[ConstituentRef]:
@@ -509,16 +754,40 @@ class TrencherDeliverableParser:
 
     def _parse_platform_packages(self, block: str) -> List[PlatformPackage]:
         packages: List[PlatformPackage] = []
+        seen: Set[Tuple[str, str]] = set()
+
         for match in re.finditer(
             r"Secure file (\S+)\s*\n\s+(NetBackup_\S+)",
             block,
         ):
+            secure_file = match.group(1)
+            package_name = match.group(2)
+            key = (secure_file.split("/", 1)[0], package_name)
+            if key in seen:
+                continue
+            seen.add(key)
             packages.append(
                 PlatformPackage(
-                    secure_file=match.group(1),
-                    package_name=match.group(2),
+                    secure_file=secure_file,
+                    package_name=package_name,
                 )
             )
+
+        for match in re.finditer(r"Secure file (\S+/)([^\s\n]+)", block):
+            platform = match.group(1).rstrip("/")
+            filename = match.group(2)
+            secure_file = f"{platform}/{filename}"
+            key = (platform, filename)
+            if key in seen:
+                continue
+            seen.add(key)
+            packages.append(
+                PlatformPackage(
+                    secure_file=secure_file,
+                    package_name=filename,
+                )
+            )
+
         return packages
 
     def _parse_links(self, block: str) -> Dict[str, str]:
@@ -576,8 +845,126 @@ def _format_chunked_list(
     return lines
 
 
+def _parse_artifact_size_bytes(size_str: str) -> int:
+    try:
+        return int(str(size_str).replace(",", "").strip())
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _format_artifact_size(total_bytes: int) -> str:
+    if total_bytes <= 0:
+        return "-"
+    for unit, divisor in (
+        ("TB", 1024**4),
+        ("GB", 1024**3),
+        ("MB", 1024**2),
+        ("KB", 1024),
+        ("B", 1),
+    ):
+        if total_bytes >= divisor or unit == "B":
+            value = total_bytes / divisor
+            if unit == "B":
+                return f"{total_bytes:,}{unit}"
+            return f"{value:.1f}{unit}"
+    return str(total_bytes)
+
+
+def _classify_artifact_filename(filename: str) -> str:
+    lower = filename.lower()
+    if "eebinstaller_" in lower:
+        return "eebinstaller"
+    if lower.startswith("nbapp_eeb_et"):
+        return "rpm"
+    if "index" in lower:
+        return "index"
+    if any(
+        token in lower
+        for token in (
+            "install_failure",
+            "install_verify",
+            "post_uninstall",
+            "preprocess_install",
+            "install-",
+        )
+    ):
+        return "install-script"
+    if lower.endswith(".war"):
+        return "war"
+    if lower.endswith(".exe"):
+        return "exe"
+    if lower.endswith(".rpm"):
+        return "rpm"
+    return "other"
+
+
+def _summarize_artifact_types(type_counts: Counter) -> str:
+    if not type_counts:
+        return "-"
+    parts = [
+        f"{kind}×{count}" if count > 1 else kind
+        for kind, count in sorted(type_counts.items())
+    ]
+    text = ", ".join(parts)
+    if len(text) > 44:
+        return text[:41] + "..."
+    return text
+
+
+_PLATFORM_SORT_ORDER = ("AMD64", "linuxR_x86", "linuxS_x86")
+
+_PLATFORM_PACKAGE_TYPE_SORT = {
+    "primary-set": 0,
+    "war": 1,
+    "install-script": 2,
+    "jar": 3,
+    "other": 4,
+}
+
+
+def _sort_platforms(platforms: Set[str]) -> List[str]:
+    order = {platform: index for index, platform in enumerate(_PLATFORM_SORT_ORDER)}
+    return sorted(platforms, key=lambda platform: (order.get(platform, 99), platform))
+
+
+def _format_platform_coverage(platforms: Set[str], all_platforms: Set[str]) -> str:
+    if platforms == all_platforms and len(all_platforms) > 1:
+        return f"all ({len(all_platforms)})"
+    linux_only = {"linuxR_x86", "linuxS_x86"}
+    if platforms == linux_only:
+        return "linux×2"
+    text = ", ".join(_sort_platforms(platforms))
+    if len(text) > 40:
+        return text[:37] + "..."
+    return text
+
+
+def _classify_platform_package(name: str) -> str:
+    lower = name.lower()
+    if lower.startswith("netbackup_") and ("_eeb" in lower or "_set" in lower):
+        return "primary-set"
+    if lower.endswith(".war"):
+        return "war"
+    if lower.endswith(".jar"):
+        return "jar"
+    if lower.endswith(".exe") or lower.endswith(".sh"):
+        return "install-script"
+    if any(
+        token in lower
+        for token in (
+            "install_failure",
+            "install_verify",
+            "post_uninstall",
+            "preprocess_install",
+            "install-",
+        )
+    ):
+        return "install-script"
+    return "other"
+
+
 class DeliverableReporter:
-    PKG_CONSTITUENT_COLUMNS = [
+    PKG_SR_DETAIL_COLUMNS = [
         "ET",
         "EMBEDDED",
         "LATEST",
@@ -585,17 +972,25 @@ class DeliverableReporter:
         "TYPE",
         "STATE",
         "VERSION",
+        "TARGET_VERSION",
+        "RESOLUTION",
+        "ASSIGNED_TO",
         "ABSTRACT",
     ]
-    BUNDLE_CONSTITUENT_COLUMNS = [
+    PKG_CONSTITUENT_COLUMNS = PKG_SR_DETAIL_COLUMNS  # backward-compatible alias
+    BUNDLE_SR_DETAIL_COLUMNS = [
         "ET",
         "SOURCE",
         "LATEST_EEB",
         "TYPE",
         "STATE",
         "VERSION",
+        "TARGET_VERSION",
+        "RESOLUTION",
+        "ASSIGNED_TO",
         "ABSTRACT",
     ]
+    BUNDLE_CONSTITUENT_COLUMNS = BUNDLE_SR_DETAIL_COLUMNS  # backward-compatible alias
 
     def render(
         self,
@@ -603,6 +998,7 @@ class DeliverableReporter:
         enriched: Dict[str, Dict[str, str]],
         latest_versions: Dict[str, Optional[int]],
         include_details: bool = False,
+        full_details: bool = False,
         stale_only: bool = False,
     ) -> str:
         sections: List[str] = []
@@ -613,6 +1009,7 @@ class DeliverableReporter:
                     enriched,
                     latest_versions,
                     include_details=include_details,
+                    full_details=full_details,
                     stale_only=stale_only,
                 )
             )
@@ -626,24 +1023,30 @@ class DeliverableReporter:
         if not versions_by_kind:
             return ""
 
-        has_bundle = "bundle" in versions_by_kind
-        has_pkg = "eeb-pkg" in versions_by_kind
-        if has_bundle and has_pkg:
-            suggest = "-A"
-            kind_label = "EEB BUNDLE + EEB PACKAGE"
-        elif has_bundle:
-            suggest = "-B"
-            kind_label = "EEB BUNDLE"
+        present_kinds = [
+            kind for kind in DELIVERABLE_KINDS if kind in versions_by_kind
+        ]
+        kind_label = " + ".join(
+            deliverable_kind_label(kind) for kind in present_kinds
+        )
+        if len(present_kinds) == 1:
+            only = present_kinds[0]
+            if only == "eeb-pkg":
+                suggest = "-P"
+            elif only == "bundle":
+                suggest = "-B"
+            else:
+                suggest = "-C"
         else:
-            suggest = "-P"
-            kind_label = "EEB PACKAGE"
+            suggest = "-A"
 
+        has_bundle = "bundle" in versions_by_kind
         hint_rows: List[Dict[str, str]] = []
-        for kind in ("eeb-pkg", "bundle"):
+        for kind in DELIVERABLE_KINDS:
             for version in versions_by_kind.get(kind, []):
                 comment_date = version.comment_date.split()[0] if version.comment_date else "?"
                 row: Dict[str, str] = {
-                    "KIND": "PKG" if kind == "eeb-pkg" else "BUNDLE",
+                    "TYPE": deliverable_kind_hint_code(kind),
                     "VER": str(version.eeb_version),
                     "COMMENT": f"#{version.comment_num} {comment_date}",
                     "PRODUCT": version.product_version,
@@ -662,14 +1065,14 @@ class DeliverableReporter:
                         row["README*"] = ""
                 hint_rows.append(row)
 
-        columns = ["KIND", "VER", "COMMENT", "PRODUCT", "PRIMARY", "ETs"]
+        columns = ["TYPE", "VER", "COMMENT", "PRODUCT", "PRIMARY", "ETs"]
         if has_bundle:
             columns.extend(["BUNDLE", "README*"])
 
         renderer = TableRenderer(columns)
         renderer.widths.update(
             {
-                "KIND": 7,
+                "TYPE": 9,
                 "VER": 4,
                 "COMMENT": 18,
                 "PRODUCT": 20,
@@ -688,7 +1091,7 @@ class DeliverableReporter:
             renderer.render_with_count(hint_rows),
         ]
 
-        if has_pkg:
+        if "eeb-pkg" in versions_by_kind:
             for version in versions_by_kind.get("eeb-pkg", []):
                 if not version.constituents:
                     continue
@@ -701,9 +1104,24 @@ class DeliverableReporter:
                 lines.extend(
                     _format_chunked_list(
                         embedded,
-                        prefix=f"v{version.eeb_version} EEBs: ",
+                        prefix=f"v{version.eeb_version} SRs in package: ",
                     )
                 )
+
+        if "bundle" in versions_by_kind:
+            for version in versions_by_kind.get("bundle", []):
+                in_bundle = [
+                    c.incident
+                    for c in version.constituents
+                    if c.in_bundle_contains
+                ]
+                if in_bundle:
+                    lines.extend(
+                        _format_chunked_list(
+                            in_bundle,
+                            prefix=f"v{version.eeb_version} SRs in bundle: ",
+                        )
+                    )
 
         return "\n".join(lines)
 
@@ -713,19 +1131,16 @@ class DeliverableReporter:
         enriched: Dict[str, Dict[str, str]],
         latest_versions: Dict[str, Optional[int]],
         include_details: bool = False,
+        full_details: bool = False,
         stale_only: bool = False,
     ) -> str:
-        title = (
-            "EEB PACKAGE"
-            if version.kind == "eeb-pkg"
-            else "EEB BUNDLE"
-        )
+        title = deliverable_kind_label(version.kind)
         lines = [
             f"\n{'=' * 88}",
             f"{title} REPORT - ET {version.incident} - EEB v{version.eeb_version}",
             f"Comment #{version.comment_num} @ {version.comment_date}",
             f"{'=' * 88}",
-            self._render_summary_table(version),
+            self._render_summary_table(version, enriched),
         ]
 
         if version.kind == "eeb-pkg":
@@ -734,24 +1149,11 @@ class DeliverableReporter:
                     version,
                     enriched,
                     latest_versions,
-                    self.PKG_CONSTITUENT_COLUMNS,
+                    self.PKG_SR_DETAIL_COLUMNS,
                     include_embedded=True,
                     stale_only=stale_only,
                 )
             )
-        else:
-            lines.append(
-                self._render_constituent_table(
-                    version,
-                    enriched,
-                    latest_versions,
-                    self.BUNDLE_CONSTITUENT_COLUMNS,
-                    include_embedded=False,
-                    stale_only=False,
-                )
-            )
-
-        if version.kind == "eeb-pkg":
             lines.append(
                 self._render_status_summary(
                     version,
@@ -759,35 +1161,98 @@ class DeliverableReporter:
                     stale_only=stale_only,
                 )
             )
+        elif version.kind == "bundle":
+            lines.append(
+                self._render_constituent_table(
+                    version,
+                    enriched,
+                    latest_versions,
+                    self.BUNDLE_SR_DETAIL_COLUMNS,
+                    include_embedded=False,
+                    stale_only=False,
+                )
+            )
 
         if include_details:
+            shipping_rows: Optional[List[Dict[str, str]]] = None
+            if version.kind in ("eeb-pkg", "bundle") and version.artifacts:
+                shipping_rows = self._build_sr_shipping_rows(version)
+                lines.append(
+                    self._render_sr_shipping_details(
+                        version,
+                        shipping_rows=shipping_rows,
+                        full_details=full_details,
+                    )
+                )
+
             if version.platform_packages:
-                lines.append(self._render_platform_packages(version))
+                lines.append(
+                    self._render_platform_packages(version, full_details=full_details)
+                )
 
             if version.links:
                 lines.append(self._render_links(version))
 
             if version.artifacts:
-                lines.append(self._render_artifacts(version))
+                lines.append(
+                    self._render_artifacts(
+                        version,
+                        shipping_rows=shipping_rows,
+                        full_details=full_details,
+                    )
+                )
 
         return "\n".join(lines)
 
-    def _render_summary_table(self, version: DeliverableVersion) -> str:
+    def _render_summary_table(
+        self,
+        version: DeliverableVersion,
+        enriched: Optional[Dict[str, Dict[str, str]]] = None,
+    ) -> str:
+        enriched = enriched or {}
+        if version.kind == "eeb-pkg":
+            service_label = "Package ET"
+        elif version.kind == "bundle":
+            service_label = "Bundle ET"
+        else:
+            service_label = "Service ET"
+
         rows = [
-            {
-                "FIELD": "Package ET" if version.kind == "eeb-pkg" else "Bundle ET",
-                "VALUE": version.incident,
-            },
+            {"FIELD": "Deliverable Type", "VALUE": deliverable_kind_label(version.kind)},
+            {"FIELD": service_label, "VALUE": version.incident},
             {"FIELD": "Primary/Super", "VALUE": version.primary},
             {"FIELD": "Product Version", "VALUE": version.product_version},
             {"FIELD": "EEB Version", "VALUE": str(version.eeb_version)},
-            {"FIELD": "Constituents", "VALUE": str(len(version.constituents))},
         ]
+
+        if version.kind == "eeb-standard":
+            if version.submission_type:
+                rows.append({"FIELD": "Submission Type", "VALUE": version.submission_type})
+            if version.install_on:
+                rows.append({"FIELD": "Install On", "VALUE": version.install_on})
+            details = enriched.get(version.incident, {})
+            if details:
+                rows.extend(
+                    [
+                        {"FIELD": "TYPE", "VALUE": details.get("TYPE", "")},
+                        {"FIELD": "STATE", "VALUE": details.get("STATE", "")},
+                        {"FIELD": "VERSION", "VALUE": details.get("VERSION", "")},
+                    ]
+                )
+        else:
+            label = (
+                "Service Requests"
+                if version.kind in ("eeb-pkg", "bundle")
+                else "Constituents"
+            )
+            rows.append({"FIELD": label, "VALUE": str(len(version.constituents))})
+
         if version.kind == "bundle":
             in_bundle = sum(1 for c in version.constituents if c.in_bundle_contains)
             extras = len(version.constituents) - in_bundle
             rows.append({"FIELD": "In bundle contains", "VALUE": str(in_bundle)})
             rows.append({"FIELD": "Extra (readme/desc)", "VALUE": str(extras)})
+
         rows.extend(
             [
                 {
@@ -820,6 +1285,9 @@ class DeliverableReporter:
                 "TYPE": details.get("TYPE", ""),
                 "STATE": details.get("STATE", ""),
                 "VERSION": details.get("VERSION", ""),
+                "TARGET_VERSION": details.get("TARGET_VERSION", ""),
+                "RESOLUTION": details.get("RESOLUTION", ""),
+                "ASSIGNED_TO": details.get("ASSIGNED_TO", ""),
                 "ABSTRACT": details.get("ABSTRACT", ""),
             }
             if include_embedded:
@@ -840,11 +1308,16 @@ class DeliverableReporter:
 
         renderer = TableRenderer(columns)
         renderer.widths["ABSTRACT"] = 80
+        renderer.widths["ASSIGNED_TO"] = 18
+        renderer.widths["RESOLUTION"] = 16
+        renderer.widths["TARGET_VERSION"] = 12
         if version.kind == "bundle":
             renderer.widths["SOURCE"] = 8
         title = (
-            "CONSTITUENT EEBs:"
+            "SR DETAILS (SERVICE REQUESTS IN PACKAGE):"
             if version.kind == "eeb-pkg"
+            else "SR DETAILS (SERVICE REQUESTS IN BUNDLE):"
+            if version.kind == "bundle"
             else "CONSTITUENT ETRACKS:"
         )
         if stale_only and not rows:
@@ -916,19 +1389,198 @@ class DeliverableReporter:
             return f"STALE (+{latest - embedded})"
         return f"NEWER ({embedded}>{latest})"
 
-    def _render_platform_packages(self, version: DeliverableVersion) -> str:
-        rows = [
+    @staticmethod
+    def _artifact_sr_label(
+        artifact: ArtifactRow,
+        package_et: str,
+        constituent_ids: Sequence[str],
+        deliverable_kind: str = "eeb-pkg",
+    ) -> str:
+        """Map a shipping artifact filename to a constituent ET or bundle/package ET."""
+        filename = artifact.filename.upper()
+        for incident in constituent_ids:
+            token = incident.upper()
+            if (
+                f"_{token}_" in filename
+                or f"ET{token}" in filename
+                or filename.startswith(f"{token}.")
+            ):
+                return incident
+        if package_et in artifact.filename:
+            prefix = "BUNDLE" if deliverable_kind == "bundle" else "PKG"
+            return f"{prefix}/{package_et}"
+        if deliverable_kind == "bundle":
+            return f"BUNDLE/{package_et}"
+        return "?"
+
+    def _build_sr_shipping_rows(self, version: DeliverableVersion) -> List[Dict[str, str]]:
+        constituent_ids = [c.incident for c in version.constituents]
+        rows: List[Dict[str, str]] = []
+        for artifact in version.artifacts:
+            rows.append(
+                {
+                    "SR": self._artifact_sr_label(
+                        artifact,
+                        version.incident,
+                        constituent_ids,
+                        deliverable_kind=version.kind,
+                    ),
+                    "PLATFORM": artifact.platform,
+                    "FILE": artifact.filename,
+                    "SIZE": artifact.size,
+                    "CHECKSUM": artifact.checksum,
+                }
+            )
+        rows.sort(key=lambda row: (row["SR"], row["PLATFORM"], row["FILE"]))
+        return rows
+
+    def _sr_shipping_heading(self, version: DeliverableVersion) -> str:
+        if version.kind == "bundle":
+            return (
+                "SR SHIPPING (binaries in bundle; shared files labeled "
+                f"BUNDLE/{version.incident}):"
+            )
+        return "SR SHIPPING (binaries per service request in package):"
+
+    def _render_sr_shipping_summary(self, rows: List[Dict[str, str]]) -> str:
+        by_sr: Dict[str, List[Dict[str, str]]] = {}
+        for row in rows:
+            by_sr.setdefault(row["SR"], []).append(row)
+
+        summary_rows: List[Dict[str, str]] = []
+        for sr in sorted(by_sr.keys()):
+            sr_rows = by_sr[sr]
+            platforms = sorted({row["PLATFORM"] for row in sr_rows})
+            total_bytes = sum(_parse_artifact_size_bytes(row["SIZE"]) for row in sr_rows)
+            type_counts = Counter(
+                _classify_artifact_filename(row["FILE"]) for row in sr_rows
+            )
+            summary_rows.append(
+                {
+                    "SR": sr,
+                    "PLATFORMS": ", ".join(platforms),
+                    "FILES": str(len(sr_rows)),
+                    "TOTAL_SIZE": _format_artifact_size(total_bytes),
+                    "ARTIFACT_TYPES": _summarize_artifact_types(type_counts),
+                }
+            )
+
+        renderer = TableRenderer(
+            ["SR", "PLATFORMS", "FILES", "TOTAL_SIZE", "ARTIFACT_TYPES"]
+        )
+        renderer.widths.update(
             {
-                "PLATFORM": pkg.platform,
-                "PACKAGE_NAME": pkg.package_name,
+                "SR": 14,
+                "PLATFORMS": 40,
+                "FILES": 5,
+                "TOTAL_SIZE": 10,
+                "ARTIFACT_TYPES": 44,
             }
-            for pkg in TrencherDeliverableParser._dedupe_platform_packages(
+        )
+        return "SR SHIPPING SUMMARY:\n" + renderer.render_with_count(summary_rows)
+
+    def _render_sr_shipping_details(
+        self,
+        version: DeliverableVersion,
+        shipping_rows: Optional[List[Dict[str, str]]] = None,
+        full_details: bool = False,
+    ) -> str:
+        rows = shipping_rows if shipping_rows is not None else self._build_sr_shipping_rows(version)
+        parts = [f"\n{self._sr_shipping_heading(version)}", self._render_sr_shipping_summary(rows)]
+
+        show_full = full_details or len(rows) <= DELIVERABLE_FULL_DETAIL_ROW_LIMIT
+        if show_full:
+            renderer = TableRenderer(["SR", "PLATFORM", "FILE", "SIZE", "CHECKSUM"])
+            renderer.widths["SR"] = 14
+            renderer.widths["FILE"] = 48
+            parts.append("\nSR SHIPPING DETAILS (full):\n" + renderer.render_with_count(rows))
+        elif rows:
+            parts.append(
+                f"(Full listing: {len(rows)} rows; use --full-deliverable-details to show all)"
+            )
+        return "\n".join(parts)
+
+    def _build_platform_package_full_rows(
+        self, version: DeliverableVersion
+    ) -> List[Dict[str, str]]:
+        return [
+            {
+                "PLATFORM": package.platform,
+                "PACKAGE_NAME": package.package_name,
+            }
+            for package in TrencherDeliverableParser._dedupe_platform_packages(
                 version.platform_packages
             )
         ]
-        renderer = TableRenderer(["PLATFORM", "PACKAGE_NAME"])
-        renderer.widths["PACKAGE_NAME"] = 48
-        return "\nPLATFORM PACKAGES:\n" + renderer.render_with_count(rows)
+
+    def _build_platform_package_summary_rows(
+        self, full_rows: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        by_name: Dict[str, Set[str]] = {}
+        for row in full_rows:
+            by_name.setdefault(row["PACKAGE_NAME"], set()).add(row["PLATFORM"])
+
+        all_platforms: Set[str] = set()
+        for platforms in by_name.values():
+            all_platforms |= platforms
+
+        summary_rows: List[Dict[str, str]] = []
+        for name in by_name:
+            platforms = by_name[name]
+            summary_rows.append(
+                {
+                    "PACKAGE_NAME": name,
+                    "TYPE": _classify_platform_package(name),
+                    "PLATFORMS": _format_platform_coverage(platforms, all_platforms),
+                }
+            )
+
+        summary_rows.sort(
+            key=lambda row: (
+                _PLATFORM_PACKAGE_TYPE_SORT.get(row["TYPE"], 99),
+                row["PACKAGE_NAME"],
+            )
+        )
+        return summary_rows
+
+    def _render_platform_packages_summary(
+        self, summary_rows: List[Dict[str, str]]
+    ) -> str:
+        renderer = TableRenderer(["PACKAGE_NAME", "TYPE", "PLATFORMS"])
+        renderer.widths.update(
+            {
+                "PACKAGE_NAME": 48,
+                "TYPE": 14,
+                "PLATFORMS": 12,
+            }
+        )
+        return "PLATFORM PACKAGES SUMMARY:\n" + renderer.render_with_count(summary_rows)
+
+    def _render_platform_packages(
+        self, version: DeliverableVersion, full_details: bool = False
+    ) -> str:
+        full_rows = self._build_platform_package_full_rows(version)
+        summary_rows = self._build_platform_package_summary_rows(full_rows)
+        unique_count = len(summary_rows)
+        parts = [
+            f"\nPLATFORM PACKAGES ({unique_count} unique packages, "
+            f"{len(full_rows)} platform entries):",
+            self._render_platform_packages_summary(summary_rows),
+        ]
+
+        show_full = full_details or len(full_rows) <= DELIVERABLE_FULL_DETAIL_ROW_LIMIT
+        if show_full:
+            renderer = TableRenderer(["PLATFORM", "PACKAGE_NAME"])
+            renderer.widths["PACKAGE_NAME"] = 48
+            parts.append(
+                "\nPLATFORM PACKAGES (full):\n" + renderer.render_with_count(full_rows)
+            )
+        elif full_rows:
+            parts.append(
+                f"(Full listing: {len(full_rows)} rows; "
+                "use --full-deliverable-details to show all)"
+            )
+        return "\n".join(parts)
 
     def _render_links(self, version: DeliverableVersion) -> str:
         rows = [{"TYPE": key.upper(), "URL": url} for key, url in version.links.items()]
@@ -936,7 +1588,57 @@ class DeliverableReporter:
         renderer.widths["URL"] = 72
         return "\nLINKS:\n" + renderer.render_with_count(rows)
 
-    def _render_artifacts(self, version: DeliverableVersion) -> str:
+    def _render_artifacts_summary(
+        self,
+        version: DeliverableVersion,
+        shipping_rows: Optional[List[Dict[str, str]]] = None,
+    ) -> str:
+        if shipping_rows is None:
+            shipping_rows = self._build_sr_shipping_rows(version)
+
+        by_platform: Dict[str, List[Dict[str, str]]] = {}
+        for row in shipping_rows:
+            by_platform.setdefault(row["PLATFORM"], []).append(row)
+
+        summary_rows: List[Dict[str, str]] = []
+        for platform in sorted(by_platform.keys()):
+            platform_rows = by_platform[platform]
+            total_bytes = sum(
+                _parse_artifact_size_bytes(row["SIZE"]) for row in platform_rows
+            )
+            type_counts = Counter(
+                _classify_artifact_filename(row["FILE"]) for row in platform_rows
+            )
+            summary_rows.append(
+                {
+                    "PLATFORM": platform,
+                    "FILES": str(len(platform_rows)),
+                    "SRs": str(len({row["SR"] for row in platform_rows})),
+                    "TOTAL_SIZE": _format_artifact_size(total_bytes),
+                    "ARTIFACT_TYPES": _summarize_artifact_types(type_counts),
+                }
+            )
+
+        renderer = TableRenderer(
+            ["PLATFORM", "FILES", "SRs", "TOTAL_SIZE", "ARTIFACT_TYPES"]
+        )
+        renderer.widths.update(
+            {
+                "PLATFORM": 12,
+                "FILES": 5,
+                "SRs": 4,
+                "TOTAL_SIZE": 10,
+                "ARTIFACT_TYPES": 44,
+            }
+        )
+        return "\nARTIFACTS SUMMARY:\n" + renderer.render_with_count(summary_rows)
+
+    def _render_artifacts(
+        self,
+        version: DeliverableVersion,
+        shipping_rows: Optional[List[Dict[str, str]]] = None,
+        full_details: bool = False,
+    ) -> str:
         rows = [
             {
                 "PLATFORM": artifact.platform,
@@ -946,9 +1648,18 @@ class DeliverableReporter:
             }
             for artifact in version.artifacts
         ]
-        renderer = TableRenderer(["PLATFORM", "FILE", "SIZE", "CHECKSUM"])
-        renderer.widths["FILE"] = 48
-        return "\nARTIFACTS:\n" + renderer.render_with_count(rows)
+        parts = [self._render_artifacts_summary(version, shipping_rows=shipping_rows)]
+
+        show_full = full_details or len(rows) <= DELIVERABLE_FULL_DETAIL_ROW_LIMIT
+        if show_full:
+            renderer = TableRenderer(["PLATFORM", "FILE", "SIZE", "CHECKSUM"])
+            renderer.widths["FILE"] = 48
+            parts.append("\nARTIFACTS (full):\n" + renderer.render_with_count(rows))
+        elif rows:
+            parts.append(
+                f"(Full listing: {len(rows)} rows; use --full-deliverable-details to show all)"
+            )
+        return "\n".join(parts)
 
 
 class TableRenderer:
@@ -990,6 +1701,7 @@ class EtrackHierarchyFetcher:
         ssh_target: Optional[str] = None,
         verbose: bool = False,
         debug: bool = False,
+        quiet: bool = False,
         command_timeout: int = 20,
         deliverable_parallel: int = DEFAULT_DELIVERABLE_PARALLEL,
         ssh_multiplex: bool = True,
@@ -999,6 +1711,7 @@ class EtrackHierarchyFetcher:
         self.ssh_target = ssh_target
         self.verbose = verbose
         self.debug = debug
+        self.quiet = quiet
         self.command_timeout = command_timeout
         self.deliverable_parallel = max(1, deliverable_parallel)
         self.ssh_multiplex = ssh_multiplex
@@ -1051,7 +1764,7 @@ class EtrackHierarchyFetcher:
         return ["ssh", *self._ssh_options(), self.ssh_target]
 
     def _recover_ssh_multiplex(self) -> None:
-        if self.verbose:
+        if self.debug:
             print(
                 "[WARN] Stale SSH multiplex socket; resetting connection...",
                 file=sys.stderr,
@@ -1093,13 +1806,18 @@ class EtrackHierarchyFetcher:
         for attempt in range(self.max_retries + 1):
             if attempt > 0:
                 delay = self.retry_delay * (2 ** (attempt - 1))
-                if self.verbose:
+                if not self.quiet:
                     print(
                         f"[WARN] {error_label} transient failure "
-                        f"(retry {attempt}/{self.max_retries}): {last_detail}",
+                        f"(retry {attempt}/{self.max_retries}, timeout={timeout}s): "
+                        f"{last_detail}",
                         file=sys.stderr,
                     )
-                    print(f"       Retrying in {delay:.0f}s...", file=sys.stderr)
+                    print(
+                        f"       Retrying in {delay:.0f}s... "
+                        f"(increase --timeout / -T if this persists)",
+                        file=sys.stderr,
+                    )
                 time.sleep(delay)
 
             try:
@@ -1187,12 +1905,15 @@ class EtrackHierarchyFetcher:
         if local_esql:
             return [local_esql]
 
-        raise EtrackHierarchyError("esql command not found. Install esql or use --ssh user@host.")
+        raise EtrackHierarchyError(
+            "esql command not found locally. Install esql, use -R/--ssh user@host, "
+            "or set ETRACK_SSH / ENGVM_HOST / NIS_USER+NIS_SERVER for auto-SSH."
+        )
 
     def _run_esql(self, sql: str) -> str:
         cmd = self._resolve_esql_command()
         self._query_count += 1
-        if self.verbose and not self.debug:
+        if not self.quiet and not self.debug:
             print(f"[ESQL #{self._query_count}] Running query...", file=sys.stderr)
         if self.debug:
             print(f"\n[ESQL #{self._query_count}] Executing:", file=sys.stderr)
@@ -1221,10 +1942,11 @@ class EtrackHierarchyFetcher:
             except CommandTimeoutError as exc:
                 if attempt < len(timeouts):
                     last_timeout_error = exc
-                    if self.verbose:
+                    if not self.quiet:
                         print(
-                            f"[WARN] esql timed out at {timeout_s}s, retrying once "
-                            f"with a larger timeout...",
+                            f"[WARN] esql timed out at {timeout_s}s "
+                            f"(--timeout {self.command_timeout}); retrying once "
+                            f"with {timeouts[1]}s...",
                             file=sys.stderr,
                         )
                     continue
@@ -1241,7 +1963,7 @@ class EtrackHierarchyFetcher:
                 f"[ESQL #{self._query_count}] Completed in {elapsed:.2f}s",
                 file=sys.stderr,
             )
-        elif self.verbose:
+        elif not self.quiet:
             print(
                 f"[ESQL #{self._query_count}] Completed in {elapsed:.2f}s",
                 file=sys.stderr,
@@ -1390,7 +2112,7 @@ class EtrackHierarchyFetcher:
             full_cmd = self._ssh_command_prefix() + list(cmd)
 
         start_time = time.time()
-        if self.verbose and not self.debug:
+        if not self.quiet and not self.debug:
             print("[INFO] Running external command...", file=sys.stderr)
         if self.debug:
             print(f"[INFO] Running: {' '.join(full_cmd)}", file=sys.stderr)
@@ -1404,7 +2126,7 @@ class EtrackHierarchyFetcher:
         )
 
         elapsed = time.time() - start_time
-        if self.verbose:
+        if not self.quiet:
             print(f"[INFO] External command completed in {elapsed:.2f}s", file=sys.stderr)
 
         return result.stdout.decode("utf-8", errors="replace")
@@ -1422,7 +2144,7 @@ class EtrackHierarchyFetcher:
             cmd = ["bash", "-lc", shell_cmd]
 
         start_time = time.time()
-        if self.verbose and not self.debug:
+        if not self.quiet and not self.debug:
             print("[INFO] Running filtered remote command...", file=sys.stderr)
         if self.debug:
             print(f"[INFO] Shell pipeline: {shell_cmd}", file=sys.stderr)
@@ -1438,7 +2160,7 @@ class EtrackHierarchyFetcher:
             )
         except EtrackHierarchyError:
             if allow_failure:
-                if self.verbose:
+                if self.debug:
                     print(
                         f"[WARN] Filtered command failed after retries: {shell_cmd}",
                         file=sys.stderr,
@@ -1447,7 +2169,7 @@ class EtrackHierarchyFetcher:
             raise
 
         elapsed = time.time() - start_time
-        if self.verbose:
+        if not self.quiet:
             print(
                 f"[INFO] Filtered command completed in {elapsed:.2f}s",
                 file=sys.stderr,
@@ -1460,11 +2182,7 @@ class EtrackHierarchyFetcher:
         if cached is not None:
             return cached
 
-        shell_cmd = (
-            f"eprint -c {incident} 2>/dev/null | "
-            r"sed -n '/^([0-9][0-9]*) @ svc_rmntrencher/,/^([0-9][0-9]*) @/p'"
-        )
-        comments = self._run_shell_pipeline(shell_cmd)
+        comments = extract_trencher_comments(self.get_comments(incident))
         self._comments_cache[f"trencher:{incident}"] = comments
         return comments
 
@@ -1497,7 +2215,7 @@ class EtrackHierarchyFetcher:
         if not missing:
             return result
 
-        if self.verbose:
+        if self.debug:
             print(
                 f"[INFO] Resolving latest EEB version for {len(missing)} ET(s) "
                 f"(parallel={self.deliverable_parallel})...",
@@ -1610,9 +2328,9 @@ class EtrackHierarchyFetcher:
         for kind in kinds:
             versions_by_kind[kind] = parser.parse(comments, incident, kind)
 
-        if self.verbose:
+        if self.debug:
             print(
-                f"[INFO] Deliverable hints for ET {incident}: "
+                f"[DEBUG] Deliverable hints for ET {incident}: "
                 f"{', '.join(versions_by_kind.keys())}",
                 file=sys.stderr,
             )
@@ -1645,15 +2363,15 @@ class EtrackHierarchyFetcher:
         kind: str,
         deliverable_use_esql: bool,
         include_details: bool = False,
+        full_details: bool = False,
         stale_only: bool = False,
     ) -> str:
         comments = self.get_trencher_comments(incident)
         versions = TrencherDeliverableParser().parse(comments, incident, kind)
         if not versions:
-            label = "EEB package" if kind == "eeb-pkg" else "EEB bundle"
             raise EtrackHierarchyError(
-                f"No {label} deliverable comments found in svc_rmntrencher "
-                f"comments for ET {incident}."
+                f"No {deliverable_kind_label(kind)} deliverable comments found in "
+                f"svc_rmntrencher comments for ET {incident}."
             )
 
         constituent_ids: List[str] = []
@@ -1664,9 +2382,9 @@ class EtrackHierarchyFetcher:
                     seen.add(constituent.incident)
                     constituent_ids.append(constituent.incident)
 
-        if self.verbose:
+        if self.debug:
             print(
-                f"[INFO] Fetching details for {len(constituent_ids)} constituent ET(s)...",
+                f"[DEBUG] Fetching details for {len(constituent_ids)} constituent ET(s)...",
                 file=sys.stderr,
             )
 
@@ -1691,6 +2409,7 @@ class EtrackHierarchyFetcher:
             enriched,
             latest_versions,
             include_details=include_details,
+            full_details=full_details,
             stale_only=stale_only,
         )
 
@@ -2087,9 +2806,9 @@ class EtrackHierarchyFetcher:
         try:
             x_fields = self._extract_fields_from_xeprs(incident)
         except EtrackHierarchyError as exc:
-            if self.verbose:
+            if self.debug:
                 print(
-                    f"[WARN] eprint -v failed for {incident}; falling back to eprint -vdK ({exc})",
+                    f"[DEBUG] eprint -v failed for {incident}; falling back to eprint -vdK ({exc})",
                     file=sys.stderr,
                 )
             x_fields = self._extract_fields_from_details(incident)
@@ -2389,13 +3108,15 @@ def _resolve_deliverable_kinds(
         kinds.append("eeb-pkg")
     if args.as_bundle:
         kinds.append("bundle")
+    if args.as_standard_eeb:
+        kinds.append("eeb-standard")
     if args.auto_deliverable:
         for kind in fetcher.detect_deliverable_kinds(incident):
             if kind not in kinds:
                 kinds.append(kind)
 
     ordered: List[str] = []
-    for kind in ("eeb-pkg", "bundle"):
+    for kind in DELIVERABLE_KINDS:
         if kind in kinds:
             ordered.append(kind)
     return ordered
@@ -2416,112 +3137,198 @@ def _format_elapsed(seconds: float) -> str:
     return f"{minutes}m {remainder:.1f}s"
 
 
+def _render_single_et_table(
+    fetcher: EtrackHierarchyFetcher,
+    input_incident: str,
+    args: argparse.Namespace,
+) -> None:
+    """Fetch and print one ET row (used by --single and -N without deliverable flags)."""
+    columns = _resolve_output_columns(
+        args.include_cols,
+        args.exclude_cols,
+        DEFAULT_COLUMNS,
+    )
+    parent_map = {input_incident: input_incident}
+    if args.use_esql:
+        rows = fetcher.fetch_records_esql([input_incident], parent_map)
+    else:
+        rows = fetcher.fetch_records_eprint_cached([input_incident], parent_map)
+
+    for row in rows:
+        row["SINCIDENT"] = input_incident
+        row["PARENT_FLAG"] = ""
+
+    renderer = TableRenderer(columns)
+    print(renderer.render_with_count(rows))
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Fetch all eTracks in hierarchy and print tabular output.",
+        formatter_class=ShortLongHelpFormatter,
+        usage=HIERARCHY_USAGE,
         epilog=(
             "Examples:\n"
             "  %(prog)s 4203299\n"
-            "  %(prog)s 4203299 --as-super\n"
-            "  %(prog)s 4203299 --hierarchy-source incident-view\n"
-            "  %(prog)s 4203299 --use-eprint\n"
-            "  %(prog)s 4203299 --include-cols INCIDENT,SINCIDENT,STATE,ABSTRACT\n"
-            "  %(prog)s 4203299 --exclude-cols VERSION,TARGET_VERSION\n"
+            "  %(prog)s 4203299 -N\n"
+            "  %(prog)s 4203299 -1\n"
+            "  %(prog)s 4203299 -q\n"
+            "  %(prog)s 4203299 -S\n"
+            "  %(prog)s 4203299 -y incident-view\n"
+            "  %(prog)s 4203299 -p\n"
+            "  %(prog)s 4203299 -I INCIDENT,SINCIDENT,STATE,ABSTRACT\n"
+            "  %(prog)s 4203299 -E VERSION,TARGET_VERSION\n"
             "  %(prog)s 4232810 -R user@server\n"
-            "  %(prog)s 4232810 -R user@server -B\n"
-            "  %(prog)s 4230893 -A -N -R user@server\n"
+            "  %(prog)s 4232810 -R user@server -B -N\n"
+            "  %(prog)s 4230893 -A -N\n"
+            "  %(prog)s 4230893 -P -N -D\n"
+            "  %(prog)s 4234410 -A -N -D\n"
+            "  %(prog)s 4234410 -C -N -D\n"
             "  %(prog)s 4230893 -P -N -G eprint -F\n"
             "\n"
             "Default run prints hierarchy plus a lightweight DELIVERABLE SUMMARY\n"
-            "for the input ET when svc_rmntrencher comments indicate bundle/pkg.\n"
-            "Use -A/-B/-P for full constituent reports.\n"
+            "for the input ET when svc_rmntrencher comments indicate pkg/bundle/standard.\n"
+            "Deliverable types: EEB PACKAGE (-P), EEB BUNDLE (-B), STANDARD EEB (-C).\n"
+            "Use -A to auto-detect type; add -D for SR shipping details per constituent,\n"
+            "PLATFORM PACKAGES, LINKS, and full ARTIFACTS list.\n"
+            "Note: -F/--stale-only applies to EEB package (-P/-A) reports only.\n"
             "\n"
-            "Short options: -S as-super, -I/-E cols, -R ssh, -A auto-deliverable,\n"
-            "  -P eeb-pkg, -B bundle, -N skip-hierarchy, -D deliverable-details,\n"
-            "  -G deliverable-details-source, -F stale-only, -X no-ssh-multiplex,\n"
-            "  -p use-eprint, -y hierarchy-source, -t htree, -m max-nodes, -T timeout,\n"
-            "  --retries/--retry-delay for SSH resilience,\n"
-            "  -j parallel, -v verbose, -d debug\n"
+            + HIERARCHY_SHORT_OPTIONS_HELP
+            + "\n"
+            "Auto-SSH (when -R omitted): ETRACK_SSH, ENGVM_HOST, NIS_USER@NIS_SERVER\n"
             "\n"
-            "Hierarchy sources (--hierarchy-source):\n"
+            "Hierarchy sources (-y/--hierarchy-source):\n"
             "  inc-bottom-up  fast INC_BOTTOM_UP esql query (default)\n"
             "  incident-view  slow INCIDENT_VIEW esql query\n"
             "  eprint         eprint -a based discovery"
         ),
-        formatter_class=argparse.RawTextHelpFormatter,
     )
 
     parser.add_argument("incident", help="Incident ID or super incident ID")
-    parser.add_argument(
-        "--as-super",
+
+    scope_group = parser.add_argument_group(
+        "Input & scope",
+        "Which ET(s) to fetch and how the incident ID is interpreted.",
+    )
+    scope_group.add_argument(
         "-S",
+        "--as-super",
         action="store_true",
         help="Treat input incident as already-super incident (skip auto-resolution).",
     )
-    parser.add_argument(
-        "--include-cols",
+    scope_group.add_argument(
+        "-1",
+        "--single",
+        action="store_true",
+        help="Fetch one ET row only (no hierarchy walk).",
+    )
+    scope_group.add_argument(
+        "-N",
+        "--skip-hierarchy",
+        action="store_true",
+        help=(
+            "Skip hierarchy table/tree output. Without -A/-P/-B, prints one ET "
+            "summary row for the input incident (same as -1/--single)."
+        ),
+    )
+
+    format_group = parser.add_argument_group(
+        "Output format",
+        "Columns shown, tree layout, and deliverable report content.",
+    )
+    format_group.add_argument(
         "-I",
+        "--include-cols",
         help="Comma-separated columns to include.",
     )
-    parser.add_argument(
-        "--exclude-cols",
+    format_group.add_argument(
         "-E",
+        "--exclude-cols",
         help="Comma-separated columns to exclude.",
     )
-    parser.add_argument(
-        "--ssh",
-        "-R",
-        help="Run commands remotely via SSH target user@host.",
+    format_group.add_argument(
+        "-t",
+        "--htree",
+        dest="htree",
+        action="store_true",
+        help="Display hierarchy tree output after the table.",
     )
-    parser.add_argument(
-        "--include-deliverable-details",
+    format_group.add_argument(
         "-D",
+        "--include-deliverable-details",
         action="store_true",
         help=(
-            "Include PLATFORM PACKAGES, LINKS, and ARTIFACTS sections in "
-            "EEB package/bundle reports (excluded by default)."
+            "Include SR shipping, artifacts, and platform-package summaries, "
+            "PLATFORM PACKAGES, and LINKS "
+            "(all deliverable types; excluded by default). Large lists show summary "
+            "only unless -U/--full-deliverable-details is set."
         ),
     )
-    parser.add_argument(
-        "--auto-deliverable",
+    format_group.add_argument(
+        "-U",
+        "--full-deliverable-details",
+        action="store_true",
+        help=(
+            "With -D, also print full per-file SR SHIPPING DETAILS and ARTIFACTS tables "
+            f"(default: full tables only when row count ≤ {DELIVERABLE_FULL_DETAIL_ROW_LIMIT})."
+        ),
+    )
+    format_group.add_argument(
+        "-F",
+        "--stale-only",
+        action="store_true",
+        help=(
+            "In EEB package reports, show only constituents whose embedded EEB "
+            "version is older than the latest available."
+        ),
+    )
+
+    deliverable_group = parser.add_argument_group(
+        "Deliverable reports",
+        "Parse svc_rmntrencher deliverables: EEB PACKAGE (-P), EEB BUNDLE (-B), "
+        "STANDARD EEB (-C). Use -A to auto-detect type.",
+    )
+    deliverable_group.add_argument(
         "-A",
+        "--auto-deliverable",
         action="store_true",
         help=(
-            "Auto-detect EEB package vs bundle from svc_rmntrencher deliverable "
-            "comments and print full per-version reports. -P/-B override or add "
-            "to detected kinds."
+            "Auto-detect deliverable type (EEB PACKAGE, EEB BUNDLE, or STANDARD EEB) "
+            "from svc_rmntrencher comments and print full per-version reports. "
+            "-P/-B/-C override or add to detected kinds."
         ),
     )
-    parser.add_argument(
-        "--as-eeb-pkg",
+    deliverable_group.add_argument(
         "-P",
+        "--as-eeb-pkg",
         action="store_true",
         help=(
             "Parse svc_rmntrencher EEB Package deliverable comments and print "
             "per-version package tables with constituent version checks."
         ),
     )
-    parser.add_argument(
-        "--as-bundle",
+    deliverable_group.add_argument(
         "-B",
+        "--as-bundle",
         action="store_true",
         help=(
             "Parse svc_rmntrencher EEB Bundle deliverable comments and print "
             "per-version bundle tables with constituent ET details."
         ),
     )
-    parser.add_argument(
-        "--skip-hierarchy",
-        "-N",
+    deliverable_group.add_argument(
+        "-C",
+        "--as-standard-eeb",
         action="store_true",
         help=(
-            "Skip hierarchy table/tree output (use for deliverable-only "
-            "reports; much faster)."
+            "Parse svc_rmntrencher standard single-ET EEB deliverable comments "
+            "(Submission Type: standard NetBackup submittal) and print shipping "
+            "details. TYPE column shows STANDARD."
         ),
     )
-    parser.add_argument(
-        "--deliverable-details-source",
+    deliverable_group.add_argument(
         "-G",
+        "--deliverable-details-source",
         choices=list(DELIVERABLE_DETAIL_SOURCES),
         default=DEFAULT_DELIVERABLE_DETAILS_SOURCE,
         help=(
@@ -2530,84 +3337,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "when esql is unavailable."
         ),
     )
-    parser.add_argument(
-        "--stale-only",
-        "-F",
-        action="store_true",
-        help=(
-            "In EEB package reports, show only constituents whose embedded EEB "
-            "version is older than the latest available."
-        ),
-    )
-    parser.add_argument(
-        "--no-ssh-multiplex",
-        "-X",
-        action="store_true",
-        help="Disable SSH connection reuse (ControlMaster) for remote commands.",
-    )
-    parser.add_argument(
-        "--use-eprint",
-        "-p",
-        dest="use_esql",
-        action="store_false",
-        help=(
-            "Use eprint for hierarchy discovery and incident details "
-            "(equivalent to --hierarchy-source eprint with no esql detail fetch)."
-        ),
-    )
-    parser.set_defaults(use_esql=True)
-    parser.add_argument(
-        "--hierarchy-source",
-        "-y",
-        choices=list(HIERARCHY_SOURCES),
-        default=DEFAULT_HIERARCHY_SOURCE,
-        help=(
-            "How to discover hierarchy members (default: inc-bottom-up). "
-            "inc-bottom-up uses fast INC_BOTTOM_UP esql; "
-            "incident-view uses slow INCIDENT_VIEW esql; "
-            "eprint uses eprint -a. Ignored when --use-eprint is set."
-        ),
-    )
-    parser.add_argument(
-        "--htree",
-        "-t",
-        dest="htree",
-        action="store_true",
-        help="Display hierarchy tree output after the table.",
-    )
-    parser.add_argument(
-        "--max-nodes",
-        "-m",
-        type=int,
-        default=5000,
-        help="Safety limit for recursive hierarchy traversal (default: 5000).",
-    )
-    parser.add_argument(
-        "--timeout",
-        "-T",
-        type=int,
-        default=180,
-        help="Per-command timeout in seconds (default: 180).",
-    )
-    parser.add_argument(
-        "--retries",
-        type=int,
-        default=DEFAULT_COMMAND_RETRIES,
-        help=(
-            "Max retries for transient SSH/network failures "
-            f"(default: {DEFAULT_COMMAND_RETRIES}). Use 0 to disable."
-        ),
-    )
-    parser.add_argument(
-        "--retry-delay",
-        type=float,
-        default=DEFAULT_RETRY_DELAY,
-        help=(
-            "Base delay in seconds between retries; doubles each attempt "
-            f"(default: {DEFAULT_RETRY_DELAY})."
-        ),
-    )
-    parser.add_argument(
+    deliverable_group.add_argument(
         "--deliverable-parallel",
         "-j",
         type=int,
@@ -2617,17 +3347,120 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             f"reports (default: {DEFAULT_DELIVERABLE_PARALLEL})."
         ),
     )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Print command execution details to stderr.",
+
+    source_group = parser.add_argument_group(
+        "Data source",
+        "How hierarchy members and ET fields are fetched (esql vs eprint).",
     )
-    parser.add_argument(
-        "--debug",
-        "-d",
+    source_group.add_argument(
+        "-p",
+        "--use-eprint",
+        dest="use_esql",
+        action="store_false",
+        help=(
+            "Use eprint for hierarchy discovery and incident details "
+            "(equivalent to -y eprint with no esql detail fetch)."
+        ),
+    )
+    parser.set_defaults(use_esql=True)
+    source_group.add_argument(
+        "-y",
+        "--hierarchy-source",
+        choices=list(HIERARCHY_SOURCES),
+        default=DEFAULT_HIERARCHY_SOURCE,
+        help=(
+            "How to discover hierarchy members (default: inc-bottom-up). "
+            "inc-bottom-up uses fast INC_BOTTOM_UP esql; "
+            "incident-view uses slow INCIDENT_VIEW esql; "
+            "eprint uses eprint -a. Ignored when -p/--use-eprint is set."
+        ),
+    )
+
+    remote_group = parser.add_argument_group(
+        "Remote access",
+        "SSH target and connection behavior when esql/eprint run remotely.",
+    )
+    remote_group.add_argument(
+        "-R",
+        "--ssh",
+        help=(
+            "Run commands remotely via SSH target user@host. "
+            "When omitted, auto-SSH uses ETRACK_SSH, ENGVM_HOST, or NIS_USER@NIS_SERVER."
+        ),
+    )
+    remote_group.add_argument(
+        "-Z",
+        "--no-auto-ssh",
         action="store_true",
-        help="Print esql query execution traces to stderr.",
+        help="Do not auto-SSH when -R/--ssh is omitted and local esql is missing.",
+    )
+    remote_group.add_argument(
+        "-X",
+        "--no-ssh-multiplex",
+        action="store_true",
+        help="Disable SSH connection reuse (ControlMaster) for remote commands.",
+    )
+
+    perf_group = parser.add_argument_group(
+        "Performance & limits",
+        "Timeouts, retries, and safety caps on hierarchy traversal.",
+    )
+    perf_group.add_argument(
+        "-m",
+        "--max-nodes",
+        type=int,
+        default=5000,
+        help="Safety limit for recursive hierarchy traversal (default: 5000).",
+    )
+    perf_group.add_argument(
+        "-T",
+        "--timeout",
+        type=int,
+        default=60,
+        help="Per-command timeout in seconds (default: 60). Retries use a larger timeout.",
+    )
+    perf_group.add_argument(
+        "-z",
+        "--retries",
+        type=int,
+        default=DEFAULT_COMMAND_RETRIES,
+        help=(
+            "Max retries for transient SSH/network failures "
+            f"(default: {DEFAULT_COMMAND_RETRIES}). Use 0 to disable."
+        ),
+    )
+    perf_group.add_argument(
+        "-g",
+        "--retry-delay",
+        type=float,
+        default=DEFAULT_RETRY_DELAY,
+        help=(
+            "Base delay in seconds between retries; doubles each attempt "
+            f"(default: {DEFAULT_RETRY_DELAY})."
+        ),
+    )
+
+    log_group = parser.add_argument_group(
+        "Logging",
+        "Progress and diagnostic output on stderr.",
+    )
+    log_group.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress progress messages (ESQL running/completed, external commands).",
+    )
+    log_group.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="One-line ESQL/command progress on stderr (default unless -q).",
+    )
+    log_group.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Print esql SQL text and detailed operational traces to stderr.",
     )
 
     return parser.parse_args(argv)
@@ -2636,15 +3469,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     start_time = time.perf_counter()
     args = parse_args(argv)
+    if args.full_deliverable_details:
+        args.include_deliverable_details = True
     fetcher: Optional[EtrackHierarchyFetcher] = None
     exit_code = 1
 
     try:
         input_incident = _validate_incident(args.incident, "incident")
+        ssh_target = normalize_ssh_target(args.ssh)
+        if not ssh_target and not args.no_auto_ssh:
+            ssh_target = default_ssh_target()
+            if ssh_target:
+                print(f"[INFO] Auto-SSH: {ssh_target}", file=sys.stderr)
+
         fetcher = EtrackHierarchyFetcher(
-            ssh_target=args.ssh,
+            ssh_target=ssh_target,
             verbose=args.verbose,
             debug=args.debug,
+            quiet=args.quiet,
             command_timeout=args.timeout,
             deliverable_parallel=args.deliverable_parallel,
             ssh_multiplex=not args.no_ssh_multiplex,
@@ -2654,21 +3496,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         deliverable_kinds = _resolve_deliverable_kinds(fetcher, input_incident, args)
         deliverable_use_esql = _resolve_deliverable_use_esql(args)
 
-        if args.skip_hierarchy and not deliverable_kinds:
-            raise EtrackHierarchyError(
-                "--skip-hierarchy/-N requires --auto-deliverable/-A, "
-                "--as-eeb-pkg/-P, or --as-bundle/-B."
-            )
+        show_single_row = args.single or (args.skip_hierarchy and not deliverable_kinds)
+
+        if args.single and args.htree:
+            print("[WARN] --htree ignored with --single/-1.", file=sys.stderr)
 
         if (
             args.skip_hierarchy
             and args.auto_deliverable
-            and not (args.as_eeb_pkg or args.as_bundle)
+            and not (args.as_eeb_pkg or args.as_bundle or args.as_standard_eeb)
             and not deliverable_kinds
         ):
             raise EtrackHierarchyError(
-                f"No EEB package or bundle deliverable comments found for ET "
-                f"{input_incident}."
+                f"No EEB package, bundle, or standard EEB deliverable comments "
+                f"found for ET {input_incident}."
             )
 
         if args.stale_only and "eeb-pkg" not in deliverable_kinds:
@@ -2682,21 +3523,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "--stale-only/-F requires an EEB package report (-P or -A)."
                 )
 
-        if deliverable_kinds and args.verbose:
+        if deliverable_kinds and args.debug:
+            kind_labels = ", ".join(
+                deliverable_kind_label(kind) for kind in deliverable_kinds
+            )
             print(
-                f"[INFO] Deliverable kinds: {', '.join(deliverable_kinds)}",
+                f"[DEBUG] Deliverable types: {kind_labels}",
                 file=sys.stderr,
             )
             print(
-                f"[INFO] Deliverable details source: "
+                f"[DEBUG] Deliverable details source: "
                 f"{'esql' if deliverable_use_esql else 'eprint'}",
                 file=sys.stderr,
             )
 
-        if args.skip_hierarchy and args.verbose:
-            print("[INFO] Skipping hierarchy output (-N)", file=sys.stderr)
+        if args.skip_hierarchy and args.debug:
+            print("[DEBUG] Skipping hierarchy output (-N)", file=sys.stderr)
 
-        if not args.skip_hierarchy:
+        if show_single_row:
+            if args.debug and args.skip_hierarchy and not args.single:
+                print(
+                    "[DEBUG] -N without deliverable flags: fetching one ET summary row",
+                    file=sys.stderr,
+                )
+            _render_single_et_table(fetcher, input_incident, args)
+        elif not args.skip_hierarchy:
             if args.use_esql:
                 root_incident = fetcher.resolve_super_incident_esql(
                     input_incident,
@@ -2712,10 +3563,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "eprint" if not args.use_esql else args.hierarchy_source
             )
 
-            if args.verbose:
-                print(f"[INFO] Resolved SINCIDENT: {root_incident}", file=sys.stderr)
+            if args.debug:
+                print(f"[DEBUG] Resolved SINCIDENT: {root_incident}", file=sys.stderr)
                 print(
-                    f"[INFO] Hierarchy source: {hierarchy_source}",
+                    f"[DEBUG] Hierarchy source: {hierarchy_source}",
                     file=sys.stderr,
                 )
 
@@ -2762,7 +3613,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
             renderer = TableRenderer(columns)
             print(renderer.render_with_count(rows))
-            if args.verbose:
+            if args.debug:
                 print(
                     "\nNote: '*' in PAR column = parent incident in hierarchy",
                     file=sys.stderr,
@@ -2792,9 +3643,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     kind=kind,
                     deliverable_use_esql=deliverable_use_esql,
                     include_details=args.include_deliverable_details,
+                    full_details=args.full_deliverable_details,
                     stale_only=args.stale_only and kind == "eeb-pkg",
                 ))
-        elif not args.skip_hierarchy:
+        elif not args.skip_hierarchy or show_single_row:
             hints = fetcher.render_deliverable_hints(input_incident)
             if hints:
                 print(hints)
