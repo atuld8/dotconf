@@ -40,6 +40,9 @@ return {
       -- Disable ALE's integration with Neovim diagnostics to avoid conflicts with LSP
       vim.g.ale_use_neovim_diagnostics_api = 0
 
+      -- Only use explicitly defined linters (prevents auto-detection)
+      vim.g.ale_linters_explicit = 1
+
       -- Only lint on save and when text changes after leaving insert mode
       vim.g.ale_lint_on_text_changed = 'normal'
       vim.g.ale_lint_on_insert_leave = 1
@@ -50,7 +53,11 @@ return {
         python = { "flake8", "pycodestyle", "pylint" },
         cpp = { "gcc", "clang" },
         c   = { "gcc", "clang" },
+        markdown = { "markdownlint_cli2" },  -- Use markdownlint-cli2
       }
+
+      -- markdownlint-cli2: use global config to disable MD013
+      vim.g.ale_markdown_markdownlint_cli2_options = '--config ' .. vim.fn.expand('~/.markdownlint-cli2.jsonc')
 
       -- Python options
       vim.g.ale_python_flake8_options =
