@@ -286,13 +286,43 @@ def _format_json(records: List[Dict[str, str]], columns: List[str]) -> str:
     return json.dumps(payload, indent=2)
 
 
-def _format_markdown(records: List[Dict[str, str]], columns: List[str]) -> str:
+def _markdown_title(incidents: Sequence[str]) -> str:
+    """ATX H1 for Tagbar / outline — matches esql_formatter / hierarchy -M style."""
+    ids = list(incidents)
+    if not ids:
+        return "Etrack query"
+    if len(ids) == 1:
+        return f"Etrack query — {ids[0]}"
+    if len(ids) <= 5:
+        return f"Etrack query — {', '.join(ids)}"
+    return f"Etrack query — {len(ids)} incidents"
+
+
+def _format_markdown(
+    records: List[Dict[str, str]],
+    columns: List[str],
+    title: Optional[str] = None,
+) -> str:
+    """Markdown table with a real # heading and Total rows footer (Tagbar-friendly)."""
+    heading = (title or "Etrack query").strip() or "Etrack query"
+    lines = [f"# {heading}", ""]
+    if not records:
+        lines.append("_No rows found._")
+        lines.append("")
+        lines.append("*Total rows: 0*")
+        return "\n".join(lines)
+
     header = "| " + " | ".join(columns) + " |"
     divider = "| " + " | ".join(["---"] * len(columns)) + " |"
-    lines = [header, divider]
+    lines.extend([header, divider])
     for row in records:
-        escaped = [str(row.get(column, "")).replace("|", "\\|") for column in columns]
+        escaped = [
+            str(row.get(column, "")).replace("|", "\\|").replace("\n", " ")
+            for column in columns
+        ]
         lines.append("| " + " | ".join(escaped) + " |")
+    lines.append("")
+    lines.append(f"*Total rows: {len(records)}*")
     return "\n".join(lines)
 
 
@@ -324,7 +354,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "  et_query.py 4221396 4221397 --exclude COMPONENT\n"
             "  cat ids.txt | et_query.py --fields INCIDENT,STATE,ABSTRACT\n"
             "  et_query.py --incidents 4221396,4221397 --format json --output et.json\n"
-            "  et_query.py --incidents 4221396,4221397 --include-cols INCIDENT,STATE"
+            "  et_query.py --incidents 4221396,4221397 --include-cols INCIDENT,STATE\n"
+            "  et_query.py 4221396 4221397 -m markdown -o lookup.etrack.md\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -412,16 +443,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         elif args.format == "json":
             formatted = _format_json(projected_records, output_columns)
         else:
-            formatted = _format_markdown(projected_records, output_columns)
+            formatted = _format_markdown(
+                projected_records,
+                output_columns,
+                title=_markdown_title(incidents),
+            )
 
         _write_output(formatted, args.output)
 
+        # Markdown already includes "*Total rows: N*" in the body (Tagbar-friendly).
+        # Skip duplicating that line on stdout; still emit a one-liner when writing a file.
         summary = f"Total rows: {len(projected_records)}"
         if args.output:
             print(summary)
             if args.verbose:
                 print(f"Wrote {args.format} output to {args.output}", file=sys.stderr)
-        else:
+        elif args.format != "markdown":
             print(summary)
 
         return 0
