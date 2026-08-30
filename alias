@@ -25,6 +25,9 @@ source ~/.vim/alias.global
 #source ~/.vim/wincmds/alias_nbu_cygwin
 #source ~/.vim/alias.mac
 #source ~/.vim/alias.remote
+source ~/.vim/alias.review
+source ~/.vim/alias.ai
+source ~/.vim/alias.docker
 
 source ~/.vim/fzf.func
 

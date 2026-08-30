@@ -1,0 +1,113 @@
+# alias.review — human code-review helpers (additive; source from ~/.alias)
+# Naming: g.rv.*  |  ports/process for local debug during reviews
+# Docker/k8s live in ~/.vim/alias.docker
+
+# --- ports / process (review of running services, local debug) ---
+# 2>/dev/null: hide macOS "can't stat() hfs" warnings on ephemeral /var/folders mounts
+alias psg='ps aux | grep -v grep | grep'                              # Find process
+alias ports='lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null'                 # Show listening ports
+port() { lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null; }              # What's on port N
+killport() { lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | xargs kill -9; }  # Kill process on port
+
+# --- Review context vs base (default: origin/master) ---
+# Usage: g.rv.files [base]   g.rv.stat [base]   g.rv.log [base]   g.rv.patch [base]
+g.rv.files() { git diff --name-status "${1:-origin/master}"...HEAD; }
+g.rv.stat()  { git diff --stat "${1:-origin/master}"...HEAD; }
+g.rv.log()   { git log --oneline "${1:-origin/master}"..HEAD; }
+g.rv.patch() { git diff --no-ext-diff "${1:-origin/master}"...HEAD; }
+g.rv.names() { git diff --name-only "${1:-origin/master}"...HEAD; }
+g.rv.bt()    { git diff --no-ext-diff "${1:-origin/master}"...HEAD | .bt -l diff; }
+
+# Dump review bundle to file (+ clipboard on macOS)
+g.rv.bundle() {
+    local base="${1:-origin/master}"
+    local out="${2:-/tmp/review_bundle_$(date +%Y%m%d_%H%M%S).md}"
+    local repo branch
+    repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)") || { echo "not a git repo"; return 1; }
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    {
+        echo "# Review bundle — ${repo} @ ${branch}"
+        echo
+        echo "## Base: ${base}"
+        echo
+        echo "## Commits"
+        git log --oneline "${base}"..HEAD
+        echo
+        echo "## Files"
+        git diff --name-status "${base}"...HEAD
+        echo
+        echo "## Stat"
+        git diff --stat "${base}"...HEAD
+        echo
+        echo "## Patch"
+        echo '```diff'
+        git diff --no-ext-diff "${base}"...HEAD
+        echo '```'
+    } > "$out"
+    echo "$out"
+    if command -v pbcopy >/dev/null 2>&1; then
+        pbcopy < "$out" && echo "(copied to clipboard)"
+    elif command -v xclip >/dev/null 2>&1; then
+        xclip -selection c < "$out" && echo "(copied to clipboard)"
+    fi
+}
+
+# Open changed files in configured editor
+# Usage:
+#   g.rv.vim                 # local tracked: staged + unstaged vs HEAD (default)
+#   g.rv.vim local           # same
+#   g.rv.vim all             # local tracked + untracked
+#   g.rv.vim origin/master   # branch review (three-dot vs base)
+g.rv.vim() {
+    local spec="${1:-local}"
+    local root files f abs paths=()
+    root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not a git repo"; return 1; }
+
+    case "$spec" in
+        local|.|wd|"")
+            # Match: git diff --no-ext-diff --name-only  (+ staged via --cached)
+            files=$(
+                { git -C "$root" diff --no-ext-diff --name-only
+                  git -C "$root" diff --no-ext-diff --cached --name-only
+                } | sort -u
+            )
+            ;;
+        all|local-all)
+            files=$(
+                { git -C "$root" diff --no-ext-diff --name-only
+                  git -C "$root" diff --no-ext-diff --cached --name-only
+                  git -C "$root" ls-files --others --exclude-standard
+                } | sort -u
+            )
+            ;;
+        *)
+            files=$(git -C "$root" diff --no-ext-diff --name-only "${spec}"...HEAD 2>/dev/null)
+            ;;
+    esac
+
+    if [[ -z "$files" ]]; then
+        case "$spec" in
+            local|.|wd|""|all|local-all) echo "no local changes" ;;
+            *) echo "no changes vs ${spec} (tip: g.rv.vim  # uncommitted tracked files)" ;;
+        esac
+        return 1
+    fi
+
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        abs="$root/$f"
+        [[ -e "$abs" ]] && paths+=("$abs")
+    done <<< "$files"
+
+    if [[ ${#paths[@]} -eq 0 ]]; then
+        echo "changed paths not found on disk (deleted?)"
+        echo "$files"
+        return 1
+    fi
+
+    ${CFG_EDITOR:-vim} "${paths[@]}"
+}
+
+
+# Short help
+alias a.rv="alias | grep -E ' (ports|psg)=' ; declare -F | grep -E 'g\\.rv\\.|^(port|killport)$'"

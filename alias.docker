@@ -1,0 +1,26 @@
+# alias.docker — Docker + Kubernetes (additive; source from ~/.alias)
+# Note: do NOT set d=docker — alias.global already has d='vim -d'
+
+# --- Docker ---
+alias dc='docker compose'
+alias dps='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
+alias dex='docker exec -it'
+alias dlogs='docker logs -f'
+alias dclean='docker system prune -af'
+
+# --- Kubernetes ---
+alias k='kubectl'
+alias kgp='kubectl get pods'
+alias kgs='kubectl get svc'
+alias kgd='kubectl get deployments'
+alias kl='kubectl logs -f'
+alias kex='kubectl exec -it'
+alias kctx='kubectl config use-context'
+alias kns='kubectl config set-context --current --namespace'
+# list contexts (bashrc used kctx for this; kept under kctx.ls)
+alias kctx.ls='kubectl config get-contexts'
+alias kgn='kubectl get nodes'
+alias kga='kubectl get all'
+
+# Short help
+alias a.dk="alias | grep -E ' (dc|dps|dex|dlogs|dclean|k|kgp|kgs|kgd|kl|kex|kctx|kns|kgn|kga)=' "

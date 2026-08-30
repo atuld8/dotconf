@@ -1,0 +1,86 @@
+# alias.ai — AI enablement (Ollama / Cursor context) — additive; source from ~/.alias
+# Does not replace ol.* from alias.mac
+
+# --- python venv (global; complements AI/rag/alias_rags) ---
+alias venv.on='source .venv/bin/activate'
+alias venv.mk='python3 -m venv .venv'
+alias venv.off='deactivate'
+
+# --- prompt / model defaults ---
+export AI_PROMPTS="${AI_PROMPTS:-$HOME/.vim/AI/ollama/prompts}"
+export AI_MODEL="${AI_MODEL:-mistral}"
+
+alias ai.prompts='ls -1 "$AI_PROMPTS"'
+alias e.ai.review='$CFG_EDITOR "$AI_PROMPTS/review.prompt"'
+alias e.ai.prompts='$CFG_EDITOR "$AI_PROMPTS"'
+alias set.ai.model='function _aim(){ export AI_MODEL="$1"; echo "AI_MODEL=$AI_MODEL"; }; _aim'
+
+# Redact before sending context to any LLM
+ai.scrub() {
+    sed -E \
+        -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<EMAIL>/g' \
+        -e 's/(token|password|secret|api[_-]?key|authorization)[=: ]+[^[:space:]]+/\1=<REDACTED>/Ig'
+}
+
+# Feed git review context into Ollama using review.prompt
+# Usage: ai.rv [base] [model]
+ai.rv() {
+    local base="${1:-origin/master}"
+    local model="${2:-$AI_MODEL}"
+    local prompt="$AI_PROMPTS/review.prompt"
+    local ctx
+
+    if ! command -v ollama >/dev/null 2>&1; then
+        echo "ollama not found"; return 1
+    fi
+    if [[ ! -f "$prompt" ]]; then
+        echo "missing prompt: $prompt"; return 1
+    fi
+    git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "not a git repo"; return 1; }
+
+    ctx=$(mktemp)
+    {
+        echo "REPO: $(basename "$(git rev-parse --show-toplevel)")"
+        echo "BRANCH: $(git rev-parse --abbrev-ref HEAD)"
+        echo "BASE: $base"
+        echo
+        echo "=== COMMITS ==="
+        git log --oneline "${base}"..HEAD
+        echo
+        echo "=== DIFF STAT ==="
+        git diff --stat "${base}"...HEAD
+        echo
+        echo "=== DIFF ==="
+        git diff --no-ext-diff "${base}"...HEAD
+    } | ai.scrub > "$ctx"
+
+    { sed "s/{{input}}//g" "$prompt"; echo; cat "$ctx"; } | ollama run "$model"
+    rm -f "$ctx"
+}
+
+# Clipboard / file context for Cursor paste
+# Usage: ai.ctx.diff [base] [outfile]
+ai.ctx.diff() {
+    if declare -F g.rv.bundle >/dev/null 2>&1; then
+        g.rv.bundle "$@"
+    else
+        echo "source ~/.vim/alias.review first (g.rv.bundle)"; return 1
+    fi
+}
+
+ai.ctx.file() {
+    local f="$1"
+    [[ -f "$f" ]] || { echo "usage: ai.ctx.file <path>"; return 1; }
+    if command -v pbcopy >/dev/null 2>&1; then
+        { echo "FILE: $f"; echo; cat "$f"; } | ai.scrub | pbcopy
+        echo "copied (scrubbed): $f"
+    else
+        { echo "FILE: $f"; echo; cat "$f"; } | ai.scrub
+    fi
+}
+
+alias ai.cursor='cursor .'
+alias ai.safe.paths='echo "Avoid piping into LLM: ~/.vimpass ~/.accessToken ~/.jira ~/.ghtkn ~/.commpass ~/.accessSthTkn"'
+
+# Short help
+alias a.ai="alias | grep -E ' (ai\\.|venv\\.|e\\.ai\\.|set\\.ai\\.)=' ; declare -F | grep -E 'ai\\.(rv|scrub|ctx)'"
