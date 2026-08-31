@@ -497,10 +497,10 @@ tx.hp() {
 }
 
 # Split pane vertical (right) - run command and close when done
-tx.vx() { tmux split-window -dh "$*"; }
+tx.vx() { tmux split-window -dh "bash -ic '$*'"; }
 
 # Split pane horizontal (below) - run command and close when done
-tx.hx() { tmux split-window -dv "$*"; }
+tx.hx() { tmux split-window -dv "bash -ic '$*'"; }
 
 # Split vertical and jump to new pane
 tx.vj() {
@@ -521,7 +521,7 @@ tx.wj() {
 }
 
 # New window, run command, close when done
-tx.w() { tmux new-window "$*"; }
+tx.w() { tmux new-window "bash -ic '$*'"; }
 
 # Split vertical and show man page
 tx.vman() { tmux split-window -dh "man $*"; }
@@ -572,8 +572,11 @@ tx.scr() {
 # Generic popup - run any command in a popup window
 # Usage: tx.popup <command>  OR  tx.popup (opens shell)
 tx.popup() {
-    local cmd="${*:-$SHELL}"
-    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$cmd"
+    if [[ -n "$*" ]]; then
+        tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "bash -ic '$*'"
+    else
+        tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$SHELL"
+    fi
 }
 
 # FZF file picker in popup - opens selected file in $EDITOR
@@ -603,7 +606,7 @@ tx.pad() {
 
 # Run command in popup and wait for keypress
 tx.run() {
-    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$*; echo; read -n 1 -s -r -p 'Press any key to close'"
+    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "bash -ic '$*; echo; read -n 1 -s -r -p \"Press any key to close\"'"
 }
 
 # Show logs in popup (tail -f)
