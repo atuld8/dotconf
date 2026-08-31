@@ -3,7 +3,8 @@
 -- Manual: :BaleiaColorize  to apply to current buffer
 return {
   "m00qek/baleia.nvim",
-  version = "*",
+  commit = "710537ff5cd669c5a76c5f5b6a9169fd9b913d18",
+  submodules = false, -- test deps only; avoids broken submodule checkout on sync
   config = function()
     local baleia = require("baleia").setup()
 

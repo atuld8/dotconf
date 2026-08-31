@@ -150,7 +150,14 @@ return {
   { "MeanderingProgrammer/render-markdown.nvim" },
   -- Browser preview (opens rendered HTML in browser)
   { "iamcco/markdown-preview.nvim",
-    build = "cd app && npm install",
-    ft = { "markdown" }
+    commit = "a923f5fc5ba36a3b17e289dc35dc17f66d0548ee",
+    build = function()
+      local app = vim.fn.stdpath("data") .. "/lazy/markdown-preview.nvim/app"
+      if vim.fn.isdirectory(app .. "/node_modules") == 1 then
+        return
+      end
+      vim.fn.system({ "npm", "install", "--no-save", "--no-package-lock" }, { cwd = app })
+    end,
+    ft = { "markdown" },
   },
 }

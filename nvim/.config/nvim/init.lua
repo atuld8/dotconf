@@ -354,8 +354,7 @@ vim.api.nvim_create_autocmd("SwapExists", {
 
 -- Window and buffer mappings
 vim.keymap.set("n", "<C-L>", "<C-W>|<C-W>_")
-vim.keymap.set("n", "<leader>fb", ":FufBuffer<CR>", { silent = true })
-vim.keymap.set("n", "<leader>ff", ":FufFile<CR>", { silent = true })
+-- <leader>ff/fb/fg: see lua/myconfig/keymaps.lua (Telescope)
 
 vim.keymap.set("n", "<leader>bl", ":buffers<CR>", { silent = true })
 vim.keymap.set("n", "<leader>bd", ":bd<CR>", { silent = true })
@@ -741,19 +740,53 @@ vim.api.nvim_create_autocmd({ "BufNewFile", "BufRead" }, {
 
 
 -- ==============================
--- YAML settings
+-- YAML / Ansible navigation
 -- ==============================
 vim.api.nvim_create_augroup("yaml_ft", { clear = true })
 vim.api.nvim_create_autocmd("FileType", {
   group = "yaml_ft",
   pattern = "yaml",
   callback = function()
-    vim.g.syntastic_yaml_checkers = { "yamllint" }
     vim.opt_local.tabstop = 2
     vim.opt_local.softtabstop = 2
     vim.opt_local.shiftwidth = 2
     vim.opt_local.expandtab = true
-    vim.g.indentLine_char = "|"
+    vim.opt_local.wrap = false
+
+    -- Fold tasks, roles, vars blocks
+    vim.opt_local.foldmethod = "indent"
+    vim.opt_local.foldlevel = 99
+
+    local buf_opts = { buffer = true, silent = true }
+    vim.keymap.set("n", "]t", function()
+      vim.fn.search([[- name:]], "W")
+    end, vim.tbl_extend("force", buf_opts, { desc = "Next Ansible task" }))
+    vim.keymap.set("n", "[t", function()
+      vim.fn.search([[- name:]], "bw")
+    end, vim.tbl_extend("force", buf_opts, { desc = "Prev Ansible task" }))
+    vim.keymap.set("n", "]i", function()
+      vim.fn.search([[include_tasks\|include_role\|import_tasks\|include_vars]], "W")
+    end, vim.tbl_extend("force", buf_opts, { desc = "Next include" }))
+    vim.keymap.set("n", "[i", function()
+      vim.fn.search([[include_tasks\|include_role\|import_tasks\|include_vars]], "bw")
+    end, vim.tbl_extend("force", buf_opts, { desc = "Prev include" }))
+    vim.keymap.set("n", "<leader>zo", "za", vim.tbl_extend("force", buf_opts, { desc = "Toggle fold" }))
+    vim.keymap.set("n", "<leader>zO", "zO", vim.tbl_extend("force", buf_opts, { desc = "Open fold recursively" }))
+    vim.keymap.set("n", "<leader>zC", "zC", vim.tbl_extend("force", buf_opts, { desc = "Close fold recursively" }))
+    vim.keymap.set("n", "<leader>zr", "zR", vim.tbl_extend("force", buf_opts, { desc = "Open all folds" }))
+    vim.keymap.set("n", "<leader>zm", "zM", vim.tbl_extend("force", buf_opts, { desc = "Close all folds" }))
+  end,
+})
+
+-- Keep repo root as cwd when reviewing Ansible YAML (helps gf on role paths)
+vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost" }, {
+  group = "yaml_ft",
+  pattern = { "*.yml", "*.yaml" },
+  callback = function()
+    local root = vim.g.git_root_path
+    if root and root ~= "." and vim.fn.isdirectory(root) == 1 then
+      vim.cmd.lcd(vim.fn.fnameescape(root))
+    end
   end,
 })
 

@@ -120,6 +120,17 @@ return {
   { "andrewradev/linediff.vim" },
   { "preservim/tagbar" },
 
+  -- YAML structure (Ansible playbook navigation)
+  {
+    "nvim-treesitter/nvim-treesitter",
+    build = ":TSUpdate",
+    opts = {
+      ensure_installed = { "yaml" },
+      highlight = { enable = true },
+      indent = { enable = true },
+    },
+  },
+
   -- Telescope fuzzy finder
   { "nvim-lua/plenary.nvim" },
   {

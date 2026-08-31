@@ -3,8 +3,8 @@
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
 
-map("n", "<Space>", "", opts)
-vim.g.mapleader = " "  -- space as leader
+-- Do NOT map <Space> in normal mode when mapleader is Space (breaks <leader> combos).
+vim.g.mapleader = " "
 
 map("n", "<leader>ff", ":Telescope find_files<CR>", opts)
 map("n", "<leader>fg", ":Telescope live_grep<CR>", opts)
