@@ -479,56 +479,148 @@ which vim > /dev/null
 if [ $? -ne 0 ]; then alias vim='vi'; fi
 
 ##########################
-# tmux funtions start
+# tmux functions start
 ##########################
 
-function tmuxv {
-    tmux split-window -dh "$*"
-}
+# Split pane vertical (right) and run command
+tx.v() { tmux split-window -dh "$*"; }
 
-function tmanv {
-    tmux split-window -dh "man $*"
-}
+# Split pane horizontal (below) and run command
+tx.h() { tmux split-window -dv "$*"; }
 
-function tmanh {
-    tmux split-window -dv "man $*"
-}
+# Split vertical and jump to new pane
+tx.vj() { tmux split-window -h "$*"; }
 
-function tmuxh {
-    tmux split-window -dv "$*"
-}
+# Split horizontal and jump to new pane
+tx.hj() { tmux split-window -v "$*"; }
 
-function ttmux {
-    local SID=`tty | cut -d'/' -f4`
-    echo $1 | egrep "[0-9]+" > /dev/null
-    if [ $? -eq 0 ]; then
-        SID=$1
+# New window and jump to it
+tx.wj() {
+    if [[ -n "$*" ]]; then
+        tmux new-window "$*; exec $SHELL"
+    else
+        tmux new-window
     fi
+}
 
-    if [ "$1" == "ls" ]; then
-        CMD="tmux ls";
+# New window, run command, close when done
+tx.w() { tmux new-window "$*"; }
+
+# Split vertical and show man page
+tx.vman() { tmux split-window -dh "man $*"; }
+
+# Split horizontal and show man page
+tx.hman() { tmux split-window -dv "man $*"; }
+
+# Split vertical with readonly viewer (bat or less)
+tx.vw() {
+    local file="$1"
+    if [[ -z "$file" ]]; then
+        echo "Usage: tx.vw <file>"
+        return 1
+    fi
+    if command -v bat &>/dev/null; then
+        tmux split-window -dh "bat --style=header,numbers,grid,changes --color=always --paging=always --tabs=4 --wrap=auto '$file'"
+    else
+        tmux split-window -dh "less -i -g -J -N -F -R -S -M -W -Q --mouse '$file'"
+    fi
+}
+
+# Remote tmux session
+tx.remote() {
+    local SID=$(tty | cut -d'/' -f4)
+    [[ "$1" =~ ^[0-9]+$ ]] && SID=$1
+    if [[ "$1" == "ls" ]]; then
+        CMD="tmux ls"
     else
         CMD="tmux attach -d -t tmux_$SID || tmux new -s tmux_$SID"
     fi
     ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -t $NIS_USER@$NIS_SERVER $CMD
 }
 
-function tscreen {
-    local SID=`tty | cut -d'/' -f4`
-    echo $1 | egrep "[0-9]+" > /dev/null
-    if [ $? -eq 0 ]; then
-        SID=$1
-    fi
-
-    if [ "$1" == "ls" ]; then
-        CMD="screen -ls";
+# Remote screen session
+tx.scr() {
+    local SID=$(tty | cut -d'/' -f4)
+    [[ "$1" =~ ^[0-9]+$ ]] && SID=$1
+    if [[ "$1" == "ls" ]]; then
+        CMD="screen -ls"
     else
         CMD="screen -d -R tmux_$SID"
     fi
     ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -t $NIS_USER@$NIS_SERVER $CMD
 }
+
+# ── Modern tmux popup features ──────────────────────────────────────────────
+
+# Generic popup - run any command in a popup window
+# Usage: tx.popup <command>  OR  tx.popup (opens shell)
+tx.popup() {
+    local cmd="${*:-$SHELL}"
+    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$cmd"
+}
+
+# FZF file picker in popup - opens selected file in $EDITOR
+tx.fzf() {
+    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" \
+        'file=$(fzf --preview "bat --color=always --style=numbers --line-range=:500 {} 2>/dev/null || cat {}") && [ -n "$file" ] && ${EDITOR:-vim} "$file"'
+}
+
+# htop in popup
+tx.htop() {
+    tmux display-popup -E -w 90% -h 80% "htop"
+}
+
+# lazygit in popup (if installed)
+tx.lazygit() {
+    if command -v lazygit &>/dev/null; then
+        tmux display-popup -E -w 90% -h 90% -d "#{pane_current_path}" "lazygit"
+    else
+        echo "lazygit not installed. Install: brew install lazygit"
+    fi
+}
+
+# Quick scratch terminal popup
+tx.pad() {
+    tmux display-popup -E -w 60% -h 50% -d "#{pane_current_path}" "$SHELL"
+}
+
+# Run command in popup and wait for keypress
+tx.run() {
+    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$*; echo; read -n 1 -s -r -p 'Press any key to close'"
+}
+
+# Show logs in popup (tail -f)
+tx.logs() {
+    local logfile="${1:-/var/log/system.log}"
+    tmux display-popup -E -w 90% -h 80% "tail -f $logfile"
+}
+
+# List all tx commands
+tx.help() {
+    echo -e "Tmux Functions (tx.*):\n"
+    echo "  tx.v <cmd>      - Split vertical (right), run command"
+    echo "  tx.h <cmd>      - Split horizontal (below), run command"
+    echo "  tx.vj <cmd>     - Split vertical and jump to new pane"
+    echo "  tx.hj <cmd>     - Split horizontal and jump to new pane"
+    echo "  tx.w <cmd>      - New window, run command, close when done"
+    echo "  tx.wj [cmd]     - New window and jump (keeps shell after cmd)"
+    echo "  tx.vman <topic> - Split vertical, show man page"
+    echo "  tx.hman <topic> - Split horizontal, show man page"
+    echo "  tx.vw <file>    - Split vertical, readonly viewer (bat/less)"
+    echo "  tx.remote [n]   - Remote tmux session"
+    echo "  tx.scr [n]      - Remote screen session"
+    echo "  ─── Popup Features ───"
+    echo "  tx.popup [cmd]  - Run command in popup (default: shell)"
+    echo "  tx.fzf          - FZF file picker in popup"
+    echo "  tx.htop         - htop in popup"
+    echo "  tx.lazygit      - lazygit in popup"
+    echo "  tx.pad          - Quick scratch terminal"
+    echo "  tx.run <cmd>    - Run command, wait for keypress"
+    echo "  tx.logs [file]  - Tail log file in popup"
+}
+
 ##########################
-# tmux funtions end
+# tmux functions end
 ##########################
 
 

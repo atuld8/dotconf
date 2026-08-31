@@ -18,3 +18,99 @@ function fmt.et()  { grep --color=never -i -E "^(\+|\------|.*Incident.*|.*$1.*)
 
 alias fmt.xml='xmllint --pretty 1 -'
 alias fmt.json='jq .'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VALIDATORS - Syntax check without modifying (exit 0=valid, 1=invalid)
+# Usage: chk.json file.json  OR  cat file | chk.json
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# JSON validator
+chk.json() {
+  if [[ -n "$1" && -f "$1" ]]; then
+    jq -e . "$1" >/dev/null 2>&1 && echo "✓ Valid JSON: $1" || { echo "✗ Invalid JSON: $1"; jq . "$1" 2>&1 | head -5; return 1; }
+  elif [[ ! -t 0 ]]; then
+    jq -e . - >/dev/null 2>&1 && echo "✓ Valid JSON" || { echo "✗ Invalid JSON"; return 1; }
+  else
+    echo "Usage: chk.json <file>  OR  ... | chk.json"
+  fi
+}
+
+# XML validator
+chk.xml() {
+  if [[ -n "$1" && -f "$1" ]]; then
+    xmllint --noout "$1" 2>&1 && echo "✓ Valid XML: $1" || return 1
+  elif [[ ! -t 0 ]]; then
+    xmllint --noout - 2>&1 && echo "✓ Valid XML" || return 1
+  else
+    echo "Usage: chk.xml <file>  OR  ... | chk.xml"
+  fi
+}
+
+# YAML validator
+chk.yaml() {
+  if [[ -n "$1" && -f "$1" ]]; then
+    python3 -c "import yaml,sys; yaml.safe_load(open('$1'))" 2>&1 && echo "✓ Valid YAML: $1" || return 1
+  elif [[ ! -t 0 ]]; then
+    python3 -c "import yaml,sys; yaml.safe_load(sys.stdin)" 2>&1 && echo "✓ Valid YAML" || return 1
+  else
+    echo "Usage: chk.yaml <file>  OR  ... | chk.yaml"
+  fi
+}
+
+# HTML validator (basic well-formedness check)
+chk.html() {
+  if command -v tidy &>/dev/null; then
+    if [[ -n "$1" && -f "$1" ]]; then
+      tidy -q -e "$1" 2>&1 | head -20; [[ ${PIPESTATUS[0]} -le 1 ]] && echo "✓ HTML OK (warnings above if any)" || echo "✗ HTML has errors"
+    elif [[ ! -t 0 ]]; then
+      tidy -q -e 2>&1 | head -20
+    else
+      echo "Usage: chk.html <file>  OR  ... | chk.html"
+    fi
+  else
+    echo "Install 'tidy' for HTML validation: brew install tidy-html5"
+  fi
+}
+
+# Markdown validator (requires markdownlint-cli2)
+chk.md() {
+  if command -v markdownlint-cli2 &>/dev/null; then
+    if [[ -n "$1" && -f "$1" ]]; then
+      markdownlint-cli2 "$1" 2>&1 && echo "✓ Markdown OK: $1"
+    else
+      echo "Usage: chk.md <file>"
+    fi
+  else
+    echo "Install markdownlint: brew install markdownlint-cli2"
+  fi
+}
+
+# Shell script validator
+chk.sh() {
+  if [[ -n "$1" && -f "$1" ]]; then
+    bash -n "$1" 2>&1 && echo "✓ Valid bash: $1" || return 1
+  else
+    echo "Usage: chk.sh <script.sh>"
+  fi
+}
+
+# Python syntax check
+chk.py() {
+  if [[ -n "$1" && -f "$1" ]]; then
+    python3 -m py_compile "$1" 2>&1 && echo "✓ Valid Python: $1" || return 1
+  else
+    echo "Usage: chk.py <script.py>"
+  fi
+}
+
+# Perl syntax check
+chk.pl() {
+  if [[ -n "$1" && -f "$1" ]]; then
+    perl -c "$1" 2>&1 && echo "✓ Valid Perl: $1" || return 1
+  else
+    echo "Usage: chk.pl <script.pl>"
+  fi
+}
+
+# List all validators
+alias chk.help='echo -e "Validators:\n  chk.json  - JSON\n  chk.xml   - XML\n  chk.yaml  - YAML\n  chk.html  - HTML\n  chk.md    - Markdown\n  chk.sh    - Bash script\n  chk.py    - Python\n  chk.pl    - Perl"'

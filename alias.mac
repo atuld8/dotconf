@@ -45,3 +45,11 @@ alias ol.run='function af.ollama() { ollama run ${1:-mistral}; }; af.ollama'
 
 
 alias cd.1d='cd $HOME/Library/CloudStorage/OneDrive-Cohesity/'
+
+# Copy paths to clipboard (no trailing newline)
+alias cp.cwd='pwd | tr -d "\n" | pbcopy && pwd'
+alias cp.path='f() { local p; p=$(realpath "${1:-.}" 2>/dev/null || echo "$PWD/${1:-.}"); printf "%s" "$p" | pbcopy && echo "$p"; }; f'
+alias cp.alias='af.cp.alias () { alias $1|pbcopy; }; af.cp.alias'
+alias cp.clear='echo -n |pbcopy'
+alias cp.es='function af.cp.es() { ~/.vim/scripts/echo.line.sep.sh $1|tr -d "\n"|pbcopy;}; af.cp.es'
+alias cp.trNewline='tr -d "\n" | pbcopy'

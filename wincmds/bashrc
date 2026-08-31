@@ -312,56 +312,110 @@ mysshpass ()
 
 mcd() { mkdir -p "$1" && cd "$1"; }
 ##########################
-# tmux funtions start
+# tmux functions start
 ##########################
 
-function tmuxv {
-    tmux split-window -dh "$*"
-}
+# Split pane vertical (right) and run command
+tx.v() { tmux split-window -dh "$*"; }
 
-function tmanv {
-    tmux split-window -dh "man $*"
-}
+# Split pane horizontal (below) and run command
+tx.h() { tmux split-window -dv "$*"; }
 
-function tmanh {
-    tmux split-window -dv "man $*"
-}
+# Split vertical and jump to new pane
+tx.vj() { tmux split-window -h "$*"; }
 
-function tmuxh {
-    tmux split-window -dv "$*"
-}
+# Split horizontal and jump to new pane
+tx.hj() { tmux split-window -v "$*"; }
 
-function ttmux {
-    local SID=`tty | cut -d'/' -f4`
-    echo $1 | egrep "[0-9]+" > /dev/null
-    if [ $? -eq 0 ]; then
-        SID=$1
+# New window and jump to it
+tx.wj() {
+    if [[ -n "$*" ]]; then
+        tmux new-window "$*; exec $SHELL"
+    else
+        tmux new-window
     fi
+}
 
-    if [ "$1" == "ls" ]; then
-        CMD="tmux ls";
+# New window, run command, close when done
+tx.w() { tmux new-window "$*"; }
+
+# Split vertical and show man page
+tx.vman() { tmux split-window -dh "man $*"; }
+
+# Split horizontal and show man page
+tx.hman() { tmux split-window -dv "man $*"; }
+
+# Split vertical with readonly viewer (bat or less)
+tx.vw() {
+    local file="$1"
+    [[ -z "$file" ]] && { echo "Usage: tx.vw <file>"; return 1; }
+    if command -v bat &>/dev/null; then
+        tmux split-window -dh "bat --style=header,numbers,grid,changes --color=always --paging=always --tabs=4 --wrap=auto '$file'"
+    else
+        tmux split-window -dh "less -i -g -J -N -F -R -S -M -W -Q --mouse '$file'"
+    fi
+}
+
+# Remote tmux session
+tx.remote() {
+    local SID=$(tty | cut -d'/' -f4)
+    [[ "$1" =~ ^[0-9]+$ ]] && SID=$1
+    if [[ "$1" == "ls" ]]; then
+        CMD="tmux ls"
     else
         CMD="tmux attach -d -t tmux_$SID || tmux new -s tmux_$SID"
     fi
     ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -t $NIS_USER@$NIS_SERVER $CMD
 }
 
-function tscreen {
-    local SID=`tty | cut -d'/' -f4`
-    echo $1 | egrep "[0-9]+" > /dev/null
-    if [ $? -eq 0 ]; then
-        SID=$1
-    fi
-
-    if [ "$1" == "ls" ]; then
-        CMD="screen -ls";
+# Remote screen session
+tx.scr() {
+    local SID=$(tty | cut -d'/' -f4)
+    [[ "$1" =~ ^[0-9]+$ ]] && SID=$1
+    if [[ "$1" == "ls" ]]; then
+        CMD="screen -ls"
     else
         CMD="screen -d -R tmux_$SID"
     fi
     ssh -X -Y -o "TCPKeepAlive=yes" -o "ServerAliveInterval=90" -o "ServerAliveCountMax=10" -o "ForwardX11=yes" -t $NIS_USER@$NIS_SERVER $CMD
 }
+
+# ── Modern tmux popup features ──────────────────────────────────────────────
+
+# Generic popup - run any command in a popup window
+tx.popup() {
+    local cmd="${*:-$SHELL}"
+    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$cmd"
+}
+
+# FZF file picker in popup
+tx.fzf() {
+    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" \
+        'file=$(fzf --preview "cat {}") && [ -n "$file" ] && ${EDITOR:-vim} "$file"'
+}
+
+# htop in popup
+tx.htop() { tmux display-popup -E -w 90% -h 80% "htop"; }
+
+# lazygit in popup
+tx.lazygit() {
+    command -v lazygit &>/dev/null && tmux display-popup -E -w 90% -h 90% -d "#{pane_current_path}" "lazygit" || echo "lazygit not installed"
+}
+
+# Quick scratch terminal popup
+tx.pad() { tmux display-popup -E -w 60% -h 50% -d "#{pane_current_path}" "$SHELL"; }
+
+# Run command in popup and wait
+tx.run() { tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$*; echo; read -n 1 -s -r -p 'Press any key'"; }
+
+# Tail logs in popup
+tx.logs() { tmux display-popup -E -w 90% -h 80% "tail -f ${1:-/var/log/system.log}"; }
+
+# List tx commands
+tx.help() { echo "tx.v tx.h tx.vj tx.hj tx.w tx.wj tx.vman tx.hman tx.vw tx.remote tx.scr tx.popup tx.fzf tx.htop tx.lazygit tx.pad tx.run tx.logs"; }
+
 ##########################
-# tmux funtions end
+# tmux functions end
 ##########################
 
 
