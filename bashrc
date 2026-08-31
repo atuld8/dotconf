@@ -482,25 +482,42 @@ if [ $? -ne 0 ]; then alias vim='vi'; fi
 # tmux functions start
 ##########################
 
-# Split pane vertical (right) and run command
-tx.v() { tmux split-window -dh "$*"; }
+# Split pane vertical (right) - persistent shell with command
+tx.vp() {
+    local pane_id
+    pane_id=$(tmux split-window -dh -P -F '#{pane_id}')
+    [[ -n "$*" ]] && tmux send-keys -t "$pane_id" "$*" Enter
+}
 
-# Split pane horizontal (below) and run command
-tx.h() { tmux split-window -dv "$*"; }
+# Split pane horizontal (below) - persistent shell with command
+tx.hp() {
+    local pane_id
+    pane_id=$(tmux split-window -dv -P -F '#{pane_id}')
+    [[ -n "$*" ]] && tmux send-keys -t "$pane_id" "$*" Enter
+}
+
+# Split pane vertical (right) - run command and close when done
+tx.vx() { tmux split-window -dh "$*"; }
+
+# Split pane horizontal (below) - run command and close when done
+tx.hx() { tmux split-window -dv "$*"; }
 
 # Split vertical and jump to new pane
-tx.vj() { tmux split-window -h "$*"; }
+tx.vj() {
+    tmux split-window -h
+    [[ -n "$*" ]] && tmux send-keys "$*" Enter
+}
 
 # Split horizontal and jump to new pane
-tx.hj() { tmux split-window -v "$*"; }
+tx.hj() {
+    tmux split-window -v
+    [[ -n "$*" ]] && tmux send-keys "$*" Enter
+}
 
 # New window and jump to it
 tx.wj() {
-    if [[ -n "$*" ]]; then
-        tmux new-window "$*; exec $SHELL"
-    else
-        tmux new-window
-    fi
+    tmux new-window
+    [[ -n "$*" ]] && tmux send-keys "$*" Enter
 }
 
 # New window, run command, close when done
@@ -598,8 +615,10 @@ tx.logs() {
 # List all tx commands
 tx.help() {
     echo -e "Tmux Functions (tx.*):\n"
-    echo "  tx.v <cmd>      - Split vertical (right), run command"
-    echo "  tx.h <cmd>      - Split horizontal (below), run command"
+    echo "  tx.vp <cmd>     - Split vertical, persistent shell"
+    echo "  tx.hp <cmd>     - Split horizontal, persistent shell"
+    echo "  tx.vx <cmd>     - Split vertical, close when done"
+    echo "  tx.hx <cmd>     - Split horizontal, close when done"
     echo "  tx.vj <cmd>     - Split vertical and jump to new pane"
     echo "  tx.hj <cmd>     - Split horizontal and jump to new pane"
     echo "  tx.w <cmd>      - New window, run command, close when done"

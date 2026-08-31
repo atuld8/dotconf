@@ -367,25 +367,42 @@ if [ $? -ne 0 ]; then alias vim='vi'; fi
 # tmux functions start
 ##########################
 
-# Split pane vertical (right) and run command
-tx.v() { tmux split-window -dh "$*"; }
+# Split pane vertical (right) - persistent shell with command
+tx.vp() {
+    local pane_id
+    pane_id=$(tmux split-window -dh -P -F '#{pane_id}')
+    [[ -n "$*" ]] && tmux send-keys -t "$pane_id" "$*" Enter
+}
 
-# Split pane horizontal (below) and run command
-tx.h() { tmux split-window -dv "$*"; }
+# Split pane horizontal (below) - persistent shell with command
+tx.hp() {
+    local pane_id
+    pane_id=$(tmux split-window -dv -P -F '#{pane_id}')
+    [[ -n "$*" ]] && tmux send-keys -t "$pane_id" "$*" Enter
+}
+
+# Split pane vertical (right) - run command and close when done
+tx.vx() { tmux split-window -dh "$*"; }
+
+# Split pane horizontal (below) - run command and close when done
+tx.hx() { tmux split-window -dv "$*"; }
 
 # Split vertical and jump to new pane
-tx.vj() { tmux split-window -h "$*"; }
+tx.vj() {
+    tmux split-window -h
+    [[ -n "$*" ]] && tmux send-keys "$*" Enter
+}
 
 # Split horizontal and jump to new pane
-tx.hj() { tmux split-window -v "$*"; }
+tx.hj() {
+    tmux split-window -v
+    [[ -n "$*" ]] && tmux send-keys "$*" Enter
+}
 
 # New window and jump to it
 tx.wj() {
-    if [[ -n "$*" ]]; then
-        tmux new-window "$*; exec $SHELL"
-    else
-        tmux new-window
-    fi
+    tmux new-window
+    [[ -n "$*" ]] && tmux send-keys "$*" Enter
 }
 
 # New window, run command, close when done
@@ -464,7 +481,7 @@ tx.run() { tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$*; ec
 tx.logs() { tmux display-popup -E -w 90% -h 80% "tail -f ${1:-/var/log/system.log}"; }
 
 # List tx commands
-tx.help() { echo "tx.v tx.h tx.vj tx.hj tx.w tx.wj tx.vman tx.hman tx.vw tx.remote tx.scr tx.popup tx.fzf tx.htop tx.lazygit tx.pad tx.run tx.logs"; }
+tx.help() { echo "tx.vp tx.hp tx.vx tx.hx tx.vj tx.hj tx.w tx.wj tx.vman tx.hman tx.vw tx.remote tx.scr tx.popup tx.fzf tx.htop tx.lazygit tx.pad tx.run tx.logs"; }
 
 ##########################
 # tmux functions end
