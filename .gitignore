@@ -1,3 +1,5 @@
+sessions/**
+
 bundle/
 bundle/**
 emacs.d/**
@@ -25,4 +27,6 @@ jira/NBSMStoryFile
 jira/NBSVRUPStoryFile
 jira/trkX
 jira/chrome-headless-shell
+
 account_manager/__pycache__
+**.pyc
