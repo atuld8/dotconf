@@ -1950,6 +1950,82 @@ def _field_key_to_jql_ref(field_key: str) -> str:
     return f'"{field_key}"'
 
 
+_PROJECT_ALIASES_CONF = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".getJiraDetails.conf")
+_project_aliases_cache: Optional[Dict[str, str]] = None
+
+
+def _load_project_aliases() -> Dict[str, str]:
+    """Load short project alias -> Jira project key/name mapping from config.
+
+    Config format: one ALIAS=VALUE per line, '#' starts a comment, blank lines ignored.
+    Mapping is intentionally kept out of source; missing config means no aliases.
+    """
+    global _project_aliases_cache
+    if _project_aliases_cache is not None:
+        return _project_aliases_cache
+
+    aliases: Dict[str, str] = {}
+    try:
+        with open(_PROJECT_ALIASES_CONF, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip().upper()
+                value = value.strip()
+                if key and value:
+                    aliases[key] = value
+    except OSError:
+        print(
+            f"Warning: project alias config not found: {_PROJECT_ALIASES_CONF} "
+            "(continuing without aliases)",
+            file=sys.stderr,
+        )
+
+    _project_aliases_cache = aliases
+    return aliases
+
+
+def _format_project_aliases_help() -> str:
+    """Render currently configured project aliases for --help text (none if config missing/empty)."""
+    aliases = _load_project_aliases()
+    if not aliases:
+        return "none configured"
+    return ", ".join(f'{key}="{value}"' for key, value in sorted(aliases.items()))
+
+
+def _resolve_project_list(raw: str) -> List[str]:
+    """Parse a comma-separated --projects value, expanding known aliases."""
+    aliases = _load_project_aliases()
+    projects: List[str] = []
+    seen: Set[str] = set()
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        resolved = aliases.get(token.upper(), token)
+        if resolved not in seen:
+            seen.add(resolved)
+            projects.append(resolved)
+    return projects
+
+
+def _build_free_text_jql(query: str, projects: Optional[List[str]] = None) -> str:
+    """Build a JQL 'text ~' free-text search, optionally restricted to projects."""
+    stripped = query.strip()
+    if not stripped:
+        raise ValueError("Search query is empty")
+
+    clauses: List[str] = []
+    if projects:
+        project_values = ", ".join(f'"{_jql_escape(p)}"' for p in projects)
+        clauses.append(f"project in ({project_values})")
+    clauses.append(f'text ~ "{_jql_escape(stripped)}"')
+
+    return " AND ".join(clauses) + " ORDER BY updated DESC"
+
+
 def _build_fi_search_jql(_jira: JiraClient, raw_query: str) -> str:
     """Build a JQL query to find FI issues linked to an FI key, eTrack incident, or SFDC case.
 
@@ -2091,6 +2167,39 @@ def _extract_sfdc_case_links(issue: Dict[str, Any]) -> List[Dict[str, str]]:
                         return links
 
     return []
+
+
+def _print_free_text_search_results(
+    query: str, jql: str, issues: List[Dict[str, Any]], output_format: str
+) -> None:
+    """Print free-text search matches as Key/Project/Status/Priority/Assignee/Updated/Summary rows."""
+    headers = ["Key", "Project", "Status", "Priority", "Assignee", "Updated", "Summary"]
+    rows: List[List[str]] = []
+    for issue in issues:
+        issue_fields = issue.get("fields", {}) or {}
+        rows.append([
+            issue.get("key", "-"),
+            _opt_value(issue_fields.get("project")),
+            _opt_value(issue_fields.get("status")),
+            _opt_value(issue_fields.get("priority")),
+            _opt_value(issue_fields.get("assignee")),
+            _normalize_timestamp(issue_fields.get("updated")),
+            _compact_text(issue_fields.get("summary"), max_len=120),
+        ])
+
+    if output_format == "json":
+        print(json.dumps(
+            {"query": query, "jql": jql, "matches": [dict(zip(headers, row)) for row in rows]},
+            indent=2,
+            ensure_ascii=False,
+        ))
+        return
+
+    print(f"Free-text search query: {query}")
+    print(f"JQL: {jql}")
+    print(f"Matches: {len(rows)}")
+    print()
+    _print_table(rows, headers, md_format=(output_format == "md"))
 
 
 def _build_fi_search_result(issue: Dict[str, Any], jira_client: "JiraClient" = None) -> Dict[str, Any]:
@@ -3015,6 +3124,7 @@ def main() -> int:
         description="Get Jira issue details (generic + FI profiles).",
         usage=(
             "%(prog)s [-h] [-t|--type {auto,fi,pvm,generic,default}] [-s|--search] "
+            "[-ft|--free-text] [-P|--projects PROJECTS] [--max-results MAX_RESULTS] "
             "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
             "[--sub-task|--sub-tasks] "
             "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections sections] "
@@ -3052,6 +3162,30 @@ def main() -> int:
         "--search-debug",
         action="store_true",
         help="With --search, print available Salesforce fields for debugging.",
+    )
+    parser.add_argument(
+        "-ft",
+        "--free-text",
+        action="store_true",
+        help=(
+            "Free-text search mode. Treat the positional value as a JQL 'text ~' query "
+            "across summary/description/comments, across any project unless --projects is given."
+        ),
+    )
+    parser.add_argument(
+        "-P",
+        "--projects",
+        help=(
+            "With --free-text, comma-separated project(s) to restrict the search to. "
+            f"Aliases loaded from {_PROJECT_ALIASES_CONF}: {_format_project_aliases_help()}. "
+            "Any other value is used as-is (project key or name)."
+        ),
+    )
+    parser.add_argument(
+        "--max-results",
+        type=int,
+        default=50,
+        help="With --free-text, maximum number of matches to return (default: 50).",
     )
     parser.add_argument(
         "-e",
@@ -3229,6 +3363,14 @@ def main() -> int:
         print("Error: --search is only supported with --type fi or --type auto")
         return 2
 
+    if args.search and args.free_text:
+        print("Error: --search and --free-text are mutually exclusive")
+        return 2
+
+    if args.projects and not args.free_text:
+        print("Error: --projects is only supported with --free-text")
+        return 2
+
     if args.fields_only and not args.show_field:
         print("Error: --fields-only requires at least one -f/--show-field")
         return 2
@@ -3238,7 +3380,7 @@ def main() -> int:
         return 2
 
     issue_key = raw_issue_input.upper()
-    if not args.search and not re.match(r"^[A-Z][A-Z0-9_]*-\d+$", issue_key):
+    if not args.search and not args.free_text and not re.match(r"^[A-Z][A-Z0-9_]*-\d+$", issue_key):
         print(f"Invalid Jira issue key format: {issue_key}. Expected PROJECT-<digits>")
         return 2
 
@@ -3276,7 +3418,21 @@ def main() -> int:
             _print_fi_search_results(raw_issue_input, issues, args.format, debug=args.search_debug, jira_client=jira)
             return 0
 
-        issue = jira.get_issue(issue_key)
+        if args.free_text:
+            projects = _resolve_project_list(args.projects) if args.projects else None
+            free_text_jql = _build_free_text_jql(raw_issue_input, projects)
+            issues = jira.search_issues(free_text_jql, max_results=args.max_results)
+            if not issues:
+                print(f"No matching issues found for: {raw_issue_input}")
+                return 1
+            if len(issues) == 1:
+                issue_key = issues[0].get("key", issue_key)
+                issue = issues[0]
+            else:
+                _print_free_text_search_results(raw_issue_input, free_text_jql, issues, args.format)
+                return 0
+        else:
+            issue = jira.get_issue(issue_key)
     except (RuntimeError, ValueError) as exc:
         print(f"Error: {exc}")
         return 1
