@@ -212,12 +212,15 @@ def _parse_esql_output(raw_output: str, fields: List[str]) -> List[Dict[str, str
 
         stripped = line.strip()
 
-        if "|" in stripped:
+        # esql output is tab-delimited; check tabs first since ABSTRACT
+        # values can contain literal "|" (e.g. "[PVM-6926|8.8]").
+        if "\t" in stripped:
+            parts = [part.strip() for part in stripped.split("\t")]
+        elif "|" in stripped:
             parts = [part.strip() for part in re.split(r"\|", stripped)]
             parts = [part for part in parts if part != ""]
         else:
-            parts = stripped.split("\t")
-            parts = [part.strip() for part in parts]
+            parts = stripped.split()
 
         if not parts:
             continue
