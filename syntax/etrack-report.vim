@@ -10,10 +10,12 @@ syn match EtrackDelimiter     /^[-+]\{3,}[-+|]\{3,}[-+]\{3,}$/
 syn match EtrackReportTitle   /^EEB \(PACKAGE\|BUNDLE\|STANDARD EEB\) REPORT.*$/
 syn match EtrackReportTitle   /^DELIVERABLE SUMMARY.*$/
 syn match EtrackCommentMeta   /^Comment #\d\+ @ .*$/
-syn match EtrackSection       /^\(SUMMARY:\|LINKS:\|HIERARCHY TREE:\|VERSION SUMMARY:\)$/
-syn match EtrackSection       /^\(SR SHIPPING SUMMARY:\|ARTIFACTS SUMMARY:\|PLATFORM PACKAGES SUMMARY:\)$/
-syn match EtrackSection       /^SR DETAILS (\|^SR SHIPPING (\|^PLATFORM PACKAGES (\|^ARTIFACTS (\|^SR SHIPPING DETAILS (\|^ARTIFACTS (\|^PLATFORM PACKAGES (\|^Total rows: \d\+/
+syn match EtrackSection       /^\(SUMMARY:\|LINKS:\|HIERARCHY TREE:\|VERSION SUMMARY:\|LEGEND:\|BINARY CONFLICTS:\)$/
+syn match EtrackSection       /^\(SR SHIPPING SUMMARY:\|ARTIFACTS SUMMARY:\|PLATFORM PACKAGES SUMMARY:\|EMBEDDED BINARIES SUMMARY:\)$/
+syn match EtrackSection       /^SR DETAILS (\|^SR SHIPPING (\|^PLATFORM PACKAGES (\|^ARTIFACTS (\|^SR SHIPPING DETAILS (\|^ARTIFACTS (\|^PLATFORM PACKAGES (\|^EMBEDDED BINARIES (\|^Total rows: \d\+/
 syn match EtrackHint          /^(Full listing: .*; use --full-deliverable-details to show all)$/
+syn match EtrackHint          /^(no cross-SR binary conflicts detected)$/
+syn match EtrackSummaryLine   /^BINARY RISK SUMMARY: .*$/
 
 syn match EtrackTableBorder   /^[+|][-+|]\+[+|]$/
 syn match EtrackTableHeader   /^| .* |$/
@@ -24,6 +26,14 @@ syn match EtrackTreeLine      /^  \++-- /
 syn match EtrackStatus        /\<\(CURRENT\|STALE\|UNKNOWN\|NEWER\)\>/
 syn match EtrackStatus        /\<\(CLOSED\|REOPEN\|WORKING\|OPEN\)\>/
 syn match EtrackStatus        /\<\(SOURCE_CHANGE\|FIXED\|DUPLICATE\)\>/
+
+" Severity-graded tokens. Defined after EtrackStatus so they win at the same
+" position (Vim gives priority to the item defined last).
+syn match EtrackRiskHigh      /\<\(DIVERGENT\|NO_DATA\)\>/
+syn match EtrackRiskMed       /\<\(COLLISION\|VER_MISMATCH\)\>/
+syn match EtrackRiskLow       /\<\(PARTIAL\|UNIQUE\)\>/
+syn match EtrackRiskHigh      /\<STALE (+\d\+)/
+syn match EtrackOk            /\<\(OK\|CURRENT\)\>/
 
 syn match EtrackKind          /\<\(EEB PACKAGE\|EEB BUNDLE\|STANDARD EEB\|SERVICE_REQUEST\|DEFECT\)\>/
 syn match EtrackSource        /\<\(BUNDLE\|PKG\|README\*\)\>/
@@ -41,12 +51,17 @@ hi def link EtrackDelimiter     Delimiter
 hi def link EtrackReportTitle   Title
 hi def link EtrackCommentMeta   Comment
 hi def link EtrackSection       Statement
+hi def link EtrackSummaryLine   PreProc
 hi def link EtrackHint          Comment
 hi def link EtrackTableBorder   NonText
 hi def link EtrackTableHeader   Identifier
 hi def link EtrackTableRow      Normal
 hi def link EtrackTreeLine      Structure
 hi def link EtrackStatus        Special
+hi def link EtrackRiskHigh      ErrorMsg
+hi def link EtrackRiskMed       WarningMsg
+hi def link EtrackRiskLow       Todo
+hi def link EtrackOk            MoreMsg
 hi def link EtrackKind          Type
 hi def link EtrackSource        Tag
 hi def link EtrackET            Number

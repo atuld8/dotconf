@@ -61,7 +61,7 @@ OPTION GROUPS (every long option has a short form):
                        -M/--markdown  -F/--stale-only
   Deliverable reports: -A/--auto-deliverable  -P/--as-eeb-pkg  -B/--as-bundle
                        -C/--as-standard-eeb  -G/--deliverable-details-source
-                       -j/--deliverable-parallel
+                       -x/--expand-constituents  -j/--deliverable-parallel
   Data source:         -y/--hierarchy-source  -p/--use-eprint
   Remote access:       -R/--ssh  -Z/--no-auto-ssh  -X/--no-ssh-multiplex
   Performance:         -m/--max-nodes  -T/--timeout  -z/--retries  -g/--retry-delay
@@ -78,6 +78,7 @@ HIERARCHY_USAGE = """%(prog)s INCIDENT [-h]
         [-U, --full-deliverable-details]
         [-M, --markdown]
         [-G SRC, --deliverable-details-source SRC] [-F, --stale-only]
+        [-x, --expand-constituents]
         [-j N, --deliverable-parallel N]
         [-y SRC, --hierarchy-source SRC] [-p, --use-eprint]
         [-m N, --max-nodes N] [-T SEC, --timeout SEC]
@@ -368,6 +369,10 @@ EEB_VERSION_RE = re.compile(r"This is EEB version\s*:\s*(\d+)", re.IGNORECASE)
 EEB_CONSTITUENT_RE = re.compile(r"EEB\s+et\s+(\d+)\s+v(\d+)", re.IGNORECASE)
 ET_CONSTITUENT_RE = re.compile(r"\bET\s+(\d+)\b", re.IGNORECASE)
 ARTIFACT_LINE_RE = re.compile(r"^(\d+)\s+(\d+)\s+(\S+/)(.+)$")
+CHECKSUM_SECTION_START_RE = re.compile(r"Checksums for all files", re.IGNORECASE)
+CHECKSUM_SECTION_END_RE = re.compile(
+    r"Checksums for eebinstallers will be available", re.IGNORECASE
+)
 URL_RE = re.compile(r"https://[^\s\]>]+")
 
 # Internal kind ids (stable in code) -> user-facing labels
@@ -440,6 +445,18 @@ class DeliverableVersion:
     problem_description: str = ""
     submission_type: str = ""
     install_on: str = ""
+
+
+@dataclass
+class ConstituentBinaries:
+    """Binaries shipped by one constituent EEB at its embedded version."""
+
+    incident: str
+    requested_version: Optional[int] = None
+    resolved_version: Optional[int] = None
+    kind: str = ""
+    artifacts: List[ArtifactRow] = field(default_factory=list)
+    error: str = ""
 
 
 def extract_trencher_comments(comments_text: str) -> str:
@@ -739,9 +756,24 @@ class TrencherDeliverableParser:
             deduped.append(package)
         return deduped
 
+    @staticmethod
+    def _extract_checksum_section(block: str) -> str:
+        """Narrow a comment block to its 'Checksums for all files' region.
+
+        Prevents unrelated '<num> <num> <path>/<file>' lines elsewhere in the
+        comment from being misread as artifacts. Falls back to the whole block
+        when the markers are absent.
+        """
+        start_match = CHECKSUM_SECTION_START_RE.search(block)
+        if not start_match:
+            return block
+        tail = block[start_match.end():]
+        end_match = CHECKSUM_SECTION_END_RE.search(tail)
+        return tail[: end_match.start()] if end_match else tail
+
     def _parse_artifacts(self, block: str) -> List[ArtifactRow]:
         artifacts: List[ArtifactRow] = []
-        for line in block.splitlines():
+        for line in self._extract_checksum_section(block).splitlines():
             match = ARTIFACT_LINE_RE.match(line.strip())
             if not match:
                 continue
@@ -925,6 +957,63 @@ _PLATFORM_PACKAGE_TYPE_SORT = {
     "other": 4,
 }
 
+# Most severe first — drives Binary Conflicts row ordering.
+_BINARY_RISK_SORT = {
+    "DIVERGENT": 0,
+    "COLLISION": 1,
+    "PARTIAL": 2,
+    "UNIQUE": 3,
+}
+
+_BINARY_EXT_RE = re.compile(
+    r"\.(exe|dll|so|sl|a|dylib|lib|pdb|jar|war|rpm|sh|bat|cmd|bin)$",
+    re.IGNORECASE,
+)
+_SO_VERSION_RE = re.compile(r"\.so(?:\.\d+)+$", re.IGNORECASE)
+
+
+def _binary_key_candidates(filename: str) -> Tuple[str, Optional[str]]:
+    """Return (conservative, aggressive) identities for a binary filename.
+
+    Conservative keeps any leading 'lib'; aggressive drops it. Blind stripping
+    is wrong ('library.dll' is not 'rary'), so the aggressive form is only a
+    candidate — see _resolve_binary_keys.
+    """
+    name = filename.rsplit("/", 1)[-1].strip()
+    name = _SO_VERSION_RE.sub("", name)
+    previous = None
+    while previous != name:
+        previous = name
+        name = _BINARY_EXT_RE.sub("", name)
+
+    conservative = name.lower()
+    aggressive = (
+        conservative[3:]
+        if len(conservative) > 4 and conservative.startswith("lib")
+        else None
+    )
+    return conservative, aggressive
+
+
+def _resolve_binary_keys(filenames: Sequence[str]) -> Dict[str, str]:
+    """Map each filename to a platform-agnostic identity.
+
+    AMD64 ships nbcld.dll where Linux ships libnbcld.so, so the 'lib' prefix
+    must be dropped to pair them. It is dropped only when some other file
+    actually presents the stripped name, which keeps genuine 'lib*' names
+    (library.dll) intact.
+    """
+    candidates = {name: _binary_key_candidates(name) for name in set(filenames)}
+    conservative_keys = {pair[0] for pair in candidates.values()}
+
+    resolved: Dict[str, str] = {}
+    for name, (conservative, aggressive) in candidates.items():
+        if aggressive and aggressive in conservative_keys:
+            resolved[name] = aggressive
+        else:
+            resolved[name] = conservative
+    return resolved
+
 
 def _sort_platforms(platforms: Set[str]) -> List[str]:
     order = {platform: index for index, platform in enumerate(_PLATFORM_SORT_ORDER)}
@@ -1066,7 +1155,9 @@ class DeliverableReporter:
         include_details: bool = False,
         full_details: bool = False,
         stale_only: bool = False,
+        binaries_by_version: Optional[Dict[int, List["ConstituentBinaries"]]] = None,
     ) -> str:
+        binaries_by_version = binaries_by_version or {}
         sections: List[str] = []
         for version in versions:
             sections.append(
@@ -1077,6 +1168,7 @@ class DeliverableReporter:
                     include_details=include_details,
                     full_details=full_details,
                     stale_only=stale_only,
+                    constituent_binaries=binaries_by_version.get(version.eeb_version),
                 )
             )
         return "\n".join(sections)
@@ -1200,6 +1292,7 @@ class DeliverableReporter:
         include_details: bool = False,
         full_details: bool = False,
         stale_only: bool = False,
+        constituent_binaries: Optional[List["ConstituentBinaries"]] = None,
     ) -> str:
         title = deliverable_kind_label(version.kind)
         report_title = (
@@ -1275,6 +1368,20 @@ class DeliverableReporter:
                         full_details=full_details,
                     )
                 )
+
+        if constituent_binaries:
+            lines.append(
+                self._render_embedded_binaries(
+                    version,
+                    constituent_binaries,
+                    latest_versions,
+                    full_details=full_details,
+                )
+            )
+            lines.append(self._render_binary_conflicts(constituent_binaries))
+            lines.append(self._render_legend(expanded=True))
+        elif include_details:
+            lines.append(self._render_legend(expanded=False))
 
         return "\n".join(lines)
 
@@ -1682,6 +1789,296 @@ class DeliverableReporter:
         renderer = self._renderer(["TYPE", "URL"])
         renderer.widths["URL"] = 72
         return self._heading(2, "Links") + renderer.render_with_count(rows)
+
+    @staticmethod
+    def _embedded_status(entry: "ConstituentBinaries") -> str:
+        if entry.error and not entry.artifacts:
+            return "NO_DATA"
+        if (
+            entry.requested_version is not None
+            and entry.resolved_version is not None
+            and entry.requested_version != entry.resolved_version
+        ):
+            return "VER_MISMATCH"
+        return "OK"
+
+    def _render_embedded_binaries(
+        self,
+        version: DeliverableVersion,
+        entries: List["ConstituentBinaries"],
+        latest_versions: Dict[str, Optional[int]],
+        full_details: bool = False,
+    ) -> str:
+        summary_rows: List[Dict[str, str]] = []
+        full_rows: List[Dict[str, str]] = []
+
+        for entry in entries:
+            embedded = entry.requested_version
+            latest = latest_versions.get(entry.incident)
+            total_bytes = sum(
+                _parse_artifact_size_bytes(a.size) for a in entry.artifacts
+            )
+            type_counts = Counter(
+                _classify_artifact_filename(a.filename) for a in entry.artifacts
+            )
+            summary_rows.append(
+                {
+                    "ET": entry.incident,
+                    "EMBEDDED": str(embedded) if embedded is not None else "",
+                    "LATEST": str(latest) if latest is not None else "",
+                    "DRIFT": self._version_status(embedded, latest),
+                    "STATUS": self._embedded_status(entry),
+                    "PLATFORMS": ", ".join(
+                        sorted({a.platform for a in entry.artifacts})
+                    ) or "-",
+                    "FILES": str(len(entry.artifacts)),
+                    "TOTAL_SIZE": _format_artifact_size(total_bytes),
+                    "TYPES": _summarize_artifact_types(type_counts) if type_counts else (entry.error or "-"),
+                }
+            )
+            for artifact in entry.artifacts:
+                full_rows.append(
+                    {
+                        "ET": entry.incident,
+                        "VER": str(entry.resolved_version or ""),
+                        "PLATFORM": artifact.platform,
+                        "FILE": artifact.filename,
+                        "SIZE": artifact.size,
+                        "CHECKSUM": artifact.checksum,
+                    }
+                )
+
+        full_rows.sort(key=lambda row: (row["FILE"], row["PLATFORM"], row["ET"]))
+
+        heading = self._heading(
+            2,
+            f"Embedded Binaries (level-1 expansion of {len(entries)} constituent EEBs, "
+            f"{len(full_rows)} binary rows)",
+        ).rstrip("\n")
+
+        summary_renderer = self._renderer(
+            [
+                "ET",
+                "EMBEDDED",
+                "LATEST",
+                "DRIFT",
+                "STATUS",
+                "PLATFORMS",
+                "FILES",
+                "TOTAL_SIZE",
+                "TYPES",
+            ]
+        )
+        summary_renderer.widths.update(
+            {
+                "ET": 10,
+                "EMBEDDED": 8,
+                "LATEST": 6,
+                "DRIFT": 12,
+                "STATUS": 12,
+                "PLATFORMS": 34,
+                "FILES": 5,
+                "TOTAL_SIZE": 10,
+                "TYPES": 38,
+            }
+        )
+        parts = [
+            heading,
+            self._heading(3, "Embedded Binaries Summary")
+            + summary_renderer.render_with_count(summary_rows),
+        ]
+
+        show_full = full_details or len(full_rows) <= DELIVERABLE_FULL_DETAIL_ROW_LIMIT
+        if show_full and full_rows:
+            full_renderer = self._renderer(
+                ["ET", "VER", "PLATFORM", "FILE", "SIZE", "CHECKSUM"]
+            )
+            full_renderer.widths.update({"ET": 10, "VER": 4, "FILE": 48})
+            parts.append(
+                self._heading(3, "Embedded Binaries (full)")
+                + full_renderer.render_with_count(full_rows)
+            )
+        elif full_rows:
+            parts.append(self._full_listing_note(len(full_rows)))
+
+        return "\n".join(parts)
+
+    def _render_binary_conflicts(self, entries: List["ConstituentBinaries"]) -> str:
+        # Exact identity (same platform) — safe for collision/divergence checks.
+        owners: Dict[Tuple[str, str], Dict[str, str]] = {}
+        # Platform-agnostic identity — required for cross-platform coverage,
+        # since AMD64/Linux use different extensions for the same binary.
+        logical_platforms: Dict[str, Set[str]] = {}
+        logical_owners: Dict[str, Set[str]] = {}
+        logical_names: Dict[str, Set[str]] = {}
+        sr_platforms: Dict[str, Set[str]] = {}
+
+        key_by_filename = _resolve_binary_keys(
+            [a.filename for entry in entries for a in entry.artifacts]
+        )
+
+        for entry in entries:
+            for artifact in entry.artifacts:
+                owners.setdefault((artifact.platform, artifact.filename), {})[
+                    entry.incident
+                ] = artifact.checksum
+                key = key_by_filename[artifact.filename]
+                logical_platforms.setdefault(key, set()).add(artifact.platform)
+                logical_owners.setdefault(key, set()).add(entry.incident)
+                logical_names.setdefault(key, set()).add(artifact.filename)
+                sr_platforms.setdefault(entry.incident, set()).add(artifact.platform)
+
+        rows: List[Dict[str, str]] = []
+        counts: Counter = Counter()
+
+        for (platform, filename), by_et in sorted(owners.items()):
+            ets = sorted(by_et.keys())
+            checksums = set(by_et.values())
+            if len(ets) > 1 and len(checksums) > 1:
+                risk = "DIVERGENT"
+            elif len(ets) > 1:
+                risk = "COLLISION"
+            else:
+                continue
+            counts[risk] += 1
+            rows.append(
+                {
+                    "RISK": risk,
+                    "FILE": filename,
+                    "PLATFORM": platform,
+                    "SRS": ", ".join(ets),
+                    "CHECKSUMS": str(len(checksums)),
+                    "COVERAGE": "-",
+                }
+            )
+
+        for key in sorted(logical_platforms):
+            covered = logical_platforms[key]
+            ets = sorted(logical_owners[key])
+            # Expected coverage is what the owning SRs ship overall, not the
+            # global platform set — a Windows-only SR must not be flagged.
+            expected: Set[str] = set()
+            for et in ets:
+                expected |= sr_platforms.get(et, set())
+            missing = expected - covered
+            if not missing:
+                counts["UNIQUE"] += 1
+                continue
+            counts["PARTIAL"] += 1
+            rows.append(
+                {
+                    "RISK": "PARTIAL",
+                    "FILE": ", ".join(sorted(logical_names[key])),
+                    "PLATFORM": "-",
+                    "SRS": ", ".join(ets),
+                    "CHECKSUMS": "-",
+                    "COVERAGE": (
+                        f"{len(covered)}/{len(expected)} missing "
+                        f"{', '.join(_sort_platforms(missing))}"
+                    ),
+                }
+            )
+
+        rows.sort(
+            key=lambda row: (
+                _BINARY_RISK_SORT.get(row["RISK"], 99),
+                row["FILE"],
+                row["PLATFORM"],
+            )
+        )
+
+        renderer = self._renderer(
+            ["RISK", "FILE", "PLATFORM", "SRS", "CHECKSUMS", "COVERAGE"]
+        )
+        renderer.widths.update(
+            {
+                "RISK": 10,
+                "FILE": 46,
+                "PLATFORM": 12,
+                "SRS": 30,
+                "CHECKSUMS": 9,
+                "COVERAGE": 34,
+            }
+        )
+
+        summary = (
+            f"BINARY RISK SUMMARY: {counts['DIVERGENT']} DIVERGENT, "
+            f"{counts['COLLISION']} COLLISION, {counts['PARTIAL']} PARTIAL, "
+            f"{counts['UNIQUE']} UNIQUE"
+        )
+        heading = self._heading(2, "Binary Conflicts").rstrip("\n")
+        note = self._note(
+            "PARTIAL uses platform-agnostic names (extension and 'lib' prefix "
+            "stripped) and compares against the platforms the owning SRs "
+            "actually ship on; verify before acting."
+        ).rstrip("\n")
+
+        if not rows:
+            clean = "(no cross-SR binary conflicts detected)"
+            if self._markdown():
+                return f"{heading}\n\n{summary}\n\n{clean}\n\n*Total rows: 0*"
+            return f"{heading}\n{summary}\n{clean}\nTotal rows: 0"
+
+        body = renderer.render_with_count(rows)
+        return f"{heading}\n{summary}\n{note}\n{body}"
+
+    def _render_legend(self, expanded: bool = False) -> str:
+        entries: List[Tuple[str, str, str]] = [
+            ("DRIFT", "CURRENT", "Embedded EEB version matches latest published"),
+            ("DRIFT", "STALE (+n)", "Embedded version is n revisions behind latest"),
+            ("DRIFT", "NEWER (a>b)", "Embedded version is ahead of latest known"),
+            ("DRIFT", "UNKNOWN", "Embedded or latest version could not be determined"),
+            ("SOURCE", "PKG / BUNDLE", "File belongs to the package/bundle ET itself"),
+            (
+                "SOURCE",
+                "README*",
+                "ET found only in Readme/Problem Description, not the trusted list",
+            ),
+        ]
+        if expanded:
+            entries.extend(
+                [
+                    ("STATUS", "OK", "Constituent EEB comment parsed at embedded version"),
+                    (
+                        "STATUS",
+                        "VER_MISMATCH",
+                        "Embedded version not published; newest available used instead",
+                    ),
+                    (
+                        "STATUS",
+                        "NO_DATA",
+                        "No trencher comment or no checksum rows for this constituent",
+                    ),
+                    (
+                        "RISK",
+                        "DIVERGENT",
+                        "Same binary+platform shipped by multiple SRs with DIFFERENT checksums (highest risk)",
+                    ),
+                    (
+                        "RISK",
+                        "COLLISION",
+                        "Same binary+platform shipped by multiple SRs, identical checksum (last-writer-wins)",
+                    ),
+                    (
+                        "RISK",
+                        "PARTIAL",
+                        "Logical binary missing on some platform its owning SR otherwise ships (name-normalized; advisory)",
+                    ),
+                    (
+                        "RISK",
+                        "UNIQUE",
+                        "Single owner, coverage matches owning SR's platforms (not listed)",
+                    ),
+                ]
+            )
+
+        rows = [
+            {"COLUMN": column, "TOKEN": token, "MEANING": meaning}
+            for column, token, meaning in entries
+        ]
+        renderer = self._renderer(["COLUMN", "TOKEN", "MEANING"])
+        renderer.widths.update({"COLUMN": 8, "TOKEN": 14, "MEANING": 72})
+        return self._heading(2, "Legend") + renderer.render_with_count(rows)
 
     def _render_artifacts_summary(
         self,
@@ -2486,6 +2883,65 @@ class EtrackHierarchyFetcher:
             str(record.get("INCIDENT", "")).strip(): record for record in records
         }
 
+    def fetch_constituent_binaries(
+        self,
+        version: DeliverableVersion,
+        max_workers: int = DEFAULT_DELIVERABLE_PARALLEL,
+    ) -> List[ConstituentBinaries]:
+        """Fetch each constituent EEB's own binary list at its embedded version."""
+        targets = [
+            (c.incident, c.embedded_version)
+            for c in version.constituents
+            if c.incident != version.incident
+        ]
+        if not targets:
+            return []
+
+        if self.debug:
+            print(
+                f"[DEBUG] Expanding binaries for {len(targets)} constituent EEB(s)...",
+                file=sys.stderr,
+            )
+
+        def _one(incident: str, wanted: Optional[int]) -> ConstituentBinaries:
+            result = ConstituentBinaries(incident=incident, requested_version=wanted)
+            try:
+                comments = self.get_trencher_comments(incident)
+            except EtrackHierarchyError as exc:
+                result.error = str(exc).splitlines()[0]
+                return result
+
+            parser = TrencherDeliverableParser()
+            kinds = parser.detect_kinds(comments, incident) or ["eeb-standard"]
+            candidates: List[DeliverableVersion] = []
+            for kind in kinds:
+                candidates.extend(parser.parse(comments, incident, kind))
+
+            if not candidates:
+                result.error = "no deliverable comment found"
+                return result
+
+            chosen = next(
+                (c for c in candidates if c.eeb_version == wanted), None
+            ) if wanted is not None else None
+            if chosen is None:
+                # Embedded version not published (or unknown) — fall back to newest.
+                chosen = max(candidates, key=lambda c: c.eeb_version)
+
+            result.resolved_version = chosen.eeb_version
+            result.kind = chosen.kind
+            result.artifacts = chosen.artifacts
+            if not chosen.artifacts:
+                result.error = "no checksum/artifact rows in comment"
+            return result
+
+        workers = max(1, min(max_workers, len(targets)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(lambda item: _one(*item), targets))
+
+        results.sort(key=lambda item: item.incident)
+        return results
+
     def render_deliverable_report(
         self,
         incident: str,
@@ -2495,6 +2951,8 @@ class EtrackHierarchyFetcher:
         full_details: bool = False,
         stale_only: bool = False,
         output_format: str = OUTPUT_FORMAT_ASCII,
+        expand_constituents: bool = False,
+        deliverable_parallel: int = DEFAULT_DELIVERABLE_PARALLEL,
     ) -> str:
         comments = self.get_trencher_comments(incident)
         versions = TrencherDeliverableParser().parse(comments, incident, kind)
@@ -2534,6 +2992,13 @@ class EtrackHierarchyFetcher:
             enriched = details_future.result()
             latest_versions = latest_future.result()
 
+        binaries_by_version: Dict[int, List[ConstituentBinaries]] = {}
+        if expand_constituents:
+            for version in versions:
+                binaries_by_version[version.eeb_version] = self.fetch_constituent_binaries(
+                    version, max_workers=deliverable_parallel
+                )
+
         return DeliverableReporter(output_format=output_format).render(
             versions,
             enriched,
@@ -2541,6 +3006,7 @@ class EtrackHierarchyFetcher:
             include_details=include_details,
             full_details=full_details,
             stale_only=stale_only,
+            binaries_by_version=binaries_by_version,
         )
 
     def _extract_first_line(self, text: str) -> str:
@@ -3484,6 +3950,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         ),
     )
     deliverable_group.add_argument(
+        "-x",
+        "--expand-constituents",
+        action="store_true",
+        help=(
+            "Deep expansion: fetch each constituent EEB's own binary checksum list "
+            "at its embedded version and print EMBEDDED BINARIES + BINARY CONFLICTS "
+            "(cross-SR collisions, checksum divergence, partial platform coverage). "
+            "Costs one extra eprint call per constituent; see -j to tune parallelism."
+        ),
+    )
+    deliverable_group.add_argument(
         "-G",
         "--deliverable-details-source",
         choices=list(DELIVERABLE_DETAIL_SOURCES),
@@ -3815,6 +4292,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     full_details=args.full_deliverable_details,
                     stale_only=args.stale_only and kind == "eeb-pkg",
                     output_format=output_format,
+                    expand_constituents=args.expand_constituents,
+                    deliverable_parallel=args.deliverable_parallel,
                 ))
         elif not args.skip_hierarchy or show_single_row:
             hints = fetcher.render_deliverable_hints(
