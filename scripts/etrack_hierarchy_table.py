@@ -36,7 +36,10 @@ Examples:
     ./etrack_hierarchy_table.py 4234410 -A -N -D
     ./etrack_hierarchy_table.py 4234410 -C -N -D
     ./etrack_hierarchy_table.py 4230893 -P -N -D -M
+    ./etrack_hierarchy_table.py 4231395 4225989 -W
 """
+
+from __future__ import annotations
 
 import argparse
 import errno
@@ -57,6 +60,7 @@ VALID_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 HIERARCHY_SHORT_OPTIONS_HELP = """
 OPTION GROUPS (every long option has a short form):
   Input & scope:       -S/--as-super  -1/--single  -N/--skip-hierarchy
+                       -W/--compare  (needs two incident IDs)
   Output format:       -I/--include-cols  -E/--exclude-cols  -t/--htree
                        -D/--include-deliverable-details  -U/--full-deliverable-details
                        -M/--markdown  -F/--stale-only
@@ -69,8 +73,9 @@ OPTION GROUPS (every long option has a short form):
   Logging:             -q/--quiet  -v/--verbose  -d/--debug
 """
 
-HIERARCHY_USAGE = """%(prog)s INCIDENT [-h]
+HIERARCHY_USAGE = """%(prog)s INCIDENT [OTHER_INCIDENT] [-h]
         [-S, --as-super] [-1, --single] [-N, --skip-hierarchy] [-t, --htree]
+        [-W, --compare] [--compare-all-versions] [--compare-readme-refs]
         [-I COLS, --include-cols COLS] [-E COLS, --exclude-cols COLS]
         [-R SSH, --ssh SSH] [-Z, --no-auto-ssh] [-X, --no-ssh-multiplex]
         [-A, --auto-deliverable] [-P, --as-eeb-pkg] [-B, --as-bundle]
@@ -170,6 +175,8 @@ SSH_ERROR_RULES: List[Tuple[re.Pattern[str], str, bool]] = [
     (re.compile(r"Control socket", re.I), "multiplex", True),
     (re.compile(r"ControlMaster", re.I), "multiplex", True),
     (re.compile(r"mux_client", re.I), "multiplex", True),
+    (re.compile(r"too long for Unix domain socket", re.I), "multiplex", True),
+    (re.compile(r"unix_listener:.*too long", re.I), "multiplex", True),
     (re.compile(r"Permission denied \(publickey", re.I), "auth", False),
     (re.compile(r"Permission denied", re.I), "auth", False),
     (re.compile(r"Host key verification failed", re.I), "hostkey", False),
@@ -295,15 +302,24 @@ def default_ssh_target() -> Optional[str]:
 
 
 def classify_command_error(stderr: str, returncode: int) -> Tuple[str, bool]:
+    # OpenSSH may prepend advisory warnings; classify on the full text but prefer
+    # concrete failure lines over generic "ssh"/"socket" fallbacks.
     text = stderr or ""
     for pattern, category, retryable in SSH_ERROR_RULES:
         if pattern.search(text):
             return category, retryable
     if returncode == 255 and (re.search(r"\bssh\b", text, re.I) or not text.strip()):
+        # Ignore pure advisory noise (e.g. post-quantum KEX warning) with no real error.
+        if re.search(r"post-quantum key exchange", text, re.I) and not re.search(
+            r"(unix_listener|Connection |Permission denied|Could not|timed out)",
+            text,
+            re.I,
+        ):
+            return "unknown", False
         return "ssh", True
     # SSH often exits 255 with only a short network hint in stdout/stderr.
     if returncode == 255 and re.search(
-        r"\b(connection|network|socket|timeout|reset|refused|unreachable)\b",
+        r"\b(connection|network|timeout|reset|refused|unreachable)\b",
         text,
         re.I,
     ):
@@ -2237,12 +2253,15 @@ class TableRenderer:
         self,
         columns: List[str],
         output_format: str = OUTPUT_FORMAT_ASCII,
+        widths: Optional[Dict[str, int]] = None,
     ):
         self.columns = columns
         self.output_format = output_format
         self.widths = {
             col: COLUMN_WIDTHS.get(col, COLUMN_WIDTHS["DEFAULT"]) for col in columns
         }
+        if widths:
+            self.widths.update(widths)
 
     def _markdown(self) -> bool:
         return self.output_format == OUTPUT_FORMAT_MARKDOWN
@@ -2311,6 +2330,10 @@ class EtrackHierarchyFetcher:
         self.max_retries = max(0, max_retries)
         self.retry_delay = max(0.0, retry_delay)
         self._ssh_multiplex_disabled = False
+        # Per-process token so concurrent script instances do not share one
+        # ControlMaster socket. Otherwise one exit/Ctrl+C runs `ssh -O exit`
+        # and tears down the other instance's SSH session.
+        self._ssh_mux_token = f"{os.getpid()}-{hashlib.sha256(os.urandom(8)).hexdigest()[:8]}"
         self._details_cache: Dict[str, str] = {}
         self._parsed_details_cache: Dict[str, Dict[str, str]] = {}
         self._comments_cache: Dict[str, str] = {}
@@ -2325,15 +2348,13 @@ class EtrackHierarchyFetcher:
         )
 
     def _ssh_control_path(self) -> str:
+        """Short ControlPath under /tmp (macOS/BSD sun_path is ~104 bytes)."""
         assert self.ssh_target is not None
-        digest = hashlib.sha256(self.ssh_target.encode("utf-8")).hexdigest()[:16]
-        cache_dir = os.path.join(
-            os.path.expanduser("~"),
-            ".cache",
-            "etrack_hierarchy_table",
-        )
-        os.makedirs(cache_dir, exist_ok=True)
-        return os.path.join(cache_dir, f"ssh-{digest}")
+        # Do not put this under ~/.cache/... — home paths + ssh's random suffix
+        # exceed the Unix domain socket path limit and break multiplexing.
+        key = f"{self.ssh_target}\0{self._ssh_mux_token}"
+        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
+        return f"/tmp/eth-{digest}"
 
     def _ssh_options(self, for_close: bool = False) -> List[str]:
         options = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
@@ -2346,7 +2367,7 @@ class EtrackHierarchyFetcher:
                     "-o",
                     f"ControlPath={self._ssh_control_path()}",
                     "-o",
-                    "ControlPersist=300",
+                    "ControlPersist=60",
                 ]
             )
         return options
@@ -2357,16 +2378,26 @@ class EtrackHierarchyFetcher:
         return ["ssh", *self._ssh_options(), self.ssh_target]
 
     def _recover_ssh_multiplex(self) -> None:
-        if self.debug:
+        if self.debug or not self.quiet:
             print(
-                "[WARN] Stale SSH multiplex socket; resetting connection...",
+                "[WARN] SSH multiplex socket issue; "
+                "disabling ControlMaster for this process and retrying...",
                 file=sys.stderr,
             )
         self.close_ssh()
+        # Disable multiplex for remaining commands in this process. Concurrent
+        # instances already use unique ControlPaths; falling back avoids loops
+        # on path-length / stale-socket failures.
         self._ssh_multiplex_disabled = True
 
     def close_ssh(self) -> None:
+        """Close only this process's ControlMaster socket (never a sibling instance)."""
         if not self.ssh_target or not self.ssh_multiplex:
+            return
+        if self._ssh_multiplex_disabled:
+            return
+        control_path = self._ssh_control_path()
+        if not os.path.exists(control_path):
             return
         subprocess.run(
             [
@@ -3107,6 +3138,180 @@ class EtrackHierarchyFetcher:
             binaries_by_version=binaries_by_version,
         )
 
+    def collect_compare_side(
+        self,
+        incident: str,
+        kinds: Sequence[str],
+        *,
+        deliverable_use_esql: bool,
+        all_versions: bool = False,
+        include_readme_refs: bool = False,
+        expand_constituents: bool = True,
+        deliverable_parallel: int = DEFAULT_DELIVERABLE_PARALLEL,
+    ) -> CompareSide:
+        """Build a compare snapshot for one ET (metadata + deliverable footprint)."""
+        parent_map = {incident: incident}
+        if deliverable_use_esql:
+            records = self.fetch_records_esql([incident], parent_map)
+        else:
+            records = self.fetch_records_eprint_cached([incident], parent_map)
+        record = records[0] if records else {
+            "INCIDENT": incident,
+            "SINCIDENT": incident,
+            "TYPE": "",
+            "VERSION": "",
+            "STATE": "",
+            "RESOLUTION": "",
+            "ASSIGNED_TO": "",
+            "ABSTRACT": "",
+        }
+
+        detected = list(kinds) if kinds else self.detect_deliverable_kinds(incident)
+        if not detected:
+            # Still allow metadata-only compare.
+            return CompareSide(
+                incident=incident,
+                record=record,
+                kinds_detected=[],
+                snapshots=[],
+            )
+
+        comments = self.get_trencher_comments(incident)
+        parser = TrencherDeliverableParser()
+        snapshots: List[CompareSnapshot] = []
+
+        for kind in DELIVERABLE_KINDS:
+            if kind not in detected:
+                continue
+            versions = parser.parse(comments, incident, kind)
+            if not versions:
+                continue
+            selected = (
+                versions
+                if all_versions
+                else [max(versions, key=lambda item: item.eeb_version)]
+            )
+            for version in selected:
+                members: List[CompareMember] = []
+                if kind == "eeb-standard":
+                    members = [
+                        CompareMember(
+                            incident=incident,
+                            embedded_version=version.eeb_version,
+                            trusted=True,
+                        )
+                    ]
+                else:
+                    for constituent in version.constituents:
+                        if (
+                            kind == "bundle"
+                            and not constituent.in_bundle_contains
+                            and not include_readme_refs
+                        ):
+                            continue
+                        members.append(
+                            CompareMember(
+                                incident=constituent.incident,
+                                embedded_version=constituent.embedded_version,
+                                trusted=constituent.in_bundle_contains,
+                            )
+                        )
+
+                member_ids = [m.incident for m in members]
+                latest_versions = self.get_latest_eeb_versions_batch(member_ids)
+
+                artifacts: List[CompareArtifact] = []
+                for art in version.artifacts:
+                    artifacts.append(
+                        CompareArtifact(
+                            platform=art.platform,
+                            filename=art.filename,
+                            checksum=art.checksum,
+                            size=art.size,
+                            source_et=incident,
+                            eeb_version=version.eeb_version,
+                            kind=kind,
+                            origin="self",
+                        )
+                    )
+
+                expand_errors: List[str] = []
+                if expand_constituents and kind in ("eeb-pkg", "bundle"):
+                    # Expand only trusted embeds (and optionally README* if included).
+                    expand_version = DeliverableVersion(
+                        kind=version.kind,
+                        incident=version.incident,
+                        eeb_version=version.eeb_version,
+                        product_version=version.product_version,
+                        primary=version.primary,
+                        comment_num=version.comment_num,
+                        comment_date=version.comment_date,
+                        constituents=[
+                            ConstituentRef(
+                                incident=m.incident,
+                                embedded_version=m.embedded_version,
+                                in_bundle_contains=m.trusted,
+                            )
+                            for m in members
+                            if m.incident != incident
+                        ],
+                        artifacts=version.artifacts,
+                        platform_packages=version.platform_packages,
+                        links=version.links,
+                        readme_notes=version.readme_notes,
+                        problem_description=version.problem_description,
+                        submission_type=version.submission_type,
+                        install_on=version.install_on,
+                    )
+                    expanded = self.fetch_constituent_binaries(
+                        expand_version,
+                        max_workers=deliverable_parallel,
+                    )
+                    for entry in expanded:
+                        if entry.error:
+                            expand_errors.append(
+                                f"ET {entry.incident}: {entry.error}"
+                            )
+                        for art in entry.artifacts:
+                            artifacts.append(
+                                CompareArtifact(
+                                    platform=art.platform,
+                                    filename=art.filename,
+                                    checksum=art.checksum,
+                                    size=art.size,
+                                    source_et=entry.incident,
+                                    eeb_version=(
+                                        entry.resolved_version
+                                        if entry.resolved_version is not None
+                                        else version.eeb_version
+                                    ),
+                                    kind=entry.kind or kind,
+                                    origin="embedded",
+                                )
+                            )
+
+                snapshots.append(
+                    CompareSnapshot(
+                        kind=kind,
+                        eeb_version=version.eeb_version,
+                        product_version=version.product_version,
+                        primary=version.primary,
+                        install_on=version.install_on,
+                        problem_description=version.problem_description,
+                        members=members,
+                        artifacts=artifacts,
+                        latest_by_et=latest_versions,
+                        expand_errors=expand_errors,
+                    )
+                )
+
+        return CompareSide(
+            incident=incident,
+            record=record,
+            kinds_detected=detected,
+            snapshots=snapshots,
+        )
+
     def _extract_first_line(self, text: str) -> str:
         for line in text.splitlines():
             stripped = line.strip()
@@ -3797,6 +4002,575 @@ def _resolve_output_columns(
     return result
 
 
+# ---------------------------------------------------------------------------
+# ETrack compare (package / bundle / standard) — membership + artifacts
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CompareArtifact:
+    platform: str
+    filename: str
+    checksum: str
+    size: str
+    source_et: str
+    eeb_version: int
+    kind: str
+    origin: str  # self | embedded
+
+
+@dataclass
+class CompareMember:
+    incident: str
+    embedded_version: Optional[int]
+    trusted: bool  # False => bundle README* only
+
+
+@dataclass
+class CompareSnapshot:
+    kind: str
+    eeb_version: int
+    product_version: str
+    primary: str
+    install_on: str
+    problem_description: str
+    members: List[CompareMember] = field(default_factory=list)
+    artifacts: List[CompareArtifact] = field(default_factory=list)
+    latest_by_et: Dict[str, Optional[int]] = field(default_factory=dict)
+    expand_errors: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CompareSide:
+    incident: str
+    record: Dict[str, str]
+    kinds_detected: List[str]
+    snapshots: List[CompareSnapshot]
+
+
+def _short_checksum(value: str, width: int = 10) -> str:
+    text = (value or "").strip()
+    if len(text) <= width:
+        return text or "-"
+    return text[: width - 1] + "…"
+
+
+def _compare_status_icon(left: str, right: str) -> str:
+    left_n = (left or "").strip()
+    right_n = (right or "").strip()
+    if left_n == right_n:
+        return "✅"
+    if not left_n or not right_n:
+        return "⚪"
+    return "❌"
+
+
+class EtrackCompareReporter:
+    """Render a visual compare of two ET deliverable footprints."""
+
+    META_FIELDS = (
+        ("INCIDENT", "Incident"),
+        ("TYPE", "Type"),
+        ("VERSION", "Version"),
+        ("STATE", "State"),
+        ("RESOLUTION", "Resolution"),
+        ("ASSIGNED_TO", "Assigned"),
+        ("SINCIDENT", "Super/Parent"),
+        ("ABSTRACT", "Abstract"),
+    )
+
+    def __init__(self, output_format: str = OUTPUT_FORMAT_ASCII):
+        self.output_format = output_format
+
+    def render(self, left: CompareSide, right: CompareSide) -> str:
+        sections = [
+            self._section_header(left, right),
+            self._section_metadata(left, right),
+            self._section_deliverable_shape(left, right),
+            self._section_membership(left, right),
+            self._section_artifact_collisions(left, right),
+            self._section_footprint_diff(left, right),
+            self._section_drift(left, right),
+            self._section_verdict(left, right),
+            self._section_notes(),
+        ]
+        return "\n\n".join(section for section in sections if section)
+
+    def _banner(self, title: str) -> str:
+        if self.output_format == OUTPUT_FORMAT_MARKDOWN:
+            return f"## {title}"
+        bar = "═" * 72
+        return f"{bar}\n{title}\n{bar}"
+
+    def _sub(self, title: str) -> str:
+        if self.output_format == OUTPUT_FORMAT_MARKDOWN:
+            return f"### {title}"
+        return f"\n--- {title} ---"
+
+    def _section_header(self, left: CompareSide, right: CompareSide) -> str:
+        title = (
+            f"🔀 ETRACK COMPARE   {left.incident}  vs  {right.incident}"
+        )
+        lines = [self._banner(title)]
+        lines.append(
+            "Scope: metadata + embedded membership (pkg/bundle) + artifact "
+            "footprint. Hierarchy-only siblings are ignored."
+        )
+        return "\n".join(lines)
+
+    def _section_metadata(self, left: CompareSide, right: CompareSide) -> str:
+        lines = [self._banner("1) 🧾 METADATA")]
+        rows: List[Dict[str, str]] = []
+        for key, label in self.META_FIELDS:
+            lv = str(left.record.get(key, "") or "")
+            rv = str(right.record.get(key, "") or "")
+            if key == "ABSTRACT":
+                lv_disp = lv if len(lv) <= 56 else lv[:53] + "..."
+                rv_disp = rv if len(rv) <= 56 else rv[:53] + "..."
+            else:
+                lv_disp, rv_disp = lv or "-", rv or "-"
+            if key == "INCIDENT":
+                status = "🔀"
+            else:
+                status = _compare_status_icon(lv, rv)
+            rows.append(
+                {
+                    "STATUS": status,
+                    "FIELD": label,
+                    "LEFT": lv_disp or "-",
+                    "RIGHT": rv_disp or "-",
+                }
+            )
+        renderer = TableRenderer(
+            ["STATUS", "FIELD", "LEFT", "RIGHT"],
+            widths={"STATUS": 6, "FIELD": 12, "LEFT": 56, "RIGHT": 56},
+            output_format=self.output_format,
+        )
+        lines.append(renderer.render(rows))
+        return "\n".join(lines)
+
+    def _section_deliverable_shape(self, left: CompareSide, right: CompareSide) -> str:
+        lines = [self._banner("2) 📦 DELIVERABLE SHAPE")]
+        lines.append(self._shape_line("LEFT ", left))
+        lines.append(self._shape_line("RIGHT", right))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _shape_line(label: str, side: CompareSide) -> str:
+        if not side.snapshots:
+            kinds = ", ".join(side.kinds_detected) or "none detected"
+            return f"{label}: no deliverable snapshot ({kinds})"
+        parts = []
+        for snap in side.snapshots:
+            parts.append(
+                f"{deliverable_kind_label(snap.kind)} v{snap.eeb_version} "
+                f"[{snap.product_version or '?'}] "
+                f"install={snap.install_on or '?'} "
+                f"members={len(snap.members)} files={len(snap.artifacts)}"
+            )
+        return f"{label}: " + " | ".join(parts)
+
+    def _selected_snapshots(
+        self, side: CompareSide
+    ) -> List[CompareSnapshot]:
+        return list(side.snapshots)
+
+    def _section_membership(self, left: CompareSide, right: CompareSide) -> str:
+        lines = [self._banner("3) 🧩 EMBEDDED MEMBERSHIP")]
+        lines.append(
+            "Trusted embeds only (package SR list / bundle contains). "
+            "README* refs excluded unless --compare-readme-refs."
+        )
+
+        left_maps = self._membership_maps(left)
+        right_maps = self._membership_maps(right)
+        if not left_maps and not right_maps:
+            lines.append(
+                "ℹ️  Neither side exposes embedded members (both look like "
+                "standard/single EEBs). Membership compare is N/A — see artifacts."
+            )
+            # Still show whether each side contains the other as a trivial check
+            lines.append(
+                f"   Cross-check: RIGHT ET in LEFT embeds? "
+                f"{self._contains_et(left, right.incident)}"
+            )
+            lines.append(
+                f"   Cross-check: LEFT ET in RIGHT embeds? "
+                f"{self._contains_et(right, left.incident)}"
+            )
+            return "\n".join(lines)
+
+        all_ets = sorted(set(left_maps) | set(right_maps))
+        rows: List[Dict[str, str]] = []
+        for et in all_ets:
+            lv = left_maps.get(et)
+            rv = right_maps.get(et)
+            latest = None
+            for snap in left.snapshots + right.snapshots:
+                if et in snap.latest_by_et:
+                    latest = snap.latest_by_et.get(et)
+                    break
+            status = self._membership_status(lv, rv, latest)
+            rows.append(
+                {
+                    "STATUS": status,
+                    "ET": et,
+                    "LEFT_PIN": self._fmt_pin(lv),
+                    "RIGHT_PIN": self._fmt_pin(rv),
+                    "LATEST": "-" if latest is None else f"v{latest}",
+                }
+            )
+        renderer = TableRenderer(
+            ["STATUS", "ET", "LEFT_PIN", "RIGHT_PIN", "LATEST"],
+            widths={
+                "STATUS": 14,
+                "ET": 10,
+                "LEFT_PIN": 12,
+                "RIGHT_PIN": 12,
+                "LATEST": 8,
+            },
+            output_format=self.output_format,
+        )
+        lines.append(renderer.render_with_count(rows))
+
+        # Highlight: is the other side's root ET embedded?
+        lines.append(self._sub("Cross embedding"))
+        lines.append(
+            f"RIGHT ({right.incident}) inside LEFT embeds: "
+            f"{self._contains_et(left, right.incident)}"
+        )
+        lines.append(
+            f"LEFT ({left.incident}) inside RIGHT embeds: "
+            f"{self._contains_et(right, left.incident)}"
+        )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _fmt_pin(member: Optional[CompareMember]) -> str:
+        if member is None:
+            return "—"
+        pin = f"v{member.embedded_version}" if member.embedded_version is not None else "listed"
+        if not member.trusted:
+            pin += "*"
+        return pin
+
+    @staticmethod
+    def _membership_status(
+        left: Optional[CompareMember],
+        right: Optional[CompareMember],
+        latest: Optional[int],
+    ) -> str:
+        if left and right:
+            if (
+                left.embedded_version is not None
+                and right.embedded_version is not None
+                and left.embedded_version != right.embedded_version
+            ):
+                return "⚠️ PIN≠"
+            if latest is not None:
+                for member in (left, right):
+                    if (
+                        member.embedded_version is not None
+                        and member.embedded_version < latest
+                    ):
+                        return "⚠️ STALE"
+            return "✅ BOTH"
+        if left and not right:
+            return "⬅️ LEFT"
+        if right and not left:
+            return "➡️ RIGHT"
+        return "⚪"
+
+    def _membership_maps(self, side: CompareSide) -> Dict[str, CompareMember]:
+        merged: Dict[str, CompareMember] = {}
+        for snap in side.snapshots:
+            for member in snap.members:
+                if member.incident == side.incident and snap.kind == "eeb-standard":
+                    # standard self-ref is not an "embed" for membership tables
+                    continue
+                prev = merged.get(member.incident)
+                if prev is None:
+                    merged[member.incident] = member
+                    continue
+                # Prefer trusted + higher embedded version
+                if member.trusted and not prev.trusted:
+                    merged[member.incident] = member
+                elif (
+                    member.trusted == prev.trusted
+                    and (member.embedded_version or -1) > (prev.embedded_version or -1)
+                ):
+                    merged[member.incident] = member
+        return merged
+
+    def _contains_et(self, side: CompareSide, incident: str) -> str:
+        mapping = self._membership_maps(side)
+        member = mapping.get(incident)
+        if member is None:
+            return "❌ no"
+        pin = self._fmt_pin(member)
+        return f"✅ yes ({pin})"
+
+    def _artifact_index(
+        self, side: CompareSide
+    ) -> Dict[Tuple[str, str], CompareArtifact]:
+        """Exact (platform, filename) → artifact (last write wins if dup)."""
+        index: Dict[Tuple[str, str], CompareArtifact] = {}
+        for snap in side.snapshots:
+            for art in snap.artifacts:
+                index[(art.platform, art.filename)] = art
+        return index
+
+    def _logical_index(
+        self, side: CompareSide
+    ) -> Dict[Tuple[str, str], List[CompareArtifact]]:
+        """(platform, logical_key) → artifacts."""
+        filenames = [
+            art.filename
+            for snap in side.snapshots
+            for art in snap.artifacts
+        ]
+        keys = _resolve_binary_keys(filenames) if filenames else {}
+        index: Dict[Tuple[str, str], List[CompareArtifact]] = {}
+        for snap in side.snapshots:
+            for art in snap.artifacts:
+                logical = keys.get(art.filename, art.filename.lower())
+                index.setdefault((art.platform, logical), []).append(art)
+        return index
+
+    def _section_artifact_collisions(self, left: CompareSide, right: CompareSide) -> str:
+        lines = [self._banner("4) 💥 BINARY COLLISIONS")]
+        lines.append(
+            "Same platform + same logical binary, different checksum → overwrite risk."
+        )
+
+        left_idx = self._logical_index(left)
+        right_idx = self._logical_index(right)
+        keys = sorted(set(left_idx) | set(right_idx))
+        rows: List[Dict[str, str]] = []
+        collision_count = 0
+        same_count = 0
+
+        for key in keys:
+            l_arts = left_idx.get(key, [])
+            r_arts = right_idx.get(key, [])
+            if not l_arts or not r_arts:
+                continue
+            l_sums = {a.checksum for a in l_arts if a.checksum}
+            r_sums = {a.checksum for a in r_arts if a.checksum}
+            platform, logical = key
+            l_names = sorted({a.filename for a in l_arts})
+            r_names = sorted({a.filename for a in r_arts})
+            name_disp = l_names[0] if l_names == r_names else f"{l_names[0]} ↔ {r_names[0]}"
+            if l_sums & r_sums and l_sums == r_sums:
+                same_count += 1
+                status = "🟢 SAME"
+            elif l_sums and r_sums and not (l_sums & r_sums):
+                collision_count += 1
+                status = "🔴 DIFF"
+            else:
+                status = "⚠️ WEAK"
+            rows.append(
+                {
+                    "STATUS": status,
+                    "FILE": name_disp[:40],
+                    "PLATFORM": platform,
+                    "LEFT_Σ": _short_checksum(next(iter(l_sums), "-")),
+                    "RIGHT_Σ": _short_checksum(next(iter(r_sums), "-")),
+                    "LEFT_SRC": ",".join(sorted({a.source_et for a in l_arts}))[:18],
+                    "RIGHT_SRC": ",".join(sorted({a.source_et for a in r_arts}))[:18],
+                }
+            )
+
+        if not rows:
+            lines.append("ℹ️  No overlapping platform+binary pairs.")
+            return "\n".join(lines)
+
+        renderer = TableRenderer(
+            ["STATUS", "FILE", "PLATFORM", "LEFT_Σ", "RIGHT_Σ", "LEFT_SRC", "RIGHT_SRC"],
+            widths={
+                "STATUS": 8,
+                "FILE": 40,
+                "PLATFORM": 12,
+                "LEFT_Σ": 12,
+                "RIGHT_Σ": 12,
+                "LEFT_SRC": 18,
+                "RIGHT_SRC": 18,
+            },
+            output_format=self.output_format,
+        )
+        lines.append(renderer.render_with_count(rows))
+        lines.append(
+            f"Summary: 🔴 collisions={collision_count}  🟢 identical={same_count}"
+        )
+        return "\n".join(lines)
+
+    def _section_footprint_diff(self, left: CompareSide, right: CompareSide) -> str:
+        lines = [self._banner("5) 📁 FOOTPRINT DIFF")]
+        left_idx = self._artifact_index(left)
+        right_idx = self._artifact_index(right)
+        left_only = sorted(set(left_idx) - set(right_idx))
+        right_only = sorted(set(right_idx) - set(left_idx))
+
+        lines.append(self._sub(f"⬅️ LEFT only ({len(left_only)})"))
+        lines.extend(self._footprint_lines(left_only, left_idx, limit=25))
+        lines.append(self._sub(f"➡️ RIGHT only ({len(right_only)})"))
+        lines.extend(self._footprint_lines(right_only, right_idx, limit=25))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _footprint_lines(
+        keys: List[Tuple[str, str]],
+        index: Dict[Tuple[str, str], CompareArtifact],
+        limit: int = 25,
+    ) -> List[str]:
+        if not keys:
+            return ["  (none)"]
+        out = []
+        for platform, filename in keys[:limit]:
+            art = index[(platform, filename)]
+            out.append(
+                f"  • {platform}/{filename}  Σ={_short_checksum(art.checksum)}  "
+                f"src={art.source_et}  via={art.origin}"
+            )
+        if len(keys) > limit:
+            out.append(f"  … +{len(keys) - limit} more")
+        return out
+
+    def _section_drift(self, left: CompareSide, right: CompareSide) -> str:
+        lines = [self._banner("6) 📉 EMBEDDED VERSION DRIFT")]
+        rows: List[Dict[str, str]] = []
+        for label, side in (("LEFT", left), ("RIGHT", right)):
+            for snap in side.snapshots:
+                if snap.kind not in ("eeb-pkg", "bundle"):
+                    continue
+                for member in snap.members:
+                    if not member.trusted:
+                        continue
+                    if member.embedded_version is None:
+                        continue
+                    latest = snap.latest_by_et.get(member.incident)
+                    if latest is None:
+                        status = "⚪ UNKNOWN"
+                    elif member.embedded_version < latest:
+                        status = f"⚠️ STALE +{latest - member.embedded_version}"
+                    elif member.embedded_version > latest:
+                        status = f"🆕 NEWER {member.embedded_version}>{latest}"
+                    else:
+                        status = "✅ CURRENT"
+                    rows.append(
+                        {
+                            "SIDE": label,
+                            "CONTAINER": f"{side.incident}/v{snap.eeb_version}",
+                            "ET": member.incident,
+                            "PIN": f"v{member.embedded_version}",
+                            "LATEST": "-" if latest is None else f"v{latest}",
+                            "STATUS": status,
+                        }
+                    )
+        if not rows:
+            lines.append("ℹ️  No package/bundle pins to check (or no latest data).")
+            return "\n".join(lines)
+        renderer = TableRenderer(
+            ["SIDE", "CONTAINER", "ET", "PIN", "LATEST", "STATUS"],
+            widths={
+                "SIDE": 6,
+                "CONTAINER": 18,
+                "ET": 10,
+                "PIN": 6,
+                "LATEST": 8,
+                "STATUS": 16,
+            },
+            output_format=self.output_format,
+        )
+        lines.append(renderer.render_with_count(rows))
+        return "\n".join(lines)
+
+    def _section_verdict(self, left: CompareSide, right: CompareSide) -> str:
+        lines = [self._banner("7) 🏁 VERDICT")]
+        left_idx = self._logical_index(left)
+        right_idx = self._logical_index(right)
+        collisions = 0
+        identical = 0
+        for key in set(left_idx) | set(right_idx):
+            l_arts = left_idx.get(key, [])
+            r_arts = right_idx.get(key, [])
+            if not l_arts or not r_arts:
+                continue
+            l_sums = {a.checksum for a in l_arts if a.checksum}
+            r_sums = {a.checksum for a in r_arts if a.checksum}
+            if l_sums and r_sums and not (l_sums & r_sums):
+                collisions += 1
+            elif l_sums == r_sums and l_sums:
+                identical += 1
+
+        version_l = (left.record.get("VERSION") or "").strip()
+        version_r = (right.record.get("VERSION") or "").strip()
+        same_version = version_l == version_r and bool(version_l)
+
+        if collisions:
+            lines.append(
+                f"🔴 HIGH RISK: {collisions} binary collision(s) on overlapping "
+                f"platform files. Installing both can overwrite payloads."
+            )
+        elif identical and same_version:
+            lines.append(
+                f"🟡 OVERLAP: {identical} identical shared binary(ies) on same "
+                f"NB version ({version_l}). Usually OK, but confirm install order."
+            )
+        elif identical:
+            lines.append(
+                f"🟢 Shared binaries match checksum ({identical}), but NB versions "
+                f"differ ({version_l or '?'} vs {version_r or '?'})."
+            )
+        else:
+            lines.append(
+                "🟢 No overlapping platform binaries with conflicting checksums."
+            )
+
+        # Membership verdict
+        l_has_r = right.incident in self._membership_maps(left)
+        r_has_l = left.incident in self._membership_maps(right)
+        if l_has_r or r_has_l:
+            lines.append(
+                "📦 Membership: one side embeds the other — treat as container vs "
+                "constituent, not two independent leaf EEBs."
+            )
+        elif self._membership_maps(left) or self._membership_maps(right):
+            lines.append(
+                "📦 Membership: embedded SR sets differ — review section 3 before "
+                "combining packages/bundles."
+            )
+
+        if not same_version:
+            lines.append(
+                f"⚠️ Version mismatch: LEFT={version_l or '—'} RIGHT={version_r or '—'}."
+            )
+
+        errors = []
+        for label, side in (("LEFT", left), ("RIGHT", right)):
+            for snap in side.snapshots:
+                errors.extend(f"{label}: {err}" for err in snap.expand_errors)
+        if errors:
+            lines.append(self._sub("Expand warnings"))
+            lines.extend(f"  ⚠️ {err}" for err in errors[:20])
+            if len(errors) > 20:
+                lines.append(f"  … +{len(errors) - 20} more")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _section_notes() -> str:
+        return (
+            "Notes:\n"
+            "  • Hierarchy-only ETs (not embedded in package/bundle) are ignored.\n"
+            "  • Default compares the latest deliverable version per kind; "
+            "use --compare-all-versions for every revision.\n"
+            "  • Bundle README* extras need --compare-readme-refs.\n"
+            "  • Constituent binaries are expanded at the embedded pin (package) "
+            "or latest available comment (bundle/standard)."
+        )
+
+
 def _resolve_deliverable_use_esql(args: argparse.Namespace) -> bool:
     source = args.deliverable_details_source
     if source == "auto":
@@ -3896,12 +4670,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "  %(prog)s 4234410 -C -N -D\n"
             "  %(prog)s 4230893 -P -N -D -M\n"
             "  %(prog)s 4230893 -P -N -G eprint -F\n"
+            "  %(prog)s 4231395 4225989 -W\n"
+            "  %(prog)s 4231395 4225989 -W -A -x\n"
             "\n"
             "Default run prints hierarchy plus a lightweight DELIVERABLE SUMMARY\n"
             "for the input ET when svc_rmntrencher comments indicate pkg/bundle/standard.\n"
             "Deliverable types: EEB PACKAGE (-P), EEB BUNDLE (-B), STANDARD EEB (-C).\n"
             "Use -A to auto-detect type; add -D for SR shipping details per constituent,\n"
             "PLATFORM PACKAGES, LINKS, and full ARTIFACTS list. Use -M for Markdown output.\n"
+            "Compare (-W): two incident IDs; embedded membership + binary collisions.\n"
             "Note: -F/--stale-only applies to EEB package (-P/-A) reports only.\n"
             "\n"
             + HIERARCHY_SHORT_OPTIONS_HELP
@@ -3916,6 +4693,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
 
     parser.add_argument("incident", help="Incident ID or super incident ID")
+    parser.add_argument(
+        "other_incident",
+        nargs="?",
+        default=None,
+        help="Second incident ID (required with -W/--compare).",
+    )
 
     scope_group = parser.add_argument_group(
         "Input & scope",
@@ -3940,6 +4723,30 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help=(
             "Skip hierarchy table/tree output. Without -A/-P/-B, prints one ET "
             "summary row for the input incident (same as -1/--single)."
+        ),
+    )
+    scope_group.add_argument(
+        "-W",
+        "--compare",
+        action="store_true",
+        help=(
+            "Compare two ETs (INCIDENT OTHER_INCIDENT): metadata, embedded "
+            "package/bundle membership, artifact collisions, and drift. "
+            "Ignores hierarchy-only siblings. Auto-detects deliverable kinds "
+            "unless -P/-B/-C/-A constrain them."
+        ),
+    )
+    scope_group.add_argument(
+        "--compare-all-versions",
+        action="store_true",
+        help="With -W, compare every deliverable EEB version (default: latest per kind).",
+    )
+    scope_group.add_argument(
+        "--compare-readme-refs",
+        action="store_true",
+        help=(
+            "With -W, include bundle README*/Problem-Description ET refs "
+            "(default: trusted 'bundle contains' list only)."
         ),
     )
 
@@ -4130,7 +4937,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "-X",
         "--no-ssh-multiplex",
         action="store_true",
-        help="Disable SSH connection reuse (ControlMaster) for remote commands.",
+        help=(
+            "Disable SSH connection reuse (ControlMaster) for remote commands. "
+            "Each process already uses its own socket; use this only to force "
+            "a fresh SSH per command."
+        ),
     )
 
     perf_group = parser.add_argument_group(
@@ -4211,6 +5022,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         input_incident = _validate_incident(args.incident, "incident")
+        other_incident: Optional[str] = None
+        if args.other_incident:
+            other_incident = _validate_incident(args.other_incident, "other_incident")
+
+        if args.compare and not other_incident:
+            raise EtrackHierarchyError(
+                "-W/--compare requires two incident IDs: "
+                "etrack_hierarchy_table.py ET1 ET2 -W"
+            )
+        if other_incident and not args.compare:
+            # Two positionals imply compare mode.
+            args.compare = True
+
         ssh_target = normalize_ssh_target(args.ssh)
         if not ssh_target and not args.no_auto_ssh:
             ssh_target = default_ssh_target()
@@ -4228,6 +5052,56 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             max_retries=args.retries,
             retry_delay=args.retry_delay,
         )
+
+        if args.compare:
+            assert other_incident is not None
+            # Default: auto-detect kinds on each side unless user pinned -P/-B/-C/-A.
+            if not (
+                args.auto_deliverable
+                or args.as_eeb_pkg
+                or args.as_bundle
+                or args.as_standard_eeb
+            ):
+                args.auto_deliverable = True
+
+            deliverable_use_esql = _resolve_deliverable_use_esql(args)
+            left_kinds = _resolve_deliverable_kinds(fetcher, input_incident, args)
+            right_kinds = _resolve_deliverable_kinds(fetcher, other_incident, args)
+
+            if not args.quiet:
+                print(
+                    f"[INFO] Compare {input_incident} vs {other_incident} "
+                    f"(expand=yes, all_versions={args.compare_all_versions})...",
+                    file=sys.stderr,
+                )
+
+            # Always expand constituents for compare — collisions need leaf binaries.
+            left = fetcher.collect_compare_side(
+                input_incident,
+                left_kinds,
+                deliverable_use_esql=deliverable_use_esql,
+                all_versions=args.compare_all_versions,
+                include_readme_refs=args.compare_readme_refs,
+                expand_constituents=True,
+                deliverable_parallel=args.deliverable_parallel,
+            )
+            right = fetcher.collect_compare_side(
+                other_incident,
+                right_kinds,
+                deliverable_use_esql=deliverable_use_esql,
+                all_versions=args.compare_all_versions,
+                include_readme_refs=args.compare_readme_refs,
+                expand_constituents=True,
+                deliverable_parallel=args.deliverable_parallel,
+            )
+            print(
+                EtrackCompareReporter(
+                    output_format=_resolve_output_format(args)
+                ).render(left, right)
+            )
+            exit_code = 0
+            return exit_code
+
         deliverable_kinds = _resolve_deliverable_kinds(fetcher, input_incident, args)
         deliverable_use_esql = _resolve_deliverable_use_esql(args)
 
@@ -4409,6 +5283,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except EtrackHierarchyError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         exit_code = 1
+    except KeyboardInterrupt:
+        print("\nInterrupted (Ctrl+C).", file=sys.stderr)
+        exit_code = 130
     finally:
         elapsed = time.perf_counter() - start_time
         print(f"\nTotal time: {_format_elapsed(elapsed)}", file=sys.stderr)
