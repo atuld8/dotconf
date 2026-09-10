@@ -1,3 +1,6 @@
+# Shared / repo-wide ignores (committed and pushed).
+# For machine-local ignores that must not be pushed, use: .git/info/exclude
+
 sessions/**
 
 bundle/
@@ -30,3 +33,5 @@ jira/chrome-headless-shell
 
 account_manager/__pycache__
 **.pyc
+.netrwhist
+.vscode/
