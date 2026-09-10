@@ -172,6 +172,9 @@ ln -s ~/.vim/nvim/.config/nvim/.luarc.json $HOME/.config/nvim/.luarc.json
 ln -s ~/.vim/nvim/.config/nvim/init.lua $HOME/.config/nvim/init.lua
 ln -s ~/.vim/nvim/.config/nvim/lua/plugins/init.lua $HOME/.config/nvim/lua/plugins/init.lua
 ln -s ~/.vim/nvim/.config/nvim/lua/plugins/lazy_plugin_list.lua $HOME/.config/nvim/lua/plugins/lazy_plugin_list.lua
+ln -s ~/.vim/nvim/.config/nvim/lua/plugins/ai $HOME/.config/nvim/lua/plugins/ai
+ln -s ~/.vim/nvim/.config/nvim/lua/plugins/baleia.lua $HOME/.config/nvim/lua/plugins/baleia.lua
+ln -s ~/.vim/nvim/.config/nvim/lua/plugins/nvim-cmp.lua $HOME/.config/nvim/lua/plugins/nvim-cmp.lua
 
 
 :: On Windows

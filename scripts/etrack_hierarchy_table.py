@@ -39,6 +39,7 @@ Examples:
 """
 
 import argparse
+import errno
 import hashlib
 import os
 import re
@@ -49,7 +50,7 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, List, NoReturn, Optional, Sequence, Set, Tuple, Union
 
 VALID_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -141,22 +142,55 @@ DEFAULT_RETRY_DELAY = 2.0
 
 SSH_ERROR_RULES: List[Tuple[re.Pattern[str], str, bool]] = [
     (re.compile(r"Could not resolve hostname", re.I), "dns", True),
+    (re.compile(r"Could not resolve address", re.I), "dns", True),
     (re.compile(r"nodename nor servname provided", re.I), "dns", True),
     (re.compile(r"Temporary failure in name resolution", re.I), "dns", True),
+    (re.compile(r"Name or service not known", re.I), "dns", True),
+    (re.compile(r"No address associated with hostname", re.I), "dns", True),
+    (re.compile(r"Unknown host", re.I), "dns", True),
     (re.compile(r"Connection timed out", re.I), "timeout", True),
     (re.compile(r"Operation timed out", re.I), "timeout", True),
+    (re.compile(r"connect to host .* timed out", re.I), "timeout", True),
     (re.compile(r"Connection reset", re.I), "network", True),
+    (re.compile(r"Connection closed by", re.I), "network", True),
+    (re.compile(r"Connection aborted", re.I), "network", True),
     (re.compile(r"Broken pipe", re.I), "network", True),
     (re.compile(r"Connection refused", re.I), "network", True),
     (re.compile(r"No route to host", re.I), "network", True),
     (re.compile(r"Network is unreachable", re.I), "network", True),
+    (re.compile(r"Network dropped connection", re.I), "network", True),
+    (re.compile(r"Software caused connection abort", re.I), "network", True),
+    (re.compile(r"kex_exchange_identification", re.I), "network", True),
+    (re.compile(r"ssh_exchange_identification", re.I), "network", True),
+    (re.compile(r"Read from socket failed", re.I), "network", True),
+    (re.compile(r"Remote side unexpectedly closed", re.I), "network", True),
+    (re.compile(r"Disconnected from remote host", re.I), "network", True),
+    (re.compile(r"failed to connect", re.I), "network", True),
     (re.compile(r"Control socket connect", re.I), "multiplex", True),
+    (re.compile(r"Control socket", re.I), "multiplex", True),
     (re.compile(r"ControlMaster", re.I), "multiplex", True),
+    (re.compile(r"mux_client", re.I), "multiplex", True),
+    (re.compile(r"Permission denied \(publickey", re.I), "auth", False),
     (re.compile(r"Permission denied", re.I), "auth", False),
     (re.compile(r"Host key verification failed", re.I), "hostkey", False),
     (re.compile(r"Authentication failed", re.I), "auth", False),
-    (re.compile(r"Could not resolve address", re.I), "dns", True),
 ]
+
+# OSError errno values that are usually transient (retry with backoff).
+TRANSIENT_OS_ERRNOS = {
+    errno.ECONNRESET,
+    errno.ECONNREFUSED,
+    errno.ETIMEDOUT,
+    errno.EHOSTUNREACH,
+    errno.ENETUNREACH,
+    errno.EPIPE,
+    errno.EAGAIN,
+    errno.EINTR,
+}
+if hasattr(errno, "EWOULDBLOCK"):
+    TRANSIENT_OS_ERRNOS.add(errno.EWOULDBLOCK)
+if hasattr(errno, "ECONNABORTED"):
+    TRANSIENT_OS_ERRNOS.add(errno.ECONNABORTED)
 
 DEFAULT_COLUMNS = [
     "INCIDENT",
@@ -267,7 +301,30 @@ def classify_command_error(stderr: str, returncode: int) -> Tuple[str, bool]:
             return category, retryable
     if returncode == 255 and (re.search(r"\bssh\b", text, re.I) or not text.strip()):
         return "ssh", True
+    # SSH often exits 255 with only a short network hint in stdout/stderr.
+    if returncode == 255 and re.search(
+        r"\b(connection|network|socket|timeout|reset|refused|unreachable)\b",
+        text,
+        re.I,
+    ):
+        return "network", True
     return "unknown", False
+
+
+def classify_os_error(exc: OSError) -> Tuple[str, bool]:
+    """Map OSError to (category, retryable) for delay+retry decisions."""
+    en = getattr(exc, "errno", None)
+    if en in TRANSIENT_OS_ERRNOS:
+        if en == errno.ETIMEDOUT:
+            return "timeout", True
+        return "network", True
+    if en in (errno.ENOENT, errno.EACCES, errno.EPERM):
+        return "local", False
+    category, retryable = classify_command_error(str(exc), 255)
+    if category != "unknown":
+        return category, retryable
+    # Unknown OSError while talking to a remote host is usually worth one retry path.
+    return "network", True
 
 
 def format_command_error(
@@ -276,6 +333,7 @@ def format_command_error(
     detail: str,
     category: str,
     context: Optional[str] = None,
+    retries_attempted: int = 0,
 ) -> str:
     host = _ssh_host_from_target(ssh_target)
     lines = [f"{error_label} failed"]
@@ -295,20 +353,22 @@ def format_command_error(
         ]
     elif category == "timeout":
         if ssh_target:
-            lines.append("  Cause: SSH connection timed out")
+            lines.append("  Cause: SSH connection or remote command timed out")
         else:
             lines.append("  Cause: command timed out")
         hints = [
             "Verify VPN/network connectivity" if ssh_target else None,
             f"Test: ssh -o ConnectTimeout=10 {ssh_target} true" if ssh_target else None,
-            "Try increasing --timeout",
+            "Try increasing --timeout / -T",
+            "Try increasing --retries / -z and --retry-delay / -g",
         ]
         hints = [hint for hint in hints if hint]
     elif category == "network":
         lines.append("  Cause: network connection error")
         hints = [
             "Verify VPN/network connectivity",
-            f"Test: ssh {ssh_target or host} true",
+            f"Test: ssh -o ConnectTimeout=10 {ssh_target or host} true",
+            "Retry with --retries / -z (transient drops are retried automatically)",
         ]
     elif category == "multiplex":
         lines.append("  Cause: stale SSH multiplex (ControlMaster) socket")
@@ -335,6 +395,12 @@ def format_command_error(
             f"Test: ssh -o ConnectTimeout=10 {ssh_target or host} true",
             "Or disable multiplex: --no-ssh-multiplex / -X",
         ]
+    elif category == "local":
+        lines.append("  Cause: local command/runtime error")
+        hints = [
+            "Verify the required command is installed and executable",
+            "Or use -R/--ssh user@host to run remotely",
+        ]
     elif category == "unknown" and "exit code 255" in detail:
         lines.append("  Cause: remote command failed (often SSH)")
         hints = [
@@ -346,6 +412,13 @@ def format_command_error(
         first_line = detail.splitlines()[0].strip()
         if first_line:
             lines.append(f"  Detail: {first_line}")
+
+    if retries_attempted > 0:
+        lines.append(
+            f"  Retries: exhausted after {retries_attempted} retry "
+            f"{'attempt' if retries_attempted == 1 else 'attempts'} "
+            f"(--retries / -z, --retry-delay / -g)"
+        )
 
     if hints:
         lines.append("  Try:")
@@ -2308,9 +2381,59 @@ class EtrackHierarchyFetcher:
             check=False,
         )
 
+    def _resolve_cmd(
+        self,
+        cmd: Union[Sequence[str], Callable[[], Sequence[str]]],
+    ) -> List[str]:
+        return list(cmd() if callable(cmd) else cmd)
+
+    def _retry_wait(self, attempt: int, error_label: str, detail: str, timeout: int) -> None:
+        """Sleep with exponential backoff before retry attempt (1-based attempt)."""
+        delay = self.retry_delay * (2 ** (attempt - 1))
+        if not self.quiet:
+            print(
+                f"[WARN] {error_label} transient failure "
+                f"(retry {attempt}/{self.max_retries}, timeout={timeout}s): "
+                f"{detail}",
+                file=sys.stderr,
+            )
+            print(
+                f"       Waiting {delay:.1f}s before retry "
+                f"(--retry-delay / -g, --retries / -z)...",
+                file=sys.stderr,
+            )
+        time.sleep(delay)
+
+    def _raise_command_error(
+        self,
+        *,
+        error_label: str,
+        detail: str,
+        category: str,
+        context: Optional[str],
+        retries_attempted: int,
+        cause: Optional[BaseException] = None,
+        timeout_error: bool = False,
+    ) -> NoReturn:
+        message = format_command_error(
+            error_label,
+            self.ssh_target,
+            detail,
+            category,
+            context=context,
+            retries_attempted=retries_attempted,
+        )
+        if timeout_error:
+            exc: EtrackHierarchyError = CommandTimeoutError(message)
+        else:
+            exc = EtrackHierarchyError(message)
+        if cause is not None:
+            raise exc from cause
+        raise exc
+
     def _run_subprocess(
         self,
-        cmd: Sequence[str],
+        cmd: Union[Sequence[str], Callable[[], Sequence[str]]],
         *,
         timeout: int,
         input_data: Optional[bytes] = None,
@@ -2318,65 +2441,67 @@ class EtrackHierarchyFetcher:
         acceptable_returncodes: Tuple[int, ...] = (0,),
         error_label: str = "Command",
         context: Optional[str] = None,
-        retry_on_timeout: bool = False,
+        retry_on_timeout: bool = True,
+        escalate_timeout: bool = False,
     ) -> subprocess.CompletedProcess[bytes]:
+        """
+        Run a command with delay+retry for transient network/SSH/timeout failures.
+
+        Pass a callable for ``cmd`` when the argv must be rebuilt after multiplex
+        recovery (SSH options change once ControlMaster is disabled).
+        """
         last_detail = ""
         last_category = "unknown"
+        current_timeout = max(1, int(timeout))
 
         for attempt in range(self.max_retries + 1):
             if attempt > 0:
-                delay = self.retry_delay * (2 ** (attempt - 1))
-                if not self.quiet:
-                    print(
-                        f"[WARN] {error_label} transient failure "
-                        f"(retry {attempt}/{self.max_retries}, timeout={timeout}s): "
-                        f"{last_detail}",
-                        file=sys.stderr,
-                    )
-                    print(
-                        f"       Retrying in {delay:.0f}s... "
-                        f"(increase --timeout / -T if this persists)",
-                        file=sys.stderr,
-                    )
-                time.sleep(delay)
+                self._retry_wait(attempt, error_label, last_detail, current_timeout)
+
+            actual_cmd = self._resolve_cmd(cmd)
 
             try:
                 result = subprocess.run(
-                    list(cmd),
+                    actual_cmd,
                     input=input_data,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    timeout=timeout,
+                    timeout=current_timeout,
                     check=False,
                 )
             except subprocess.TimeoutExpired as exc:
-                last_detail = f"timed out after {timeout}s"
+                last_detail = f"timed out after {current_timeout}s"
                 last_category = "timeout"
                 if retry_on_timeout and attempt < self.max_retries:
+                    if escalate_timeout:
+                        current_timeout = max(
+                            current_timeout * 2,
+                            current_timeout + 30,
+                            self.command_timeout * 3,
+                        )
                     continue
-                raise CommandTimeoutError(
-                    format_command_error(
-                        error_label,
-                        self.ssh_target,
-                        last_detail,
-                        "timeout",
-                        context=context,
-                    )
-                ) from exc
+                self._raise_command_error(
+                    error_label=error_label,
+                    detail=last_detail,
+                    category="timeout",
+                    context=context,
+                    retries_attempted=attempt,
+                    cause=exc,
+                    timeout_error=True,
+                )
             except OSError as exc:
-                last_detail = str(exc)
-                last_category = "network"
-                if attempt < self.max_retries and self.ssh_target:
+                last_category, retryable = classify_os_error(exc)
+                last_detail = str(exc) or exc.__class__.__name__
+                if retryable and attempt < self.max_retries:
                     continue
-                raise EtrackHierarchyError(
-                    format_command_error(
-                        error_label,
-                        self.ssh_target,
-                        last_detail,
-                        last_category,
-                        context=context,
-                    )
-                ) from exc
+                self._raise_command_error(
+                    error_label=error_label,
+                    detail=last_detail,
+                    category=last_category,
+                    context=context,
+                    retries_attempted=attempt,
+                    cause=exc,
+                )
 
             if result.returncode in acceptable_returncodes or allow_failure:
                 return result
@@ -2397,26 +2522,21 @@ class EtrackHierarchyFetcher:
             if retryable and attempt < self.max_retries:
                 continue
 
-            raise EtrackHierarchyError(
-                format_command_error(
-                    error_label,
-                    self.ssh_target,
-                    last_detail,
-                    last_category,
-                    context=context,
-                )
-            )
-
-        raise EtrackHierarchyError(
-            format_command_error(
-                error_label,
-                self.ssh_target,
-                last_detail or "unknown error",
-                last_category,
+            self._raise_command_error(
+                error_label=error_label,
+                detail=last_detail,
+                category=last_category,
                 context=context,
+                retries_attempted=attempt,
             )
-        )
 
+        self._raise_command_error(
+            error_label=error_label,
+            detail=last_detail or "unknown error",
+            category=last_category,
+            context=context,
+            retries_attempted=self.max_retries,
+        )
     def _resolve_esql_command(self) -> List[str]:
         if self.ssh_target:
             return self._ssh_command_prefix() + ["esql"]
@@ -2431,7 +2551,6 @@ class EtrackHierarchyFetcher:
         )
 
     def _run_esql(self, sql: str) -> str:
-        cmd = self._resolve_esql_command()
         self._query_count += 1
         if not self.quiet and not self.debug:
             print(f"[ESQL #{self._query_count}] Running query...", file=sys.stderr)
@@ -2441,41 +2560,16 @@ class EtrackHierarchyFetcher:
             print(f"---", file=sys.stderr)
 
         start_time = time.time()
-        timeouts = [
-            self.command_timeout,
-            max(self.command_timeout * 3, self.command_timeout + 30),
-        ]
-        result: Optional[subprocess.CompletedProcess[bytes]] = None
-        last_timeout_error: Optional[EtrackHierarchyError] = None
-
-        for attempt, timeout_s in enumerate(timeouts, start=1):
-            try:
-                result = self._run_subprocess(
-                    cmd,
-                    timeout=timeout_s,
-                    input_data=sql.encode("utf-8"),
-                    error_label=f"ESQL #{self._query_count}",
-                    context="esql query",
-                    retry_on_timeout=False,
-                )
-                break
-            except CommandTimeoutError as exc:
-                if attempt < len(timeouts):
-                    last_timeout_error = exc
-                    if not self.quiet:
-                        print(
-                            f"[WARN] esql timed out at {timeout_s}s "
-                            f"(--timeout {self.command_timeout}); retrying once "
-                            f"with {timeouts[1]}s...",
-                            file=sys.stderr,
-                        )
-                    continue
-                raise
-
-        if result is None:
-            if last_timeout_error is not None:
-                raise last_timeout_error
-            raise EtrackHierarchyError("esql execution failed unexpectedly.")
+        # Rebuild SSH argv each attempt so multiplex recovery takes effect.
+        result = self._run_subprocess(
+            self._resolve_esql_command,
+            timeout=self.command_timeout,
+            input_data=sql.encode("utf-8"),
+            error_label=f"ESQL #{self._query_count}",
+            context="esql query",
+            retry_on_timeout=True,
+            escalate_timeout=True,
+        )
 
         elapsed = time.time() - start_time
         if self.debug:
@@ -2488,12 +2582,6 @@ class EtrackHierarchyFetcher:
                 f"[ESQL #{self._query_count}] Completed in {elapsed:.2f}s",
                 file=sys.stderr,
             )
-
-        if result.returncode != 0:
-            stderr = result.stderr.decode("utf-8", errors="replace").strip()
-            stdout = result.stdout.decode("utf-8", errors="replace").strip()
-            message = stderr or stdout or f"esql failed with exit code {result.returncode}"
-            raise EtrackHierarchyError(message)
 
         return result.stdout.decode("utf-8", errors="replace")
 
@@ -2626,23 +2714,35 @@ class EtrackHierarchyFetcher:
             raise EtrackHierarchyError(f"Invalid incident for SQL: {incident}")
         return str(int(incident))
 
-    def _run_command(self, cmd: Sequence[str]) -> str:
-        full_cmd = list(cmd)
+    def _build_remote_or_local_cmd(self, cmd: Sequence[str]) -> List[str]:
         if self.ssh_target:
-            full_cmd = self._ssh_command_prefix() + list(cmd)
+            return self._ssh_command_prefix() + list(cmd)
+        return list(cmd)
 
+    def _build_shell_pipeline_cmd(self, shell_cmd: str) -> List[str]:
+        if self.ssh_target:
+            return self._ssh_command_prefix() + [shell_cmd]
+        return ["bash", "-lc", shell_cmd]
+
+    def _run_command(self, cmd: Sequence[str]) -> str:
         start_time = time.time()
         if not self.quiet and not self.debug:
             print("[INFO] Running external command...", file=sys.stderr)
         if self.debug:
-            print(f"[INFO] Running: {' '.join(full_cmd)}", file=sys.stderr)
+            print(
+                f"[INFO] Running: {' '.join(self._build_remote_or_local_cmd(cmd))}",
+                file=sys.stderr,
+            )
 
         display_cmd = " ".join(cmd)
+        # Rebuild argv each retry so SSH multiplex recovery drops ControlMaster opts.
         result = self._run_subprocess(
-            full_cmd,
+            lambda: self._build_remote_or_local_cmd(cmd),
             timeout=self.command_timeout,
             error_label="Command",
             context=display_cmd,
+            retry_on_timeout=True,
+            escalate_timeout=bool(self.ssh_target),
         )
 
         elapsed = time.time() - start_time
@@ -2658,10 +2758,6 @@ class EtrackHierarchyFetcher:
         allow_failure: bool = False,
     ) -> str:
         timeout = timeout or self.command_timeout
-        if self.ssh_target:
-            cmd = self._ssh_command_prefix() + [shell_cmd]
-        else:
-            cmd = ["bash", "-lc", shell_cmd]
 
         start_time = time.time()
         if not self.quiet and not self.debug:
@@ -2671,12 +2767,14 @@ class EtrackHierarchyFetcher:
 
         try:
             result = self._run_subprocess(
-                cmd,
+                lambda: self._build_shell_pipeline_cmd(shell_cmd),
                 timeout=timeout,
                 allow_failure=allow_failure,
                 acceptable_returncodes=(0, 1),
                 error_label="Shell pipeline",
                 context=shell_cmd,
+                retry_on_timeout=True,
+                escalate_timeout=bool(self.ssh_target),
             )
         except EtrackHierarchyError:
             if allow_failure:
@@ -4051,7 +4149,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--timeout",
         type=int,
         default=60,
-        help="Per-command timeout in seconds (default: 60). Retries use a larger timeout.",
+        help=(
+            "Per-command timeout in seconds (default: 60). "
+            "Transient timeouts are retried with backoff; SSH/esql may escalate timeout."
+        ),
     )
     perf_group.add_argument(
         "-z",
@@ -4059,7 +4160,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_COMMAND_RETRIES,
         help=(
-            "Max retries for transient SSH/network failures "
+            "Max retries for transient SSH/network/timeout failures "
             f"(default: {DEFAULT_COMMAND_RETRIES}). Use 0 to disable."
         ),
     )
