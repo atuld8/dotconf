@@ -1038,6 +1038,21 @@ def _summarize_artifact_types(type_counts: Counter) -> str:
 
 _PLATFORM_SORT_ORDER = ("AMD64", "linuxR_x86", "linuxS_x86")
 
+# Exact Linux server package dirs used by Primary/Media server EEBs.
+_SERVER_PLATFORMS_EXACT = frozenset({"linuxR_x86", "linuxS_x86"})
+# Windows server/client share AMD64; role comes from "Install on:".
+_AMD64_PLATFORM = "AMD64"
+
+# Role labels used in compare / collision views.
+PLATFORM_ROLE_SERVER = "server"
+PLATFORM_ROLE_CLIENT = "client"
+PLATFORM_ROLE_MIXED = "mixed"  # AMD64 when Install on includes server + client
+PLATFORM_ROLE_UNKNOWN = "unknown"  # AMD64 with missing/unclear Install on
+
+INSTALL_COMPONENT_PRIMARY = "primary"
+INSTALL_COMPONENT_MEDIA = "media"
+INSTALL_COMPONENT_CLIENT = "client"
+
 _PLATFORM_PACKAGE_TYPE_SORT = {
     "primary-set": 0,
     "war": 1,
@@ -1119,6 +1134,94 @@ def _format_platform_coverage(platforms: Set[str], all_platforms: Set[str]) -> s
     if len(text) > 40:
         return text[:37] + "..."
     return text
+
+
+def parse_install_on_components(install_on: str) -> Set[str]:
+    """Parse 'Install on:' into {primary, media, client}.
+
+    Examples:
+      Primary or Media Server, Client
+      Primary or Media Server
+      Primary Server / Primary
+      Client
+    """
+    text = (install_on or "").strip().lower()
+    if not text:
+        return set()
+    components: Set[str] = set()
+    if re.search(r"\bclients?\b", text):
+        components.add(INSTALL_COMPONENT_CLIENT)
+    if re.search(r"\bprimary\b", text):
+        components.add(INSTALL_COMPONENT_PRIMARY)
+    if re.search(r"\bmedia\b", text):
+        components.add(INSTALL_COMPONENT_MEDIA)
+    return components
+
+
+def format_install_on_components(components: Set[str]) -> str:
+    if not components:
+        return "—"
+    order = (
+        INSTALL_COMPONENT_PRIMARY,
+        INSTALL_COMPONENT_MEDIA,
+        INSTALL_COMPONENT_CLIENT,
+    )
+    return "+".join(item for item in order if item in components)
+
+
+def classify_platform_role(
+    platform: str,
+    install_on: str = "",
+) -> str:
+    """Classify a trencher platform dir as server / client / mixed / unknown.
+
+    Rules (product convention):
+      - linuxR_x86, linuxS_x86 (exact)  → server
+      - linuxR_x86_*, linuxS_x86_*       → client
+      - any other non-AMD64 platform    → client
+      - AMD64                           → from Install on:
+            primary/media only → server
+            client only        → client
+            both               → mixed
+            missing/unclear    → unknown
+    """
+    name = (platform or "").strip()
+    if not name:
+        return PLATFORM_ROLE_UNKNOWN
+
+    if name in _SERVER_PLATFORMS_EXACT:
+        return PLATFORM_ROLE_SERVER
+
+    # Kernel-qualified Linux client dirs, e.g. linuxR_x86_4.18.0 / linuxS_x86_5.3.18
+    if name.startswith("linuxR_x86_") or name.startswith("linuxS_x86_"):
+        return PLATFORM_ROLE_CLIENT
+
+    if name == _AMD64_PLATFORM:
+        components = parse_install_on_components(install_on)
+        has_server = bool(
+            components
+            & {INSTALL_COMPONENT_PRIMARY, INSTALL_COMPONENT_MEDIA}
+        )
+        has_client = INSTALL_COMPONENT_CLIENT in components
+        if has_server and has_client:
+            return PLATFORM_ROLE_MIXED
+        if has_server:
+            return PLATFORM_ROLE_SERVER
+        if has_client:
+            return PLATFORM_ROLE_CLIENT
+        return PLATFORM_ROLE_UNKNOWN
+
+    # rs6000_*, solaris*, HP-UX, etc. — client-side in EEB payloads.
+    return PLATFORM_ROLE_CLIENT
+
+
+def platform_role_icon(role: str) -> str:
+    return {
+        PLATFORM_ROLE_SERVER: "🖥️ SERVER",
+        PLATFORM_ROLE_CLIENT: "💻 CLIENT",
+        PLATFORM_ROLE_MIXED: "🔀 MIXED",
+        PLATFORM_ROLE_UNKNOWN: "❓ AMD64?",
+    }.get(role, f"❓ {role}")
 
 
 def _classify_platform_package(name: str) -> str:
@@ -4162,10 +4265,14 @@ class EtrackCompareReporter:
             return f"{label}: no deliverable snapshot ({kinds})"
         parts = []
         for snap in side.snapshots:
+            components = format_install_on_components(
+                parse_install_on_components(snap.install_on)
+            )
             parts.append(
                 f"{deliverable_kind_label(snap.kind)} v{snap.eeb_version} "
                 f"[{snap.product_version or '?'}] "
-                f"install={snap.install_on or '?'} "
+                f"install_on={snap.install_on or '—'} "
+                f"({components}) "
                 f"members={len(snap.members)} files={len(snap.artifacts)}"
             )
         return f"{label}: " + " | ".join(parts)
@@ -4337,10 +4444,26 @@ class EtrackCompareReporter:
                 index.setdefault((art.platform, logical), []).append(art)
         return index
 
+    def _install_on_for_artifact(self, side: CompareSide, art: CompareArtifact) -> str:
+        for snap in side.snapshots:
+            if snap.kind == art.kind and snap.eeb_version == art.eeb_version:
+                return snap.install_on
+        return side.snapshots[0].install_on if side.snapshots else ""
+
+    def _role_for_artifact(self, side: CompareSide, art: CompareArtifact) -> str:
+        return classify_platform_role(
+            art.platform,
+            self._install_on_for_artifact(side, art),
+        )
+
     def _section_artifact_collisions(self, left: CompareSide, right: CompareSide) -> str:
         lines = [self._banner("4) 💥 BINARY COLLISIONS")]
         lines.append(
             "Same platform + same logical binary, different checksum → overwrite risk."
+        )
+        lines.append(
+            "Roles: linuxR_x86/linuxS_x86=🖥️ SERVER; linux*_x86_*=💻 CLIENT; "
+            "AMD64 from Install on; other platforms=💻 CLIENT."
         )
 
         left_idx = self._logical_index(left)
@@ -4361,6 +4484,17 @@ class EtrackCompareReporter:
             l_names = sorted({a.filename for a in l_arts})
             r_names = sorted({a.filename for a in r_arts})
             name_disp = l_names[0] if l_names == r_names else f"{l_names[0]} ↔ {r_names[0]}"
+            # Role from either side (same platform); prefer left install_on then right.
+            role = self._role_for_artifact(left, l_arts[0])
+            if role == PLATFORM_ROLE_UNKNOWN:
+                role = self._role_for_artifact(right, r_arts[0])
+            role_label = {
+                PLATFORM_ROLE_SERVER: "🖥️SRV",
+                PLATFORM_ROLE_CLIENT: "💻CLT",
+                PLATFORM_ROLE_MIXED: "🔀MIX",
+                PLATFORM_ROLE_UNKNOWN: "❓AMD",
+            }.get(role, role)
+
             if l_sums & r_sums and l_sums == r_sums:
                 same_count += 1
                 status = "🟢 SAME"
@@ -4372,12 +4506,13 @@ class EtrackCompareReporter:
             rows.append(
                 {
                     "STATUS": status,
-                    "FILE": name_disp[:40],
+                    "ROLE": role_label,
+                    "FILE": name_disp[:36],
                     "PLATFORM": platform,
                     "LEFT_Σ": _short_checksum(next(iter(l_sums), "-")),
                     "RIGHT_Σ": _short_checksum(next(iter(r_sums), "-")),
-                    "LEFT_SRC": ",".join(sorted({a.source_et for a in l_arts}))[:18],
-                    "RIGHT_SRC": ",".join(sorted({a.source_et for a in r_arts}))[:18],
+                    "LEFT_SRC": ",".join(sorted({a.source_et for a in l_arts}))[:16],
+                    "RIGHT_SRC": ",".join(sorted({a.source_et for a in r_arts}))[:16],
                 }
             )
 
@@ -4386,15 +4521,25 @@ class EtrackCompareReporter:
             return "\n".join(lines)
 
         renderer = TableRenderer(
-            ["STATUS", "FILE", "PLATFORM", "LEFT_Σ", "RIGHT_Σ", "LEFT_SRC", "RIGHT_SRC"],
+            [
+                "STATUS",
+                "ROLE",
+                "FILE",
+                "PLATFORM",
+                "LEFT_Σ",
+                "RIGHT_Σ",
+                "LEFT_SRC",
+                "RIGHT_SRC",
+            ],
             widths={
                 "STATUS": 8,
-                "FILE": 40,
-                "PLATFORM": 12,
+                "ROLE": 6,
+                "FILE": 36,
+                "PLATFORM": 14,
                 "LEFT_Σ": 12,
                 "RIGHT_Σ": 12,
-                "LEFT_SRC": 18,
-                "RIGHT_SRC": 18,
+                "LEFT_SRC": 16,
+                "RIGHT_SRC": 16,
             },
             output_format=self.output_format,
         )
@@ -4412,15 +4557,16 @@ class EtrackCompareReporter:
         right_only = sorted(set(right_idx) - set(left_idx))
 
         lines.append(self._sub(f"⬅️ LEFT only ({len(left_only)})"))
-        lines.extend(self._footprint_lines(left_only, left_idx, limit=25))
+        lines.extend(self._footprint_lines(left_only, left_idx, left, limit=25))
         lines.append(self._sub(f"➡️ RIGHT only ({len(right_only)})"))
-        lines.extend(self._footprint_lines(right_only, right_idx, limit=25))
+        lines.extend(self._footprint_lines(right_only, right_idx, right, limit=25))
         return "\n".join(lines)
 
-    @staticmethod
     def _footprint_lines(
+        self,
         keys: List[Tuple[str, str]],
         index: Dict[Tuple[str, str], CompareArtifact],
+        side: CompareSide,
         limit: int = 25,
     ) -> List[str]:
         if not keys:
@@ -4428,8 +4574,16 @@ class EtrackCompareReporter:
         out = []
         for platform, filename in keys[:limit]:
             art = index[(platform, filename)]
+            role = self._role_for_artifact(side, art)
+            role_short = {
+                PLATFORM_ROLE_SERVER: "🖥️",
+                PLATFORM_ROLE_CLIENT: "💻",
+                PLATFORM_ROLE_MIXED: "🔀",
+                PLATFORM_ROLE_UNKNOWN: "❓",
+            }.get(role, "?")
             out.append(
-                f"  • {platform}/{filename}  Σ={_short_checksum(art.checksum)}  "
+                f"  • {role_short} {platform}/{filename}  "
+                f"Σ={_short_checksum(art.checksum)}  "
                 f"src={art.source_et}  via={art.origin}"
             )
         if len(keys) > limit:
@@ -4491,6 +4645,8 @@ class EtrackCompareReporter:
         right_idx = self._logical_index(right)
         collisions = 0
         identical = 0
+        server_collisions = 0
+        client_collisions = 0
         for key in set(left_idx) | set(right_idx):
             l_arts = left_idx.get(key, [])
             r_arts = right_idx.get(key, [])
@@ -4498,8 +4654,19 @@ class EtrackCompareReporter:
                 continue
             l_sums = {a.checksum for a in l_arts if a.checksum}
             r_sums = {a.checksum for a in r_arts if a.checksum}
+            role = self._role_for_artifact(left, l_arts[0])
+            if role == PLATFORM_ROLE_UNKNOWN:
+                role = self._role_for_artifact(right, r_arts[0])
             if l_sums and r_sums and not (l_sums & r_sums):
                 collisions += 1
+                if role in (
+                    PLATFORM_ROLE_SERVER,
+                    PLATFORM_ROLE_MIXED,
+                    PLATFORM_ROLE_UNKNOWN,
+                ):
+                    server_collisions += 1
+                if role in (PLATFORM_ROLE_CLIENT, PLATFORM_ROLE_MIXED):
+                    client_collisions += 1
             elif l_sums == r_sums and l_sums:
                 identical += 1
 
@@ -4511,6 +4678,11 @@ class EtrackCompareReporter:
             lines.append(
                 f"🔴 HIGH RISK: {collisions} binary collision(s) on overlapping "
                 f"platform files. Installing both can overwrite payloads."
+            )
+            lines.append(
+                f"   Breakdown: 🖥️ server-side≈{server_collisions}  "
+                f"💻 client-side≈{client_collisions}  "
+                f"(AMD64 mixed/unknown counted on server side)."
             )
         elif identical and same_version:
             lines.append(
@@ -4567,7 +4739,10 @@ class EtrackCompareReporter:
             "use --compare-all-versions for every revision.\n"
             "  • Bundle README* extras need --compare-readme-refs.\n"
             "  • Constituent binaries are expanded at the embedded pin (package) "
-            "or latest available comment (bundle/standard)."
+            "or latest available comment (bundle/standard).\n"
+            "  • Platform roles: linuxR_x86/linuxS_x86=server; "
+            "linuxR_x86_*/linuxS_x86_*/other=client; "
+            "AMD64 from Install on (Primary/Media/Client)."
         )
 
 
