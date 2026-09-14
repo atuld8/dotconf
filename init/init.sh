@@ -33,10 +33,10 @@ else
     echo source ~/.vim/bashrc >>  ~/.bashrc
 fi
 
+echo SetBasicTrap >> ~/.bashrc
+
 echo "# Exit if not an interactive shell" >> ~/.bashrc
 echo "[[ $- == *i* ]] || return" >> ~/.bashrc
-
-echo SetBasicTrap >> ~/.bashrc
 
 vim -c ":PluginInstall"
 
