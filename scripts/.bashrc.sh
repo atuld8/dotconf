@@ -529,7 +529,23 @@ untarcltpatch () {
 
 if [ -f /usr/bin/banner ]; then banner "wel-come" && banner "$USER"; fi
 
-export PATH=$PATH:/usr/openv/netbackup/bin/admincmd:/usr/openv/netbackup/bin:/usr/openv/db/bin
+path_append_once() {
+    case ":${PATH}:" in
+        *":$1:"*) ;;
+        *) PATH="${PATH:+$PATH:}$1"; export PATH ;;
+    esac
+}
+
+if [ -d /usr/openv/netbackup/bin ]; then
+    path_append_once /usr/openv/netbackup/bin/admincmd
+    path_append_once /usr/openv/netbackup/bin
+    path_append_once /usr/openv/db/bin
+    path_append_once /usr/openv/netbackup/bin/goodies
+    path_append_once /usr/openv/netbackup/bin/support
+    path_append_once /usr/openv/netbackup/sec/at/bin
+    path_append_once /usr/openv/volmgr/bin
+    path_append_once /usr/openv/java/jre/bin
+fi
 export TERM=xterm
 
 if [ -f ~/.vim/alias.global ]; then
