@@ -8,7 +8,7 @@
 
 @SETLOCAL enabledelayedexpansion
 
-@FOR /F "usebackq tokens=1-3 delims=|" %%A IN ("%~dp0definstallpaths.data") DO @IF NOT "%%A"=="" @IF NOT "%%A"=="# id" ( @SET "VER_ID[%%A]=%%B"& @SET "BLD_ID[%%A]=%%C" )
+@FOR /F "usebackq tokens=1-3 delims=|" %%A IN ("%~dp0definstallpaths.data") DO @IF NOT "%%A"=="" @IF NOT "%%A"=="#" ( @SET "VER_ID[%%A]=%%B"& @SET "BLD_ID[%%A]=%%C" )
 @SET VER_ID[0]=0
 @SET BLD_ID[0]=0000
 

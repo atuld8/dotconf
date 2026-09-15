@@ -1,6 +1,6 @@
 #!/bin/bash -x
 function af.bld.request_handler() {
-    if [ "$1" == "LAUNCH" -o "$1" == "ECHO" -o "$1" == "SJA" ]; then
+    if [ "$1" == "LAUNCH" ] || [ "$1" == "ECHO" ] || [ "$1" == "SJA" ]; then
         ver=$2
         VERSION=
         BID=
@@ -30,22 +30,30 @@ function af.bld.request_handler() {
             echo ${INST_PATH}
         fi
         if [ "$1" == "SJA" ]; then
-            find ${INST_PATH} -name *.sja
+            find "${INST_PATH}" -name '*.sja'
         fi
     fi
 }
 
+OSName=`uname -s`
 CLIP_CMD=
 if [ "$OSName" == "Darwin" ]; then
     CLIP_CMD='^|pbcopy';
 fi
 
-OSName=`uname -s`
-
 alias mcd.bldmnt='mkdir /newbuilds /public /extsrc /builds'
 alias m.bld..rf='function af.bld.ls() { ls -dl /newbuilds/NB/$1/* | awk '"'"'{ printf $NF "\n" }'"'"'; }; af.bld.ls'
-alias m.bld..rs9='function af.bld.ls() { ls -dl /newbuilds/NB/`echo $1| sed '"'"'s/./&./g'"'"' | sed '"'"'s/.$//g'"'"'`/* | awk '"'"'{ printf $NF "\n" }'"'"'; }; af.bld.ls'
-alias m.bld..rs10='function af.bld.ls() { ls -dl /newbuilds/NB/`echo $1| sed '"'"'s/./&./g'"'"' | sed '"'"'s/.$//g'"'"'| sed '"'"'s/\.//'"'"'`/* | awk '"'"'{ printf $NF "\n" }'"'"'; }; af.bld.ls'
+function af.bld.ls.version() {
+    local version
+    version=$(awk -F'|' -v id="$1" '$1 == id { print $2; exit }' "$(dirname "${BASH_SOURCE[0]}")/definstallpaths.data")
+    if [ -z "$version" ]; then
+        echo "Unknown build version ID: $1" >&2
+        return 1
+    fi
+    ls -dl "/newbuilds/NB/$version"/* | awk '{ printf $NF "\n" }'
+}
+alias m.bld..rs9='af.bld.ls.version'
+alias m.bld..rs10='af.bld.ls.version'
 
 if [[ "$OSName" = "Linux" ]] && [[ -f /etc/redhat-release ]] || [ "$1" = "ALL" ]; then
     alias m.bld.srv.lr..rs="function af.bld.srv.lr()   { af.bld.request_handler LAUNCH \$1 LinuxR_x86_64/install; }; af.bld.srv.lr"
