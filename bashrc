@@ -514,6 +514,12 @@ tx.vx() { tmux split-window -dh "bash -ic '$*'"; }
 # Split pane horizontal (below) - run command and close when done
 tx.hx() { tmux split-window -dv "bash -ic '$*'"; }
 
+# Split pane vertical (right) - run command, wait for keypress, close when done
+tx.vkp() { tmux split-window -dh "bash -ic '$*; echo; read -n 1 -s -r -p \"Press any key to continue...\"'"; }
+
+# Split pane horizontal (below) - run command, wait for keypress, close when done
+tx.hkp() { tmux split-window -dv "bash -ic '$*; echo; read -n 1 -s -r -p \"Press any key to continue...\"'"; }
+
 # Split vertical and jump to new pane
 tx.vj() {
     tmux split-window -h
@@ -579,13 +585,19 @@ tx.scr() {
     ssh -X -o "TCPKeepAlive=yes" -o "ServerAliveInterval=15" -o "ServerAliveCountMax=5" -t $NIS_USER@$NIS_SERVER $CMD
 }
 
+# Pause helper - wait for keypress before proceeding
+pause() {
+    read -n 1 -s -r -p "${1:-Press any key to continue...}"
+    echo
+}
+
 # ── Modern tmux popup features ──────────────────────────────────────────────
 
 # Generic popup - run any command in a popup window
 # Usage: tx.popup <command>  OR  tx.popup (opens shell)
 tx.popup() {
     if [[ -n "$*" ]]; then
-        tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "bash -ic '$*'"
+        tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "bash -ic '$*; echo; read -n 1 -s -r -p \"Press any key to continue...\"'"
     else
         tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$SHELL"
     fi
@@ -618,7 +630,7 @@ tx.pad() {
 
 # Run command in popup and wait for keypress
 tx.run() {
-    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "bash -ic '$*; echo; read -n 1 -s -r -p \"Press any key to close\"'"
+    tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "bash -ic '$*; echo; read -n 1 -s -r -p \"Press any key to continue...\"'"
 }
 
 # Show logs in popup (tail -f)
@@ -634,6 +646,8 @@ tx.help() {
     echo "  tx.hp <cmd>     - Split horizontal, persistent shell"
     echo "  tx.vx <cmd>     - Split vertical, close when done"
     echo "  tx.hx <cmd>     - Split horizontal, close when done"
+    echo "  tx.vkp <cmd>    - Split vertical, wait for keypress, close"
+    echo "  tx.hkp <cmd>    - Split horizontal, wait for keypress, close"
     echo "  tx.vj <cmd>     - Split vertical and jump to new pane"
     echo "  tx.hj <cmd>     - Split horizontal and jump to new pane"
     echo "  tx.w <cmd>      - New window, run command, close when done"
@@ -644,7 +658,7 @@ tx.help() {
     echo "  tx.remote [n]   - Remote tmux session"
     echo "  tx.scr [n]      - Remote screen session"
     echo "  ─── Popup Features ───"
-    echo "  tx.popup [cmd]  - Run command in popup (default: shell)"
+    echo "  tx.popup [cmd]  - Run command in popup (default: shell, waits for keypress)"
     echo "  tx.fzf          - FZF file picker in popup"
     echo "  tx.htop         - htop in popup"
     echo "  tx.lazygit      - lazygit in popup"
