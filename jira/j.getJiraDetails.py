@@ -20,6 +20,7 @@ import html
 import json
 import os
 import re
+import subprocess
 import sys
 import textwrap
 import time
@@ -59,6 +60,7 @@ HEADER_ABBREVIATIONS: Dict[str, str] = {
     "CAP Involvement": "CAP",
     "Customer Sentiment": "CustSent",
     "SalesForce Case Link": "SFDC",
+    "Evidence Path": "Evidence",
     "Assignee Manager": "Asgn Mgr",
     "Watcher Count": "Watch#",
     "Watcher Groups": "WatchGrp",
@@ -1514,6 +1516,10 @@ def _extract_code_links(issue: Dict[str, Any], remote_links: List[Dict[str, Any]
                 link_type = "Commit"
             elif 'github' in url.lower() or 'gitlab' in url.lower() or 'bitbucket' in url.lower():
                 link_type = "Code"
+            elif 'confluence' in url.lower() or 'wiki' in url.lower():
+                link_type = "Confluence"
+            elif url:
+                link_type = "Remote Link"
 
             if url:
                 _add_link(link_type, f"{title}{status_text}", url, "Remote Link")
@@ -1790,6 +1796,75 @@ def _extract_timeline_context(issue: Dict[str, Any]) -> Dict[str, str]:
     return context
 
 
+def _clean_code_or_signature_text(value: Any) -> str:
+    """Clean and preserve formatted code, logs, and stack traces for Bug Signature."""
+    if value is None:
+        return ""
+
+    if isinstance(value, dict):
+        val = value.get("value") or value.get("content") or _opt_value(value)
+        text = str(val) if val else str(value)
+    else:
+        text = str(value)
+
+    if not text or text == "-":
+        return ""
+
+    text = html.unescape(text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Clean Jira wiki code / noformat / quote blocks
+    text = re.sub(r"\{code(?::[a-zA-Z0-9_-]+)?\}", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"\{noformat\}", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"\{quote\}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\{\{([^\n{}]+)\}\}", r"\1", text)
+
+    # HTML tag replacements
+    replacements = [
+        (r"<br\s*/?>", "\n"),
+        (r"</p>", "\n"),
+        (r"<p[^>]*>", ""),
+        (r"</div>", "\n"),
+        (r"<div[^>]*>", ""),
+        (r"</pre>", "\n"),
+        (r"<pre[^>]*>", "\n"),
+        (r"</code>", ""),
+        (r"<code[^>]*>", ""),
+        (r"<li[^>]*>", "\n- "),
+        (r"</li>", ""),
+        (r"</tr>", "\n"),
+        (r"<tr[^>]*>", ""),
+        (r"</td>", " | "),
+        (r"<td[^>]*>", ""),
+        (r"</th>", " | "),
+        (r"<th[^>]*>", ""),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    # Strip remaining HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Clean lines while preserving indentation and intra-line spacing
+    cleaned_lines: List[str] = []
+    for raw_line in text.split("\n"):
+        cleaned_lines.append(raw_line.rstrip())
+
+    # Collapse excessive consecutive blank lines
+    result_lines: List[str] = []
+    blank_count = 0
+    for line in cleaned_lines:
+        if not line.strip():
+            blank_count += 1
+            if blank_count <= 1 and result_lines:
+                result_lines.append("")
+        else:
+            blank_count = 0
+            result_lines.append(line)
+
+    return "\n".join(result_lines).strip()
+
+
 def _extract_rca_ca_context(issue: Dict[str, Any]) -> Dict[str, str]:
     fields = issue.get("fields")
     if not isinstance(fields, dict):
@@ -1801,12 +1876,15 @@ def _extract_rca_ca_context(issue: Dict[str, Any]) -> Dict[str, str]:
         ("FI RCA Category", _field_value_by_name(issue, "FI RCA Category")),
         ("Action Taken", _field_value_by_name(issue, "Action Taken")),
         ("RCA Notes", _field_value_by_name(issue, "RCA Notes")),
-        ("Bug Signature", _field_value_by_name(issue, "Bug Signature")),
+        ("Bug Signature", _field_value_by_any_name(issue, ["Bug Signature", "Bug-Signature", "Bug Signature:"])),
         ("Etrack-Resolution", _field_value_by_any_name(issue, ["Etrack-Resolution", "Etrack Resolution"])),
     ]
 
     for label, value in values:
-        formatted = _format_selected_field_value(value)
+        if label == "Bug Signature":
+            formatted = _clean_code_or_signature_text(value)
+        else:
+            formatted = _format_selected_field_value(value)
         if formatted and formatted != "-":
             result[label] = formatted
 
@@ -2124,14 +2202,240 @@ def _format_sfdc_case_links_for_display(links: List[Dict[str, str]]) -> str:
     return ", ".join(parts) if parts else "-"
 
 
-def _print_sfdc_case_links_section(links: List[Dict[str, str]]) -> None:
-    print("\n* SalesForce Case Links:")
+def _get_evidence_host() -> Optional[str]:
+    """Retrieve evidence host from SFT_EVIDENCE_HOST environment variable or fallback configs (never hardcoded)."""
+    env_host = os.getenv("SFT_EVIDENCE_HOST") or os.getenv("EVIDENCE_HOST") or os.getenv("EVIDENCE_SERVER")
+    if env_host and env_host.strip():
+        return env_host.strip()
+    conf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".getJiraDetails.conf")
+    if os.path.isfile(conf_path):
+        try:
+            with open(conf_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    if k.strip().upper() in ("SFT_EVIDENCE_HOST", "EVIDENCE_HOST", "EVIDENCE_SERVER"):
+                        if v.strip():
+                            return v.strip()
+        except Exception:
+            pass
+    return None
+
+
+def _get_sft_timeout(default_timeout: int = 30) -> int:
+    """Retrieve sft timeout in seconds from SFT_TIMEOUT env var or use default (allows 2FA / approval window)."""
+    env_timeout = os.getenv("SFT_TIMEOUT")
+    if env_timeout:
+        try:
+            return max(5, int(env_timeout.strip()))
+        except (ValueError, TypeError):
+            pass
+    return default_timeout
+
+
+def _ensure_sft_session(_evidence_host: Optional[str] = None, timeout: Optional[int] = None) -> bool:
+    """Run `sft list-servers` to trigger 2-phase auth approval / verify active ScaleFT session."""
+    actual_timeout = timeout if timeout is not None else _get_sft_timeout(30)
+    try:
+        proc = subprocess.run(
+            ["sft", "list-servers"],
+            capture_output=True,
+            text=True,
+            timeout=actual_timeout,
+            check=False,
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _fetch_sfdc_evidence_entries(case_id: str, max_items: int = 10, timeout: Optional[int] = None) -> List[Dict[str, str]]:
+    """Fetch recent folders/files under /mnt/evidence/<case_id>/ sorted by modification time descending."""
+    evidence_host = _get_evidence_host()
+    if not evidence_host or not case_id or case_id == "-":
+        return []
+
+    clean_case = re.sub(r"[^\w\-]", "", str(case_id).strip())
+    if not clean_case:
+        return []
+
+    actual_timeout = timeout if timeout is not None else _get_sft_timeout(30)
+
+    # Always perform sft list-servers first to ensure session is active or trigger 2-phase approval
+    if not _ensure_sft_session(timeout=actual_timeout):
+        return []
+
+    no_zero_case = clean_case.lstrip("0")
+    # Clean remote bash script to robustly find, timestamp, and sort items by mtime
+    remote_script = (
+        f"python3 -c '\n"
+        f"import os, glob, time\n"
+        f"pats = [\"/mnt/evidence/{clean_case}/*\", \"/mnt/evidence/{no_zero_case}/*\", \"/mnt/evidence/{clean_case}\", \"/mnt/evidence/{no_zero_case}\"]\n"
+        f"found = []\n"
+        f"for pat in pats:\n"
+        f"    for p in sorted(glob.glob(pat)):\n"
+        f"        if p not in found and os.path.exists(p):\n"
+        f"            found.append(p)\n"
+        f"items = [(os.path.getmtime(p), p) for p in found]\n"
+        f"items.sort(key=lambda x: x[0], reverse=True)\n"
+        f"for t, p in items[:{max_items}]:\n"
+        f"    print(f\"{{time.strftime(\\\"%Y-%m-%d %H:%M:%S\\\", time.localtime(t))}}\\t{{p}}\")\n"
+        f"' 2>/dev/null || ls -ltd --time-style=\"+%Y-%m-%d %H:%M:%S\" /mnt/evidence/{clean_case}/* /mnt/evidence/{no_zero_case}/* /mnt/evidence/{clean_case} /mnt/evidence/{no_zero_case} 2>/dev/null | head -n {max_items}"
+    )
+    cmd = ["sft", "ssh", evidence_host, "-t", "--command", remote_script]
+
+    entries: List[Dict[str, str]] = []
+    seen_paths: Set[str] = set()
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=actual_timeout,
+            check=False,
+        )
+        combined = f"{proc.stdout or ''}\n{proc.stderr or ''}"
+        for raw_line in combined.splitlines():
+            clean_line = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", raw_line).strip()
+            if not clean_line:
+                continue
+            if re.search(r"Connection to .* closed", clean_line, re.IGNORECASE):
+                continue
+            if clean_line.startswith(("Warning:", "Authenticated", "sft ssh:", "spawn")):
+                continue
+
+            # Case 1: python output: "<YYYY-MM-DD HH:MM:SS>\t<path>"
+            if "\t" in clean_line and "/mnt/evidence/" in clean_line:
+                parts = clean_line.split("\t", 1)
+                tstr = parts[0].strip()
+                p = parts[1].strip()
+                if p not in seen_paths:
+                    seen_paths.add(p)
+                    entries.append({"path": p, "timestamp": tstr})
+                continue
+
+            # Case 2: ls -ltd output with --time-style: "... YYYY-MM-DD HH:MM:SS /mnt/evidence/..."
+            m_ls = re.search(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?)\s+(/mnt/evidence/\S+)", clean_line)
+            if m_ls:
+                tstr = m_ls.group(1)
+                p = m_ls.group(2)
+                if p not in seen_paths:
+                    seen_paths.add(p)
+                    entries.append({"path": p, "timestamp": tstr})
+                continue
+
+            # Case 3: standard ls -l output: "... Sep 14 15:30 /mnt/evidence/..."
+            m_std = re.search(r"([A-Za-z]{3}\s+\d{1,2}\s+(?:\d{4}|\d{2}:\d{2}))\s+(/mnt/evidence/\S+)", clean_line)
+            if m_std:
+                tstr = m_std.group(1)
+                p = m_std.group(2)
+                if p not in seen_paths:
+                    seen_paths.add(p)
+                    entries.append({"path": p, "timestamp": tstr})
+                continue
+
+            # Case 4: bare path
+            if clean_line.startswith("/mnt/evidence/"):
+                p = clean_line
+                if p not in seen_paths:
+                    seen_paths.add(p)
+                    entries.append({"path": p, "timestamp": "-"})
+    except Exception:
+        pass
+    return entries
+
+
+def _fetch_sfdc_evidence_first_dir(case_id: str, timeout: Optional[int] = None) -> Optional[str]:
+    """Return the most recent folder/file path under /mnt/evidence/<case_id>/."""
+    entries = _fetch_sfdc_evidence_entries(case_id, max_items=5, timeout=timeout)
+    if not entries:
+        return None
+
+    clean_case = re.sub(r"[^\w\-]", "", str(case_id).strip())
+    no_zero_case = clean_case.lstrip("0")
+    inside_items = [
+        e for e in entries
+        if not e["path"].rstrip("/").endswith(f"/mnt/evidence/{clean_case}")
+        and not (no_zero_case and e["path"].rstrip("/").endswith(f"/mnt/evidence/{no_zero_case}"))
+    ]
+    if inside_items:
+        return inside_items[0]["path"]
+    return entries[0]["path"]
+
+
+def _enrich_sfdc_case_links_with_evidence(links: List[Dict[str, Any]], profile_type: str = "") -> List[Dict[str, Any]]:
+    """Populate recent evidence entries for each Salesforce case link when in FI profile."""
+    if profile_type == "fi":
+        for link in links:
+            label = str(link.get("label", "-")).strip()
+            if label and label != "-":
+                entries = _fetch_sfdc_evidence_entries(label, max_items=5)
+                link["evidence_entries"] = entries
+                clean_case = re.sub(r"[^\w\-]", "", label)
+                no_zero_case = clean_case.lstrip("0")
+                inside_items = [
+                    e for e in entries
+                    if not e["path"].rstrip("/").endswith(f"/mnt/evidence/{clean_case}")
+                    and not (no_zero_case and e["path"].rstrip("/").endswith(f"/mnt/evidence/{no_zero_case}"))
+                ]
+                first_entry = inside_items[0] if inside_items else (entries[0] if entries else None)
+                if first_entry:
+                    link["evidence_dir"] = first_entry["path"]
+                    link["evidence_timestamp"] = first_entry.get("timestamp", "-")
+                else:
+                    link["evidence_dir"] = "-"
+                    link["evidence_timestamp"] = "-"
+            else:
+                link["evidence_entries"] = []
+                link["evidence_dir"] = "-"
+                link["evidence_timestamp"] = "-"
+    return links
+
+
+def _print_sfdc_case_links_section(links: List[Dict[str, Any]], profile_type: str = "", md_format: bool = False) -> None:
+    print("\n* SalesForce Case Links & Evidence:" if not md_format else "\n## SalesForce Case Links & Evidence\n")
     rows: List[List[str]] = []
     for link in links:
         label = str(link.get("label", "-")).strip() or "-"
         url = str(link.get("url", "-")).strip() or "-"
-        rows.append([label, url])
-    _print_table(rows, ["Case #", "Link"])
+        url_display = f"[{label}]({url})" if (md_format and url != "-" and url.startswith("http")) else url
+
+        entries = link.get("evidence_entries", [])
+        if not entries:
+            if profile_type == "fi" and label != "-":
+                entries = _fetch_sfdc_evidence_entries(label, max_items=5)
+                link["evidence_entries"] = entries
+
+        if profile_type == "fi" and entries:
+            clean_case = re.sub(r"[^\w\-]", "", label)
+            no_zero_case = clean_case.lstrip("0")
+            inside_items = [
+                e for e in entries
+                if not e["path"].rstrip("/").endswith(f"/mnt/evidence/{clean_case}")
+                and not (no_zero_case and e["path"].rstrip("/").endswith(f"/mnt/evidence/{no_zero_case}"))
+            ]
+            display_entries = inside_items[:5] if inside_items else entries[:5]
+            for idx, entry in enumerate(display_entries):
+                case_col = label if idx == 0 else ""
+                url_col = url_display if idx == 0 else ""
+                path_col = entry["path"]
+                time_col = entry.get("timestamp", "-")
+                rows.append([case_col, path_col, time_col, url_col])
+        else:
+            evidence_dir = link.get("evidence_dir", "-")
+            time_col = link.get("evidence_timestamp", "-")
+            if profile_type == "fi":
+                rows.append([label, evidence_dir, time_col, url_display])
+            else:
+                rows.append([label, url_display])
+
+    if profile_type == "fi":
+        _print_table(rows, ["Case #", "Recent Evidence Path", "Modified / Created", "Link"], md_format=md_format)
+    else:
+        _print_table(rows, ["Case #", "Link"], md_format=md_format)
 
 
 def _extract_sfdc_case_links(issue: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -2155,9 +2459,9 @@ def _extract_sfdc_case_links(issue: Dict[str, Any]) -> List[Dict[str, str]]:
             if links:
                 return links
 
-    # Fallback: search names map for any field containing "salesforce" (case-insensitive)
+    # Fallback 1: search names map for any field containing "salesforce" (case-insensitive)
     for field_key, display_name in names.items():
-        if isinstance(display_name, str) and "salesforce" in display_name.lower():
+        if isinstance(display_name, str) and ("salesforce" in display_name.lower() or "sfdc" in display_name.lower()):
             value = fields.get(field_key)
             if value:
                 raw = _format_selected_field_value(value)
@@ -2165,6 +2469,31 @@ def _extract_sfdc_case_links(issue: Dict[str, Any]) -> List[Dict[str, str]]:
                     links = _parse_sfdc_case_links(raw)
                     if links:
                         return links
+                    links = []
+                    for token in raw.split():
+                        token = token.strip(",;")
+                        if token:
+                            links.append({"label": token, "url": "-"})
+                    if links:
+                        return links
+
+    # Fallback 2: Check Case# / customfield_11814 / Salesforce Case #
+    case_num = _first_present_display_value(
+        _field_value_by_name(issue, "Salesforce Case #"),
+        _field_value_by_name(issue, "Case#"),
+        fields.get("customfield_11814"),
+    )
+    if case_num and case_num != "-":
+        links = _parse_sfdc_case_links(case_num)
+        if links:
+            return links
+        links = []
+        for token in case_num.split():
+            token = token.strip(",;")
+            if token:
+                links.append({"label": token, "url": "-"})
+        if links:
+            return links
 
     return []
 
@@ -2384,6 +2713,203 @@ def _format_etrack_value_with_link(value: Any) -> str:
     return ", ".join(formatted_parts) if formatted_parts else "-"
 
 
+def _format_attachment_size(size_bytes: Any) -> str:
+    """Format attachment file size in human-readable units."""
+    try:
+        size = float(size_bytes)
+    except (ValueError, TypeError):
+        return str(size_bytes) if size_bytes else "-"
+    if size < 1024:
+        return f"{int(size)} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    if size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    return f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+
+def _extract_attachments_details(attachments: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Extract structured details for attachments."""
+    results: List[Dict[str, str]] = []
+    for att in attachments:
+        if not isinstance(att, dict):
+            continue
+        filename = str(att.get("filename", "-"))
+        author = str((att.get("author") or {}).get("displayName", "-"))
+        created = _normalize_timestamp(att.get("created"))
+        size_str = _format_attachment_size(att.get("size", 0))
+        url = str(att.get("content", att.get("self", "-")))
+        results.append({
+            "id": str(att.get("id", "-")),
+            "filename": filename,
+            "size": size_str,
+            "author": author,
+            "created": created,
+            "url": url,
+            "mimeType": str(att.get("mimeType", "-")),
+        })
+    return results
+
+
+def _extract_all_links(
+    issue: Dict[str, Any],
+    remote_links: Optional[List[Dict[str, Any]]] = None,
+    jira_base_url: str = "",
+) -> List[Dict[str, str]]:
+    """Extract all links associated with a Jira issue.
+
+    Includes:
+    - Jira issue links (inward/outward linked issues with relationships)
+    - Remote links (PRs, commits, Confluence pages, external web links)
+    - Salesforce Case links
+    - Etrack incident links (from custom fields and text)
+    - Epic / Parent issue links
+    - Slack conversation links
+    - Extracted URLs from description, comments, and custom fields
+
+    Returns:
+        List of dicts with keys: type, title, url, source
+    """
+    all_links: List[Dict[str, str]] = []
+    seen_urls: Set[Tuple[str, str]] = set()
+
+    def _add_link(link_type: str, title: str, url: str, source: str):
+        if not url or url == "-":
+            return
+        url_clean = url.rstrip(".,;:)]")
+        dedup_key = (link_type.lower(), url_clean.lower())
+        if dedup_key not in seen_urls:
+            seen_urls.add(dedup_key)
+            all_links.append({
+                "type": link_type,
+                "title": title[:120] if title else url_clean.split("/")[-1][:50],
+                "url": url_clean,
+                "source": source,
+            })
+
+    fields = issue.get("fields", {}) if isinstance(issue, dict) else {}
+
+    # 1. Jira Issue Links (issuelinks)
+    for link in fields.get("issuelinks", []):
+        link_type = link.get("type", {})
+        type_name = link_type.get("name", "Related")
+
+        if "outwardIssue" in link:
+            out_issue = link["outwardIssue"]
+            k = out_issue.get("key", "")
+            rel = link_type.get("outward", type_name)
+            out_fields = out_issue.get("fields", {})
+            summary = out_fields.get("summary", "")
+            status = (out_fields.get("status") or {}).get("name", "")
+            itype = (out_fields.get("issuetype") or {}).get("name", "")
+
+            title_parts = [k]
+            details = [d for d in [itype, status] if d]
+            if details:
+                title_parts.append(f"[{', '.join(details)}]")
+            if summary:
+                title_parts.append(f"- {summary}")
+
+            title = " ".join(title_parts)
+            url = _build_jira_link(jira_base_url, k) if jira_base_url and k else k
+            _add_link(f"Jira ({rel})", title, url, "Issue Links")
+
+        if "inwardIssue" in link:
+            in_issue = link["inwardIssue"]
+            k = in_issue.get("key", "")
+            rel = link_type.get("inward", type_name)
+            in_fields = in_issue.get("fields", {})
+            summary = in_fields.get("summary", "")
+            status = (in_fields.get("status") or {}).get("name", "")
+            itype = (in_fields.get("issuetype") or {}).get("name", "")
+
+            title_parts = [k]
+            details = [d for d in [itype, status] if d]
+            if details:
+                title_parts.append(f"[{', '.join(details)}]")
+            if summary:
+                title_parts.append(f"- {summary}")
+
+            title = " ".join(title_parts)
+            url = _build_jira_link(jira_base_url, k) if jira_base_url and k else k
+            _add_link(f"Jira ({rel})", title, url, "Issue Links")
+
+    # 2. Epic / Parent Link
+    parent = fields.get("parent")
+    if isinstance(parent, dict):
+        pkey = parent.get("key", "")
+        psummary = (parent.get("fields") or {}).get("summary", "")
+        purl = _build_jira_link(jira_base_url, pkey) if jira_base_url and pkey else pkey
+        ptitle = f"{pkey} - {psummary}" if psummary else pkey
+        _add_link("Parent", ptitle, purl, "Parent")
+
+    epic_link = _field_value_by_name(issue, "Epic Link")
+    if epic_link and epic_link != "-":
+        eurl = _build_jira_link(jira_base_url, str(epic_link)) if jira_base_url else str(epic_link)
+        _add_link("Epic", str(epic_link), eurl, "Epic Link")
+
+    # 3. Salesforce Case Links & Evidence
+    sfdc_links = _extract_sfdc_case_links(issue)
+    for s_link in sfdc_links:
+        case_label = str(s_link.get("label", "-")).strip()
+        case_url = str(s_link.get("url", "-")).strip()
+        if case_url and case_url != "-":
+            _add_link("Salesforce", f"Case #{case_label}" if case_label != "-" else "SFDC Case", case_url, "Salesforce Case Link")
+        elif case_label and case_label != "-":
+            _add_link("Salesforce", f"Case #{case_label}", f"Case #{case_label}", "Salesforce Case Field")
+
+        # Query evidence path for this case
+        if case_label and case_label != "-":
+            entries = s_link.get("evidence_entries")
+            if not entries:
+                entries = _fetch_sfdc_evidence_entries(case_label, max_items=5)
+                s_link["evidence_entries"] = entries
+            if entries:
+                clean_case = re.sub(r"[^\w\-]", "", case_label)
+                no_zero_case = clean_case.lstrip("0")
+                inside_items = [
+                    e for e in entries
+                    if not e["path"].rstrip("/").endswith(f"/mnt/evidence/{clean_case}")
+                    and not (no_zero_case and e["path"].rstrip("/").endswith(f"/mnt/evidence/{no_zero_case}"))
+                ]
+                display_entries = inside_items[:3] if inside_items else entries[:3]
+                for e in display_entries:
+                    tstr = e.get("timestamp")
+                    t_suffix = f" [{tstr}]" if tstr and tstr != "-" else ""
+                    _add_link("Evidence", f"Evidence ({case_label}){t_suffix}", e["path"], "SFT Evidence Host")
+            else:
+                ev_dir = s_link.get("evidence_dir")
+                if ev_dir and ev_dir != "-":
+                    _add_link("Evidence", f"Evidence ({case_label})", ev_dir, "SFT Evidence Host")
+
+    # 4. Etrack Links (from fields)
+    for field_key in ["customfield_33802", "customfield_36508"]:
+        raw_val = fields.get(field_key)
+        if raw_val:
+            for et_id in re.findall(r"\b\d{6,8}\b", str(raw_val)):
+                et_url = _build_etrack_link(et_id)
+                if et_url and et_url != "-":
+                    _add_link("Etrack", f"ET {et_id}", et_url, "Etrack Field")
+    nbu_rnd = _field_value_by_any_name(issue, ["NBU R&D Ticket", "NBU R&D Ticket:"])
+    if nbu_rnd and nbu_rnd != "-":
+        for et_id in re.findall(r"\b\d{6,8}\b", str(nbu_rnd)):
+            et_url = _build_etrack_link(et_id)
+            if et_url and et_url != "-":
+                _add_link("Etrack", f"ET {et_id}", et_url, "NBU R&D Ticket")
+
+    # 5. Slack Link
+    slack_val = fields.get("customfield_24004") or _field_value_by_name(issue, "Slack")
+    if slack_val and isinstance(slack_val, str) and slack_val.startswith("http"):
+        _add_link("Slack", "Slack Conversation", slack_val.strip(), "Slack")
+
+    # 6. Remote links and extracted code/web links
+    code_links = _extract_code_links(issue, remote_links)
+    for cl in code_links:
+        _add_link(cl.get("type", "Link"), cl.get("title", ""), cl.get("url", ""), cl.get("source", "Code Links"))
+
+    return all_links
+
+
 def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etrack_ids: List[str]) -> List[List[str]]:
     fields = issue.get("fields")
     if not isinstance(fields, dict):
@@ -2419,6 +2945,36 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etra
     _append_if_present(rows, "Case#", fields.get("customfield_11814"))
     if sfdc_case_links:
         rows.append(["SalesForce Case Link", _format_sfdc_case_links_for_display(sfdc_case_links)])
+        if profile_type == "fi":
+            ev_strs = []
+            for link_item in sfdc_case_links:
+                ev_dir = link_item.get("evidence_dir")
+                tstamp = link_item.get("evidence_timestamp")
+                if not ev_dir or ev_dir == "-":
+                    lbl = str(link_item.get("label", "-")).strip()
+                    if lbl and lbl != "-":
+                        entries = _fetch_sfdc_evidence_entries(lbl, max_items=5)
+                        link_item["evidence_entries"] = entries
+                        if entries:
+                            clean_case = re.sub(r"[^\w\-]", "", lbl)
+                            no_zero_case = clean_case.lstrip("0")
+                            inside_items = [
+                                e for e in entries
+                                if not e["path"].rstrip("/").endswith(f"/mnt/evidence/{clean_case}")
+                                and not (no_zero_case and e["path"].rstrip("/").endswith(f"/mnt/evidence/{no_zero_case}"))
+                            ]
+                            first_entry = inside_items[0] if inside_items else entries[0]
+                            ev_dir = first_entry["path"]
+                            tstamp = first_entry.get("timestamp", "-")
+                            link_item["evidence_dir"] = ev_dir
+                            link_item["evidence_timestamp"] = tstamp
+                if ev_dir and ev_dir != "-":
+                    if tstamp and tstamp != "-":
+                        ev_strs.append(f"{ev_dir} ({tstamp})")
+                    else:
+                        ev_strs.append(ev_dir)
+            if ev_strs:
+                rows.append(["Evidence Path", ", ".join(ev_strs)])
     case_priority_value = _first_present_display_value(
         _field_value_by_name(issue, "Case Priority"),
     )
@@ -2466,16 +3022,17 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etra
             "Etrack Ref": 11,
             "Case#": 12,
             "SalesForce Case Link": 13,
-            "Case Priority": 14,
-            "Customer": 15,
-            "Business Unit": 16,
-            "Assignee Manager": 17,
-            "Epic Link": 18,
-            "Sprint": 19,
-            "Watchers": 20,
-            "Watcher Groups": 21,
-            "Slack": 22,
-            "Affects Version/s": 22,
+            "Evidence Path": 14,
+            "Case Priority": 15,
+            "Customer": 16,
+            "Business Unit": 17,
+            "Assignee Manager": 18,
+            "Epic Link": 19,
+            "Sprint": 20,
+            "Watchers": 21,
+            "Watcher Groups": 22,
+            "Slack": 23,
+            "Affects Version/s": 24,
         }
         rows.sort(key=lambda row: label_order.get(row[0], 100))
     elif profile_type == "pvm":
@@ -2529,7 +3086,7 @@ def _build_summary_rows(
         ["Affects Versions", _opt_value(fields.get("versions"))],
         *default_optional_rows,
         ["Comments", str(len(comments))],
-        ["Attachments", str(len(attachments))],
+        ["Attachments", f"{len(attachments)} (📎 Present)" if attachments else "0"],
         ["Watcher Count", str(watchers)],
         ["Created", _normalize_timestamp(fields.get("created"))],
         ["Updated", _normalize_timestamp(fields.get("updated"))],
@@ -2554,6 +3111,7 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         "Etrack Ref",
         "Case#",
         "SalesForce Case Link",
+        "Evidence Path",
         "Case Priority",
         "Customer",
         "Business Unit",
@@ -2669,7 +3227,9 @@ def _print_summary(summary_rows: List[List[str]], output_format: str, profile_ty
         print("| Field | Value |")
         print("| --- | --- |")
         print(f"| Comments | {_summary_value(summary_rows, 'Comments')} |")
-        print(f"| Attachments | {_summary_value(summary_rows, 'Attachments')} |")
+        att_val = _summary_value(summary_rows, 'Attachments')
+        att_md_val = f"**{att_val}**" if att_val not in {"0", "-"} else att_val
+        print(f"| Attachments | {att_md_val} |")
         print(f"| Watcher Count | {_summary_value(summary_rows, 'Watcher Count')} |")
         print(f"| Created | {_summary_value(summary_rows, 'Created')} |")
         print(f"| Updated | {_summary_value(summary_rows, 'Updated')} |")
@@ -2980,17 +3540,28 @@ def _build_json_output(
     customer_field_issues_meta: Optional[Dict[str, Any]] = None,
     fuzzy_match: bool = False,
     etrack_validation_errors: Optional[List[str]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+    all_links: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "profile": profile_type,
         "summary": _summary_rows_to_dict(summary_rows),
     }
 
+    if attachments:
+        payload["attachments"] = _extract_attachments_details(attachments)
+
+    if all_links:
+        payload["links"] = all_links
+
     if sfdc_case_links:
         payload["salesforce_case_links"] = [
             {
                 "case_number": (str(link.get("label", "-")).strip() or "-"),
                 "link": (str(link.get("url", "-")).strip() or "-"),
+                "evidence_dir": (str(link.get("evidence_dir", "-")).strip() or "-"),
+                "evidence_timestamp": (str(link.get("evidence_timestamp", "-")).strip() or "-"),
+                "evidence_entries": link.get("evidence_entries", []),
             }
             for link in sfdc_case_links
         ]
@@ -3092,7 +3663,9 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
         "subtasks",
         "linked-fis",
         "etrack",
+        "links",
         "code-links",
+        "attachments",
         "comments",
         "fields",
         "timeline",
@@ -3100,10 +3673,10 @@ def _resolve_enabled_sections(mode: str, raw_sections: str) -> Set[str]:
     }
 
     mode_defaults: Dict[str, Set[str]] = {
-        "standard": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "comments", "fields", "verbose"},
+        "standard": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "links", "attachments", "comments", "fields", "verbose"},
         "summary": {"summary", "description"},
-        "investigate": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "code-links", "comments", "fields", "timeline", "verbose"},
-        "ops": {"summary", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "code-links", "comments"},
+        "investigate": {"summary", "description", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "links", "code-links", "attachments", "comments", "fields", "timeline", "verbose"},
+        "ops": {"summary", "status", "rca-ca", "subtasks", "linked-fis", "etrack", "links", "code-links", "attachments", "comments"},
     }
 
     if raw_sections.strip():
@@ -3237,7 +3810,7 @@ def main() -> int:
         default="",
         help=(
             "Comma-separated sections to display (overrides --mode). "
-            "Allowed: summary,description,status,customer-field-issues,rca-ca,subtasks,linked-fis,etrack,code-links,comments,fields,timeline,verbose"
+            "Allowed: summary,description,status,customer-field-issues,rca-ca,subtasks,linked-fis,etrack,links,code-links,attachments,comments,fields,timeline,verbose"
         ),
     )
     parser.add_argument(
@@ -3447,6 +4020,8 @@ def main() -> int:
     etrack_sources, etrack_validation_errors = _extract_etrack_ids_with_sources(issue)
     etrack_ids = sorted(etrack_sources.keys(), key=int) if etrack_sources else []
     sfdc_case_links = _extract_sfdc_case_links(issue)
+    if profile_type == "fi":
+        _enrich_sfdc_case_links_with_evidence(sfdc_case_links, profile_type=profile_type)
     timeline_context = _extract_timeline_context(issue)
 
     customer_field_issues_active_only = bool(args.list_active_customer_field_issues)
@@ -3513,19 +4088,22 @@ def main() -> int:
     if show_etrack_requested and etrack_ids:
         etrack_info = _fetch_etrack_details(etrack_ids)
 
-    # Fetch remote links and extract code links for PVM profile or when code-links section is requested
+    # Fetch remote links and extract code/all links
     remote_links: List[Dict[str, Any]] = []
     code_links: List[Dict[str, str]] = []
-    show_code_links = (
-        profile_type == "pvm"
+    all_links: List[Dict[str, str]] = []
+    show_links_requested = (
+        "links" in enabled_sections
+        or "code-links" in enabled_sections
+        or profile_type == "pvm"
         or args.mode in {"investigate", "ops"}
-        or (sections_override_active and "code-links" in enabled_sections)
     )
-    if show_code_links:
+    if show_links_requested:
         try:
             remote_links = jira.get_remote_links(issue.get("key", issue_key))
         except Exception:
             remote_links = []
+        all_links = _extract_all_links(issue, remote_links, jira_base_url=jira.base_url)
         code_links = _extract_code_links(issue, remote_links)
 
     requested_fields = _split_field_selectors(args.show_field)
@@ -3583,6 +4161,8 @@ def main() -> int:
             customer_field_issues_meta=customer_field_issues_meta,
             fuzzy_match=args.fuzzy_match,
             etrack_validation_errors=etrack_validation_errors if show_etrack_requested else None,
+            attachments=attachments if "attachments" in enabled_sections else None,
+            all_links=all_links if "links" in enabled_sections else None,
         )
         print(json.dumps(json_payload, indent=2, ensure_ascii=False))
         return 0
@@ -3734,17 +4314,26 @@ def main() -> int:
                     print(f"**{label}:**\n")
                 else:
                     print(f"  * {label}:")
-                print(
-                    _format_multiline_text(
-                        value,
-                        max_len=0,
-                        width=args.wrap_width,
-                        indent="" if is_md_format else "    ",
-                        style=args.long_text_style,
+
+                if label == "Bug Signature":
+                    sig_text = _clean_code_or_signature_text(value)
+                    if is_md_format:
+                        print(f"```\n{sig_text}\n```\n")
+                    else:
+                        for line in sig_text.split("\n"):
+                            print(f"    {line}" if line else "")
+                else:
+                    print(
+                        _format_multiline_text(
+                            value,
+                            max_len=0,
+                            width=args.wrap_width,
+                            indent="" if is_md_format else "    ",
+                            style=args.long_text_style,
+                        )
                     )
-                )
-                if is_md_format:
-                    print()
+                    if is_md_format:
+                        print()
             if section_separator:
                 print(section_separator)
         elif args.show_empty:
@@ -3871,11 +4460,6 @@ def main() -> int:
                     comparison_results = _compare_etrack_fi_values(summary_rows, etrack_info, etrack_ids, fuzzy_match=args.fuzzy_match)
                     _print_etrack_fi_comparison(comparison_results, show_all=False)
 
-            if args.show_etrack_details:
-                if sfdc_case_links:
-                    _print_sfdc_case_links_section(sfdc_case_links)
-                elif args.show_empty:
-                    print("\n## SalesForce Case Links\n\n*None*" if is_md_format else "\n* SalesForce Case Links: None")
             if section_separator:
                 print(section_separator)
         elif args.show_empty:
@@ -3888,8 +4472,52 @@ def main() -> int:
             if section_separator:
                 print(section_separator)
 
-    # Code Links section (PRs, commits, etc.) - especially useful for PVM issues
-    if "code-links" in enabled_sections or show_code_links:
+    # Salesforce Case Links & Evidence section (always shown when present or in FI profile)
+    if sfdc_case_links:
+        if section_separator:
+            print(section_separator)
+        _print_sfdc_case_links_section(sfdc_case_links, profile_type=profile_type, md_format=is_md_format)
+        if section_separator:
+            print(section_separator)
+    elif args.show_empty:
+        if section_separator:
+            print(section_separator)
+        print("\n## SalesForce Case Links\n\n*None*" if is_md_format else "\n* SalesForce Case Links: None")
+        if section_separator:
+            print(section_separator)
+
+    # Links section (all links: Jira issue links, remote links, SFDC, Etrack, code/web links)
+    if "links" in enabled_sections:
+        if all_links:
+            if section_separator:
+                print(section_separator)
+            print(f"\n## Links ({len(all_links)})\n" if is_md_format else f"\n* Links ({len(all_links)}):")
+            rows = []
+            for link in all_links:
+                url = link.get("url", "-")
+                title = link.get("title", "-")
+                ltype = link.get("type", "Link")
+                source = link.get("source", "-")
+                if is_md_format and url != "-" and url.startswith("http"):
+                    url_display = f"[{title or url.split('/')[-1][:30]}]({url})"
+                    rows.append([ltype, title, url_display, source])
+                else:
+                    rows.append([ltype, title, url, source])
+            _print_table(rows, ["Type", "Title / Key", "URL", "Source"], md_format=is_md_format)
+            if section_separator:
+                print(section_separator)
+        elif args.show_empty:
+            if section_separator:
+                print(section_separator)
+            if is_md_format:
+                print("\n## Links\n\n*None*")
+            else:
+                print("\n* Links: None")
+            if section_separator:
+                print(section_separator)
+
+    # Code Links section (PRs, commits, etc.) - legacy view when specific code-links requested without links
+    if ("code-links" in enabled_sections or show_links_requested) and "links" not in enabled_sections:
         if code_links:
             if section_separator:
                 print(section_separator)
@@ -3926,6 +4554,37 @@ def main() -> int:
                 print("*No PR, Stash, or Etrack links detected in description, comments, or custom fields.*")
             else:
                 print("\n* Code Links (PRs/Commits): No PR, Stash, or Etrack links detected in description, comments, or custom fields.")
+            if section_separator:
+                print(section_separator)
+
+    # Attachments section
+    if "attachments" in enabled_sections:
+        if attachments:
+            if section_separator:
+                print(section_separator)
+            att_details = _extract_attachments_details(attachments)
+            print(f"\n## Attachments ({len(attachments)})\n" if is_md_format else f"\n* Attachments ({len(attachments)}):")
+            rows = []
+            for idx, att in enumerate(att_details, 1):
+                url = att.get("url", "-")
+                if is_md_format and url != "-" and url.startswith("http"):
+                    url_display = f"[{att['filename']}]({url})"
+                    rows.append([str(idx), url_display, att["size"], att["author"], att["created"]])
+                else:
+                    rows.append([str(idx), att["filename"], att["size"], att["author"], att["created"], url])
+            if is_md_format:
+                _print_table(rows, ["#", "Filename", "Size", "Author", "Created"], md_format=True)
+            else:
+                _print_table(rows, ["#", "Filename", "Size", "Author", "Created", "URL"], md_format=False)
+            if section_separator:
+                print(section_separator)
+        elif args.show_empty:
+            if section_separator:
+                print(section_separator)
+            if is_md_format:
+                print("\n## Attachments\n\n*None*")
+            else:
+                print("\n* Attachments: None")
             if section_separator:
                 print(section_separator)
 

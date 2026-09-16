@@ -20,9 +20,10 @@
 # export EXTSRC_ROOT=''
 
 # export JIRA_SERVER_NAME=""
-#export ETRACK_SERVER_NAME=""
-#export SUPPORT_CASE_SERVER_NAME=""
-#export SFDC_SERVER_NAME=""
+# export ETRACK_SERVER_NAME=""
+# export SUPPORT_CASE_SERVER_NAME=""
+# export SFDC_SERVER_NAME=""
+# export SFT_EVIDENCE_HOST=""
 
 # export PGPORT=""
 # export PGUSER=""
