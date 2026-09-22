@@ -1,6 +1,5 @@
 -- baleia.nvim: render ANSI color codes in nvim buffers
--- Usage: open any *.ansi file and colors render automatically
--- Manual: :BaleiaColorize  to apply to current buffer
+-- Manual: :BaleiaColorize to apply to the current buffer
 return {
   "m00qek/baleia.nvim",
   commit = "710537ff5cd669c5a76c5f5b6a9169fd9b913d18",
@@ -8,17 +7,14 @@ return {
   config = function()
     local baleia = require("baleia").setup()
 
-    -- Auto-render ANSI codes in *.ansi files
-    vim.api.nvim_create_autocmd("BufReadPost", {
-      pattern = "*.ansi",
-      callback = function()
-        baleia.once(vim.api.nvim_get_current_buf())
-      end,
-    })
-
-    -- Manual command for any buffer
+    -- Rendering is explicit so opening a file never changes its buffer.
     vim.api.nvim_create_user_command("BaleiaColorize", function()
-      baleia.once(vim.api.nvim_get_current_buf())
+      local bufnr = vim.api.nvim_get_current_buf()
+      if vim.bo[bufnr].buftype ~= "" or not vim.bo[bufnr].modifiable then
+        vim.notify("Baleia: current buffer is not modifiable", vim.log.levels.WARN)
+        return
+      end
+      baleia.once(bufnr)
     end, {})
   end,
 }
