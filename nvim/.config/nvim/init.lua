@@ -1,5 +1,5 @@
 -- init.lua
-vim.g.python3_host_prog="/opt/homebrew/bin/python3"
+vim.g.python3_host_prog="python3"
 
 vim.g.session_autoload = "no"
 vim.g.session_autosave = "no"
