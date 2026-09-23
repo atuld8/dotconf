@@ -163,7 +163,13 @@ mkdir -p ~/.config/nvim/lua/plugins/
 cp ~/.vim/nvim/.config/nvim/init.lua ~/.config/nvim
 cp ~/.vim/nvim/.config/nvim/lua/plugins/init.lua ~/.config/nvim/lua/plugins/
 
-Another method is
+# Install nvim on Linux
+cd /opt
+curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz
+tar xzf nvim-linux-x86_64.tar.gz
+ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
+
+# Another method is
 mkdir -p ~/.config/nvim/
 mkdir -p ~/.config/nvim/lua/plugins/
 ln -s ~/.vim/syntax ~/.config/nvim/
