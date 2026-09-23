@@ -565,6 +565,7 @@ marks() {
     for f in "$DIRMARKS_DIR"/*; do
         [[ -L "$f" ]] && printf "  %-15s -> %s\n" "$(basename "$f")" "$(readlink "$f")"
     done
+    printf "\ncheck-- mark, jump, unmark\n"
 }
 
 unmark() {
