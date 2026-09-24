@@ -25,6 +25,115 @@ if [ -f /etc/bashrc ]; then
    . /etc/bashrc
 fi
 
+# Run a command, mirror its output to a timestamped log, and preserve its status.
+logcmd() {
+    local log_base=''
+    local log_file=''
+    local log_name=''
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --log-base|-b)
+                [[ $# -ge 2 ]] || { printf 'logcmd: --log-base requires a path\n' >&2; return 2; }
+                log_base="$2"
+                shift 2
+                ;;
+            --log-file|-f)
+                [[ $# -ge 2 ]] || { printf 'logcmd: --log-file requires a path\n' >&2; return 2; }
+                log_file="$2"
+                shift 2
+                ;;
+            --log-name|-n)
+                [[ $# -ge 2 ]] || { printf 'logcmd: --log-name requires a name\n' >&2; return 2; }
+                log_name="$2"
+                shift 2
+                ;;
+            --help|-h)
+                cat <<'EOF'
+Usage: lc|lcf [OPTIONS] COMMAND [ARGS...]
+
+  lc                 Run command, show output, and save it to a log.
+  lcf                Run command and save output without showing it.
+  -b, --log-base DIR Save a timestamped log in DIR.
+  -n, --log-name NAME Use NAME for the timestamped log.
+  -f, --log-file FILE Write to the exact file path.
+  -h, --help         Show this help.
+EOF
+                return 0
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -* )
+                printf 'Usage: logcmd [-b DIR] [-n NAME] [-f FILE] COMMAND [ARGS...]\n' >&2
+                return 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    (( $# > 0 )) || { printf 'Usage: logcmd [-b DIR] [-n NAME] [-f FILE] COMMAND [ARGS...]\n' >&2; return 2; }
+    [[ -z "$log_file" || -z "$log_name" ]] || { printf 'logcmd: choose either -f or -n\n' >&2; return 2; }
+
+    local command_name="$1"
+    shift
+    if [[ -z "$log_file" ]]; then
+        local timestamp
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        [[ -n "$log_name" ]] || log_name="${command_name##*/}"
+        if [[ -n "$log_base" ]]; then
+            log_base="${log_base%/}"
+            log_file="${log_base}/${log_name}.${timestamp}"
+        else
+            log_file="${log_name}.${timestamp}"
+        fi
+    fi
+
+    local command_rc
+    local pipeline_status
+    if [[ $(type -t "$command_name") == alias ]]; then
+        local alias_definition alias_args
+        alias_definition=$(alias "$command_name") || return 127
+        alias_definition=${alias_definition#*=}
+        alias_definition=${alias_definition#\'}
+        alias_definition=${alias_definition%\'}
+        alias_args=''
+        if (( $# > 0 )); then
+            printf -v alias_args ' %q' "$@"
+        fi
+        if [[ ${LOGCMD_QUIET:-0} == 1 ]]; then
+            eval "$alias_definition$alias_args" >"$log_file" 2>&1
+            command_rc=$?
+        else
+            eval "$alias_definition$alias_args" 2>&1 | tee "$log_file"
+            pipeline_status=("${PIPESTATUS[@]}")
+            command_rc=${pipeline_status[0]}
+        fi
+    else
+        if [[ ${LOGCMD_QUIET:-0} == 1 ]]; then
+            "$command_name" "$@" >"$log_file" 2>&1
+            command_rc=$?
+        else
+            "$command_name" "$@" 2>&1 | tee "$log_file"
+            pipeline_status=("${PIPESTATUS[@]}")
+            command_rc=${pipeline_status[0]}
+        fi
+    fi
+    printf '\nLog file: %s\n' "$log_file"
+    return "$command_rc"
+}
+
+alias lc='logcmd'
+
+logcmd_file() {
+    LOGCMD_QUIET=1 logcmd "$@"
+}
+
+alias lcf='logcmd_file'
+
 MANPATH=$MANPATH:/usr/dt/man:/usr/man:/usr/openwin/share/man:/usr/openv/man/share/man
 export MANPATH
 
