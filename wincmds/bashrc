@@ -149,6 +149,14 @@ EOF
         [[ -n "$log_name" ]] || log_name="${command_name##*/}"
         if [[ -n "$log_base" ]]; then
             log_base="${log_base%/}"
+            if [[ -e "$log_base" && ! -d "$log_base" ]]; then
+                printf 'logcmd: log base is not a directory: %s\n' "$log_base" >&2
+                return 2
+            fi
+            mkdir -p -- "$log_base" || {
+                printf 'logcmd: cannot create log directory: %s\n' "$log_base" >&2
+                return 2
+            }
             log_file="${log_base}/${log_name}.${timestamp}"
         else
             log_file="${log_name}.${timestamp}"
