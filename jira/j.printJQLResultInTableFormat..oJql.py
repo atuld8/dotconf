@@ -342,6 +342,13 @@ def _compact_case_status(value):
     return CASE_STATUS_COMPACT.get(value, value)
 
 
+def _format_summary(value, limit):
+    """Normalize and truncate a Jira summary for table output."""
+    summary = str(value or '-').replace('\t', ' ')
+    summary = ' '.join(summary.splitlines()).strip()
+    return summary if len(summary) < limit else summary[:limit] + "..."
+
+
 def _compact_assignee_manager(value):
     """Remove @domain.com from assignee manager email."""
     import re
@@ -897,8 +904,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
     for index, issue in enumerate(issues, start=1):
         key = issue['key']
         summary_limit = 70 if profile == 'fi' else 120
-        summary_raw = issue['fields'].get('summary', '-') or '-'
-        summary = summary_raw if len(summary_raw) < summary_limit else summary_raw[:summary_limit] + "..."
+        summary = _format_summary(issue['fields'].get('summary'), summary_limit)
         status_field = issue['fields'].get('status')
         status = status_field.get('name', '-') if status_field else '-'
         assignee_field = issue['fields'].get('assignee')
