@@ -343,16 +343,19 @@ GetGBaseParent() {
 # Single source of truth for TMUX window/pane index
 UpdateTmuxWinIdx () {
     export TMUX_WINIDX=""
+    export TMUX_TARGET=""
     if [[ -n "$TMUX" ]]; then
         local win_idx=$(tmux display-message -p '#I')
         local pane_idx=$(tmux display-message -p '#P')
         local total_wins=$(tmux display-message -p '#{session_windows}')
         local total_panes=$(tmux display-message -p '#{window_panes}')
-        export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
-    elif [[ -n "$WINDOW" ]]; then
-        export TMUX_WINIDX="[$WINDOW] "
+        local session_name=$(tmux display-message -p '#{session_name}')
+        local window_id=$(tmux display-message -p '#{window_id}')
+        local pane_id=$(tmux display-message -p '#{pane_id}')
+        export TMUX_WINIDX="${win_idx}w${total_wins}.${pane_idx}p${total_panes}"
+        export TMUX_TARGET="[${session_name}:${window_id}.${pane_id}] "
     fi
-    echo "$TMUX_WINIDX"
+    [[ -n "$TMUX_WINIDX" ]] && printf 'TX:%s ' "$TMUX_WINIDX"
 }
 
 # \W basename of current directory

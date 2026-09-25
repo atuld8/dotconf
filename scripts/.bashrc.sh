@@ -360,7 +360,7 @@ _prompt_file_counts() {
 SetLongTrap()
 {
     UpdateTmuxWinIdx > /dev/null
-    trap '_cmd_timer_start; PS1="\n${CYAN}\${EXEC_TIME_DISPLAY}${NC}${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*} ${PURPLE}${BG}(\$((\! -1)):\#) ${PROPNAMECOLOR}${BG}[Date:${PROPCOLOR}${BG}\D{%e-%B-%G} ${PROPNAMECOLOR}${BG}Time:${PROPCOLOR}${BG}\t ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG}] ${PROPNAMECOLOR}${BG}[OS:${PROPCOLOR}${BG}${OSName} ${PROPNAMECOLOR}${BG}Ver:${PROPCOLOR}${BG}${OSVer}${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Proc:${PROPCOLOR}${BG}${PROCName}${PROPNAMECOLOR}${BG}${DARWIN_DATA}${PROPNAMECOLOR}${BG}TTY:${PROPCOLOR}${BG}${TTYNAME}${PROPNAMECOLOR}${BG}] [${PROPCOLOR}\$(_prompt_file_counts)${PROPNAMECOLOR}] ${NBU_DATA} \n${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\$PWD ${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\$(UpdateTmuxWinIdx)Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
+    trap '_cmd_timer_start; PS1="\n${CYAN}\${EXEC_TIME_DISPLAY}${NC}${PROPNAMECOLOR}${BG}RC:${RED}${BG}\${?##0}${GREEN}${BG}\${?##[1-9]*} ${PURPLE}${BG}(\$((\! -1)):\#) ${PROPNAMECOLOR}${BG}[Date:${PROPCOLOR}${BG}\D{%e-%B-%G} ${PROPNAMECOLOR}${BG}Time:${PROPCOLOR}${BG}\t ${PROPNAMECOLOR}${BG}Jobs:${PROPCOLOR}${BG}\j${PROPNAMECOLOR}${BG}] ${PROPNAMECOLOR}${BG}[OS:${PROPCOLOR}${BG}${OSName} ${PROPNAMECOLOR}${BG}Ver:${PROPCOLOR}${BG}${OSVer}${PROPNAMECOLOR}${BG} ${PROPNAMECOLOR}${BG}Proc:${PROPCOLOR}${BG}${PROCName}${PROPNAMECOLOR}${BG}${DARWIN_DATA}${PROPNAMECOLOR}${BG}TTY:${PROPCOLOR}${BG}${TTYNAME}${PROPNAMECOLOR}${BG}] [${PROPCOLOR}\$(_prompt_file_counts)${PROPNAMECOLOR}] ${NBU_DATA} \$(UpdateTmuxWinIdx)\n${COLOR_USER}${BG}${USER}${PROPNAMECOLOR}${BG}@${LIGHTPURPLE}${BG}${HOSTNAME}${DOName}${PROPNAMECOLOR}${BG}:${PURPLE}${BG}\$PWD ${NC} ${BROWN}${BG}\$(parse_git_branch)${NC}\n\${SPECIAL_PRMPT_DATA}\${TMUX_TARGET}Cmd$ \$(changeTmuxWindowsEveryTime)"' DEBUG
 }
 
 CurrDirDepth() {
@@ -370,16 +370,19 @@ CurrDirDepth() {
 # Single source of truth for TMUX window/pane index
 UpdateTmuxWinIdx () {
     export TMUX_WINIDX=""
+    export TMUX_TARGET=""
     if [[ -n "$TMUX" ]]; then
         local win_idx=$(tmux display-message -p '#I')
         local pane_idx=$(tmux display-message -p '#P')
         local total_wins=$(tmux display-message -p '#{session_windows}')
         local total_panes=$(tmux display-message -p '#{window_panes}')
-        export TMUX_WINIDX="[${win_idx}w${total_wins}.${pane_idx}p${total_panes}] "
-    elif [[ -n "$WINDOW" ]]; then
-        export TMUX_WINIDX="[$WINDOW] "
+        local session_name=$(tmux display-message -p '#{session_name}')
+        local window_id=$(tmux display-message -p '#{window_id}')
+        local pane_id=$(tmux display-message -p '#{pane_id}')
+        export TMUX_WINIDX="${win_idx}w${total_wins}.${pane_idx}p${total_panes}"
+        export TMUX_TARGET="[${session_name}:${window_id}.${pane_id}] "
     fi
-    echo "$TMUX_WINIDX"
+    [[ -n "$TMUX_WINIDX" ]] && printf 'TX:%s ' "$TMUX_WINIDX"
 }
 
 # \W basename of current directory
