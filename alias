@@ -27,6 +27,7 @@ source ~/.vim/alias.global
 #source ~/.vim/alias.remote
 source ~/.vim/alias.review
 source ~/.vim/alias.ai
+source ~/.vim/alias.ag
 source ~/.vim/alias.docker
 
 source ~/.vim/fzf.func

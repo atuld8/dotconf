@@ -26,6 +26,7 @@ import textwrap
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlsplit
 
 
 # Ensure console output remains safe even when the shell locale is ASCII.
@@ -85,6 +86,17 @@ HEADER_ABBREVIATIONS: Dict[str, str] = {
 _used_abbreviations: Set[str] = set()
 # Global flag to enable/disable abbreviations (set by --no-abbrev)
 _abbreviations_enabled: bool = True
+_evidence_debug: bool = False
+
+
+def _evidence_timing(stage: str, started: float, outcome: str) -> None:
+    if _evidence_debug:
+        print(f"[SFT debug] {stage}: {time.monotonic() - started:.2f}s ({outcome})", file=sys.stderr)
+
+
+def _jira_timing(stage: str, started: float, outcome: str) -> None:
+    if _evidence_debug:
+        print(f"[Jira debug] {stage}: {time.monotonic() - started:.2f}s ({outcome})", file=sys.stderr)
 
 
 def _abbreviate_label(label: str, track: bool = True) -> str:
@@ -1175,6 +1187,8 @@ class JiraClient:
         request_headers["Connection"] = "close"
 
         for attempt in range(1, max_retries + 1):
+            started = time.monotonic()
+            outcome = "error"
             session = requests.Session()
             try:
                 try:
@@ -1185,6 +1199,7 @@ class JiraClient:
                         timeout=self.timeout,
                     )
                 except requests.exceptions.SSLError as exc:
+                    outcome = type(exc).__name__
                     # Transient SSL/EOF errors — retry.
                     msg = str(exc)
                     is_transient_ssl = (
@@ -1211,6 +1226,7 @@ class JiraClient:
                 except (requests.exceptions.ConnectionError,
                         requests.exceptions.Timeout,
                         requests.exceptions.ChunkedEncodingError) as exc:
+                    outcome = type(exc).__name__
                     last_exc = exc
                     if attempt < max_retries:
                         wait = min(2 ** attempt, 30)
@@ -1226,6 +1242,7 @@ class JiraClient:
                     raise RuntimeError(f"Network error while calling Jira ({self.server}): {exc}") from exc
 
                 # Retry on transient server-side errors as well.
+                outcome = f"HTTP {response.status_code}"
                 if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
                     wait = min(2 ** attempt, 30)
                     print(
@@ -1239,6 +1256,7 @@ class JiraClient:
                 return response
             finally:
                 session.close()
+                _jira_timing(f"GET {urlsplit(url).path} attempt {attempt}", started, outcome)
 
         # Should not reach here, but keep a safe fallback.
         raise RuntimeError(
@@ -2238,6 +2256,8 @@ def _get_sft_timeout(default_timeout: int = 30) -> int:
 def _ensure_sft_session(_evidence_host: Optional[str] = None, timeout: Optional[int] = None) -> bool:
     """Run `sft list-servers` to trigger 2-phase auth approval / verify active ScaleFT session."""
     actual_timeout = timeout if timeout is not None else _get_sft_timeout(30)
+    started = time.monotonic()
+    outcome = "failed"
     try:
         proc = subprocess.run(
             ["sft", "list-servers"],
@@ -2246,9 +2266,16 @@ def _ensure_sft_session(_evidence_host: Optional[str] = None, timeout: Optional[
             timeout=actual_timeout,
             check=False,
         )
+        outcome = f"exit {proc.returncode}"
         return proc.returncode == 0
-    except Exception:
+    except subprocess.TimeoutExpired:
+        outcome = "timeout"
         return False
+    except Exception as exc:
+        outcome = type(exc).__name__
+        return False
+    finally:
+        _evidence_timing("sft list-servers", started, outcome)
 
 
 def _fetch_sfdc_evidence_entries(case_id: str, max_items: int = 10, timeout: Optional[int] = None) -> List[Dict[str, str]]:
@@ -2262,10 +2289,9 @@ def _fetch_sfdc_evidence_entries(case_id: str, max_items: int = 10, timeout: Opt
         return []
 
     actual_timeout = timeout if timeout is not None else _get_sft_timeout(30)
-
-    # Always perform sft list-servers first to ensure session is active or trigger 2-phase approval
-    if not _ensure_sft_session(timeout=actual_timeout):
-        return []
+    lookup_started = time.monotonic()
+    if _evidence_debug:
+        print(f"[SFT debug] case {clean_case}: starting lookup (timeout {actual_timeout}s per command)", file=sys.stderr)
 
     no_zero_case = clean_case.lstrip("0")
     # Clean remote bash script to robustly find, timestamp, and sort items by mtime
@@ -2281,22 +2307,44 @@ def _fetch_sfdc_evidence_entries(case_id: str, max_items: int = 10, timeout: Opt
         f"items = [(os.path.getmtime(p), p) for p in found]\n"
         f"items.sort(key=lambda x: x[0], reverse=True)\n"
         f"for t, p in items[:{max_items}]:\n"
-        f"    print(f\"{{time.strftime(\\\"%Y-%m-%d %H:%M:%S\\\", time.localtime(t))}}\\t{{p}}\")\n"
+        f"    print(time.strftime(\"%Y-%m-%d %H:%M:%S\", time.localtime(t)) + \"\\t\" + p)\n"
         f"' 2>/dev/null || ls -ltd --time-style=\"+%Y-%m-%d %H:%M:%S\" /mnt/evidence/{clean_case}/* /mnt/evidence/{no_zero_case}/* /mnt/evidence/{clean_case} /mnt/evidence/{no_zero_case} 2>/dev/null | head -n {max_items}"
     )
-    cmd = ["sft", "ssh", evidence_host, "-t", "--command", remote_script]
+    cmd = ["sft", "ssh", evidence_host, "--command", remote_script]
 
     entries: List[Dict[str, str]] = []
     seen_paths: Set[str] = set()
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=actual_timeout,
-            check=False,
-        )
+    for attempt in range(2):
+        ssh_started = time.monotonic()
+        ssh_outcome = "failed"
+        proc = None
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True,
+                timeout=min(actual_timeout, 10) if attempt == 0 else actual_timeout,
+                check=False,
+            )
+            ssh_outcome = f"exit {proc.returncode}"
+        except subprocess.TimeoutExpired:
+            ssh_outcome = "timeout"
+        except Exception as exc:
+            ssh_outcome = type(exc).__name__
+            break
+        finally:
+            _evidence_timing(f"case {clean_case} sft ssh attempt {attempt + 1}", ssh_started, ssh_outcome)
+
+        if attempt == 0 and (proc is None or proc.returncode != 0):
+            if not _ensure_sft_session(timeout=actual_timeout):
+                wait_started = time.monotonic()
+                time.sleep(5)
+                _evidence_timing(f"case {clean_case} approval wait", wait_started, "retrying")
+                if not _ensure_sft_session(timeout=actual_timeout):
+                    _evidence_timing(f"case {clean_case} total", lookup_started, "session unavailable")
+                    return []
+            continue
+        if proc is None:
+            break
         combined = f"{proc.stdout or ''}\n{proc.stderr or ''}"
         for raw_line in combined.splitlines():
             clean_line = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", raw_line).strip()
@@ -2343,8 +2391,8 @@ def _fetch_sfdc_evidence_entries(case_id: str, max_items: int = 10, timeout: Opt
                 if p not in seen_paths:
                     seen_paths.add(p)
                     entries.append({"path": p, "timestamp": "-"})
-    except Exception:
-        pass
+        break
+    _evidence_timing(f"case {clean_case} total", lookup_started, f"{len(entries)} entries")
     return entries
 
 
@@ -2396,15 +2444,16 @@ def _enrich_sfdc_case_links_with_evidence(links: List[Dict[str, Any]], profile_t
 
 
 def _print_sfdc_case_links_section(links: List[Dict[str, Any]], profile_type: str = "", md_format: bool = False) -> None:
-    print("\n* SalesForce Case Links & Evidence:" if not md_format else "\n## SalesForce Case Links & Evidence\n")
+    title = "SalesForce Case Links & Evidence" if profile_type == "fi" else "SalesForce Case Links"
+    print(f"\n* {title}:" if not md_format else f"\n## {title}\n")
     rows: List[List[str]] = []
     for link in links:
         label = str(link.get("label", "-")).strip() or "-"
         url = str(link.get("url", "-")).strip() or "-"
         url_display = f"[{label}]({url})" if (md_format and url != "-" and url.startswith("http")) else url
 
-        entries = link.get("evidence_entries", [])
-        if not entries:
+        entries = link.get("evidence_entries")
+        if entries is None:
             if profile_type == "fi" and label != "-":
                 entries = _fetch_sfdc_evidence_entries(label, max_items=5)
                 link["evidence_entries"] = entries
@@ -2755,6 +2804,7 @@ def _extract_all_links(
     issue: Dict[str, Any],
     remote_links: Optional[List[Dict[str, Any]]] = None,
     jira_base_url: str = "",
+    sfdc_case_links: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, str]]:
     """Extract all links associated with a Jira issue.
 
@@ -2849,7 +2899,7 @@ def _extract_all_links(
         _add_link("Epic", str(epic_link), eurl, "Epic Link")
 
     # 3. Salesforce Case Links & Evidence
-    sfdc_links = _extract_sfdc_case_links(issue)
+    sfdc_links = sfdc_case_links if sfdc_case_links is not None else _extract_sfdc_case_links(issue)
     for s_link in sfdc_links:
         case_label = str(s_link.get("label", "-")).strip()
         case_url = str(s_link.get("url", "-")).strip()
@@ -2861,7 +2911,7 @@ def _extract_all_links(
         # Query evidence path for this case
         if case_label and case_label != "-":
             entries = s_link.get("evidence_entries")
-            if not entries:
+            if entries is None:
                 entries = _fetch_sfdc_evidence_entries(case_label, max_items=5)
                 s_link["evidence_entries"] = entries
             if entries:
@@ -2910,13 +2960,16 @@ def _extract_all_links(
     return all_links
 
 
-def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etrack_ids: List[str]) -> List[List[str]]:
+def _get_default_optional_fields(
+    issue: Dict[str, Any], profile_type: str, _etrack_ids: List[str],
+    sfdc_case_links: Optional[List[Dict[str, Any]]] = None,
+) -> List[List[str]]:
     fields = issue.get("fields")
     if not isinstance(fields, dict):
         return []
 
     rows: List[List[str]] = []
-    sfdc_case_links = _extract_sfdc_case_links(issue)
+    sfdc_case_links = sfdc_case_links if sfdc_case_links is not None else _extract_sfdc_case_links(issue)
 
     _append_if_present(rows, "Solution", _field_value_by_name(issue, "Solution"))
     _append_if_present(rows, "Progress Status", _field_value_by_name(issue, "Progress Status"))
@@ -2950,7 +3003,7 @@ def _get_default_optional_fields(issue: Dict[str, Any], profile_type: str, _etra
             for link_item in sfdc_case_links:
                 ev_dir = link_item.get("evidence_dir")
                 tstamp = link_item.get("evidence_timestamp")
-                if not ev_dir or ev_dir == "-":
+                if (not ev_dir or ev_dir == "-") and "evidence_entries" not in link_item:
                     lbl = str(link_item.get("label", "-")).strip()
                     if lbl and lbl != "-":
                         entries = _fetch_sfdc_evidence_entries(lbl, max_items=5)
@@ -3698,7 +3751,7 @@ def main() -> int:
         usage=(
             "%(prog)s [-h] [-t|--type {auto,fi,pvm,generic,default}] [-s|--search] "
             "[-ft|--free-text] [-P|--projects PROJECTS] [--max-results MAX_RESULTS] "
-            "[-S|--search-debug] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
+            "[-S|--search-debug] [-debug] [--fetch-evidence] [-e|--show-etrack-details] [-c|--show-comments SHOW_COMMENTS] "
             "[--sub-task|--sub-tasks] "
             "[-m|--mode {standard,summary,investigate,ops}] [-x|--sections sections] "
             "[--timeline] [--list-customer-field-issues] [--list-active-customer-field-issues] "
@@ -3736,6 +3789,8 @@ def main() -> int:
         action="store_true",
         help="With --search, print available Salesforce fields for debugging.",
     )
+    parser.add_argument("-debug", "--debug", action="store_true", help="Print SFT evidence timing to stderr.")
+    parser.add_argument("--fetch-evidence", action="store_true", help="Fetch SFT evidence after printing the main FI report (text and Markdown only).")
     parser.add_argument(
         "-ft",
         "--free-text",
@@ -3925,6 +3980,8 @@ def main() -> int:
         help="Disable header abbreviations for console output (show full field names).",
     )
     args = parser.parse_args()
+    global _evidence_debug
+    _evidence_debug = args.debug
     print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 
     raw_issue_input = args.issue_key.strip()
@@ -3952,12 +4009,20 @@ def main() -> int:
         print("Error: --raw requires at least one -f/--show-field")
         return 2
 
+    if args.fetch_evidence and (args.format == "json" or args.fields_only or args.raw):
+        parser.error("--fetch-evidence requires a text or Markdown report (not JSON, --fields-only, or --raw)")
+
+    if args.fetch_evidence and (args.search or args.free_text):
+        parser.error("--fetch-evidence requires a single FI issue key, not a search")
+
     issue_key = raw_issue_input.upper()
     if not args.search and not args.free_text and not re.match(r"^[A-Z][A-Z0-9_]*-\d+$", issue_key):
         print(f"Invalid Jira issue key format: {issue_key}. Expected PROJECT-<digits>")
         return 2
 
     profile_type = "fi" if args.search else _resolve_profile_type(args.issue_type, issue_key)
+    if args.fetch_evidence and profile_type != "fi":
+        parser.error("--fetch-evidence is only available for FI issues")
     _reset_abbreviations()  # Reset abbreviation tracking for this run
     _set_abbreviations_enabled(not args.no_abbrev)  # Disable abbreviations if --no-abbrev
     try:
@@ -4020,8 +4085,8 @@ def main() -> int:
     etrack_sources, etrack_validation_errors = _extract_etrack_ids_with_sources(issue)
     etrack_ids = sorted(etrack_sources.keys(), key=int) if etrack_sources else []
     sfdc_case_links = _extract_sfdc_case_links(issue)
-    if profile_type == "fi":
-        _enrich_sfdc_case_links_with_evidence(sfdc_case_links, profile_type=profile_type)
+    for link in sfdc_case_links:
+        link["evidence_entries"] = []
     timeline_context = _extract_timeline_context(issue)
 
     customer_field_issues_active_only = bool(args.list_active_customer_field_issues)
@@ -4103,11 +4168,11 @@ def main() -> int:
             remote_links = jira.get_remote_links(issue.get("key", issue_key))
         except Exception:
             remote_links = []
-        all_links = _extract_all_links(issue, remote_links, jira_base_url=jira.base_url)
+        all_links = _extract_all_links(issue, remote_links, jira_base_url=jira.base_url, sfdc_case_links=sfdc_case_links)
         code_links = _extract_code_links(issue, remote_links)
 
     requested_fields = _split_field_selectors(args.show_field)
-    default_optional_rows = _get_default_optional_fields(issue, profile_type, etrack_ids)
+    default_optional_rows = _get_default_optional_fields(issue, profile_type, etrack_ids, sfdc_case_links)
     summary_rows = _build_summary_rows(
         issue.get("key", issue_key),
         fields,
@@ -4472,11 +4537,11 @@ def main() -> int:
             if section_separator:
                 print(section_separator)
 
-    # Salesforce Case Links & Evidence section (always shown when present or in FI profile)
+    # Salesforce case links do not require an SFT lookup.
     if sfdc_case_links:
         if section_separator:
             print(section_separator)
-        _print_sfdc_case_links_section(sfdc_case_links, profile_type=profile_type, md_format=is_md_format)
+        _print_sfdc_case_links_section(sfdc_case_links, md_format=is_md_format)
         if section_separator:
             print(section_separator)
     elif args.show_empty:
@@ -4739,6 +4804,15 @@ def main() -> int:
     # Print abbreviation legend for console formats (not json, not md)
     if args.format not in ("json", "md") and not args.raw:
         _print_abbreviation_legend()
+
+    if args.fetch_evidence and profile_type == "fi" and sfdc_case_links:
+        sys.stdout.flush()
+        _enrich_sfdc_case_links_with_evidence(sfdc_case_links, profile_type="fi")
+        if section_separator:
+            print(section_separator)
+        _print_sfdc_case_links_section(sfdc_case_links, profile_type="fi", md_format=is_md_format)
+        if section_separator:
+            print(section_separator)
 
     return 0
 

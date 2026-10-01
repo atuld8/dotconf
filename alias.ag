@@ -1,0 +1,17 @@
+# Interactive agent — MCP auto-approved, Smart Auto
+alias ag.='agent --trust --approve-mcps --auto-review --sandbox disabled'
+
+# Plan-only (no edits)
+alias ag.p='agent --trust --approve-mcps --sandbox disabled --plan'
+
+# Ask-only (read-only Q&A)
+alias ag.a='agent --trust --approve-mcps --mode ask --sandbox disabled'
+
+# Non-interactive / scripts
+alias ag.x='agent -p --trust --approve-mcps --auto-review --sandbox disabled --output-format text'
+
+# Resume last chat with same MCP defaults
+alias ag.rsm='agent --trust --approve-mcps --auto-review --sandbox disabled --continue'
+
+# Agent mcp settings
+alias ag.mcp.ls='agent mcp list'
