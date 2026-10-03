@@ -90,6 +90,8 @@ alias tx.p2v='function tmx() { if ! tmux list-panes -F "#P" | grep -q "^2$"; the
 alias tx.p2h='function tmx() { if ! tmux list-panes -F "#P" | grep -q "^2$"; then tmux split-window -v -p 30; tmux last-pane; fi; tmux send-key -t ":.2" "$@" C-m; }; tmx'
 alias tx.p2c='function tmxc() { tmux send-key -t :.2 "clear" C-m; }; tmxc'
 alias tx.dp='function tmxdp() { tmux display-popup -E -w 80% -h 70% -d "#{pane_current_path}" "$@; read -n 1 -s -r -p \"Press any key to continue\""; }; tmxdp'
+alias tx.ls='tmux ls'
+alias tx.bt='function tmx() { tmux popup -E -d "$PWD" -w 80% -h 70% "bat --style=header,numbers,grid,changes --color=always --paging=always --tabs=4 --wrap=auto --italic-text=always --decorations=always $@"; }; tmx'
 
 # modify configs quickly
 alias e='$CFG_EDITOR'
