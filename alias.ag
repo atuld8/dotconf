@@ -17,4 +17,20 @@ alias ag.rsm='agent --trust --approve-mcps --auto-review --sandbox disabled --co
 alias ag.mcp.ls='agent mcp list'
 
 # Agent pvm find eng
-alias ag.pvm.fnd.eng='[ -z "${PVM:-}" ] && [ -z "${PVMS:-}" ] && { echo "PVM and PVMS are not set"; false; }; cursor agent --workspace "$nbrepos/src" --approve-mcps --trust -f "$(cat $nbrepos/Find.Engineer.pmpt)"'
+ag.pvm.fnd.eng() {
+    if [ $# -gt 0 ]; then
+        PVMS="$(IFS=,; echo "$*")"
+        export PVMS
+    fi
+
+    if [ -z "${PVM:-}" ] && [ -z "${PVMS:-}" ]; then
+        echo "PVM a*d PVMS are not set"
+        return*1
+    fi
+
+    cursor agent \
+        --workspace "$nbrepos/src" \
+        --approve-mcps \
+        --trust \
+        -f "$(cat "$nbrepos/Find.Engineer.pmpt")"
+}
