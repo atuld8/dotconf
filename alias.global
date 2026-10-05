@@ -235,6 +235,7 @@ alias .btg='bat --style=header,numbers,changes --color=always --paging=always --
 alias .btm='bat --style=full --color=always --paging=always --tabs=4 --wrap=auto --italic-text=always --decorations=always'
 alias .btp='bat --plain --paging=always --tabs=4 --wrap=auto'
 alias .btc='bat --plain --paging=never'
+alias .bttl='f() { FILE=$1; shift; tail -f "$FILE" | bat --style=header,numbers,grid,changes --color=always --paging=never --tabs=4 --wrap=auto --italic-text=always --decorations=always "$*"; }; f'
 
 # bat aliases - utilities
 alias .btdiff='bat --diff'
