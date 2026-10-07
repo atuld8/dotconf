@@ -15,6 +15,10 @@ Usage:
     # Specify users explicitly
     ./j.FIBoard.py -u "john.doe, jane.smith"
 
+    # Filter by assignee manager (value defaults to JIRA_PUN_CFT_ASS_MGR)
+    ./j.FIBoard.py -am
+    ./j.FIBoard.py --assignee-mgr "manager.name"
+
     # Custom JQL query
     ./j.FIBoard.py -q "project = FIELDISSUE AND type = Task"
 
@@ -558,19 +562,38 @@ def display_issue_details(issue_details_list: list, verbose: bool = False):
     print()
 
 
-def get_default_jql(users: str = None) -> str:
+def get_default_jql(users: str = None, assignee_manager: str = None) -> str:
     """Build default JQL query.
 
     Args:
-        users: Comma-separated list of usernames. If None, uses JIRA_MYTEAM_USERS env var.
+        users: Comma-separated list of usernames. If None and no manager filter is
+            requested, uses JIRA_MYTEAM_USERS env var.
+        assignee_manager: Comma-separated manager values. An empty string uses
+            JIRA_PUN_CFT_ASS_MGR; None means no manager filter was requested.
     """
-    assignees = users if users else JIRA_MYTEAM_USERS
+    manager_filter_requested = assignee_manager is not None
+    assignees = users if users else (
+        None if manager_filter_requested else JIRA_MYTEAM_USERS
+    )
+    managers = assignee_manager or os.getenv('JIRA_PUN_CFT_ASS_MGR', '')
 
-    if not assignees:
-        print("Warning: No users specified and JIRA_MYTEAM_USERS env var not set. Using query without assignee filter.", file=sys.stderr)
-        return '("Business Unit" in (NBU, DP) or "Business Unit" is EMPTY) and created > 2025-01-01 and Project in (FIELDISSUE) and (statusCategory != Done OR status = "Pre closing")'
+    if not assignees and not managers:
+        print("Warning: No user or manager filter specified. Using query without assignee filters.", file=sys.stderr)
 
-    return f'("Business Unit" in (NBU, DP) or "Business Unit" is EMPTY) and created > 2025-01-01 and Project in (FIELDISSUE) and Assignee in ({assignees}) and (statusCategory != Done OR status = "Pre closing")'
+    query = '("Business Unit" in (NBU, DP) or "Business Unit" is EMPTY) and created > 2025-01-01 and Project in (FIELDISSUE)'
+    if assignees:
+        query += f' and Assignee in ({assignees})'
+    if managers:
+        manager_values = [value for value in re.split(r'[\s,]+', managers.strip()) if value]
+        if manager_values:
+            manager_clauses = [
+                '"Assignee Manager" ~ "{}"'.format(
+                    value.replace('\\', '\\\\').replace('"', '\\"')
+                )
+                for value in manager_values
+            ]
+            query += ' and (' + ' OR '.join(manager_clauses) + ')'
+    return query + ' and (statusCategory != Done OR status = "Pre closing")'
 
 
 def main():
@@ -585,6 +608,13 @@ Examples:
 
   # Specify users explicitly (overrides JIRA_MYTEAM_USERS)
   %(prog)s -u "john.doe, jane.smith"
+
+    # Filter by Assignee Manager (bare option uses JIRA_PUN_CFT_ASS_MGR)
+    %(prog)s -am
+    %(prog)s --assignee-mgr "manager.name"
+
+    # Filter by both assignee and Assignee Manager
+    %(prog)s -u "john.doe" -am "manager.name"
 
   # Custom JQL query
   %(prog)s -q "project = FIELDISSUE AND type = Task AND assignee = currentUser()"
@@ -605,12 +635,20 @@ Environment Variables:
   JIRA_SERVER_NAME    Jira server hostname (required)
   JIRA_ACC_TOKEN      Jira API Bearer token (required)
   JIRA_MYTEAM_USERS   Comma-separated list of usernames for default query (used if -u not provided)
+    JIRA_PUN_CFT_ASS_MGR  Default Assignee Manager value (used when -am has no value)
         """
     )
 
     parser.add_argument(
         '-u', '--user',
         help='Comma-separated usernames to filter by (overrides JIRA_MYTEAM_USERS env var)'
+    )
+
+    parser.add_argument(
+        '-am', '--assignee-mgr',
+        nargs='?',
+        const='',
+        help='Filter by Assignee Manager; without a value, uses JIRA_PUN_CFT_ASS_MGR'
     )
 
     parser.add_argument(
@@ -644,7 +682,7 @@ Environment Variables:
     if args.query:
         jql_query = args.query
     else:
-        jql_query = get_default_jql(users=args.user)
+        jql_query = get_default_jql(users=args.user, assignee_manager=args.assignee_mgr)
 
     print(f"[INFO] Executing JQL: {jql_query}", file=sys.stderr)
 
