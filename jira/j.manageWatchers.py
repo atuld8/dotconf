@@ -38,16 +38,25 @@ QUICK START EXAMPLES
 
   Add Watchers:
     j.manageWatchers.py -j PROJ-1234 -a user1 user2
-    j.manageWatchers.py -j PROJ-1234 -a user1 -w IW
-    j.manageWatchers.py -j PROJ-1234 -A users.txt    # from file
+        j.manageWatchers.py -j PROJ-1234 -a user1 -w SIW
+    j.manageWatchers.py -j PROJ-1234 -AF users.txt   # from file
 
   Remove Watchers:
     j.manageWatchers.py -j PROJ-1234 -r user1 user2
-    j.manageWatchers.py -j PROJ-1234 -R users.txt    # from file
+    j.manageWatchers.py -j PROJ-1234 -RF users.txt   # from file
 
   Set Watchers (replace all):
     j.manageWatchers.py -j PROJ-1234 -s user1 user2 user3
-    j.manageWatchers.py -j PROJ-1234 -S team.txt     # from file
+    j.manageWatchers.py -j PROJ-1234 -SF team.txt    # from file
+
+    Clear Watchers (explicitly destructive):
+        j.manageWatchers.py -j PROJ-1234 --clear -w SIW
+
+    Important:
+        -w selects the watcher field; use '-w SIW', not '-SIW'.
+        -SF means --set-file and takes a user-list filename.
+        Add/remove operations cannot be combined with set operations.
+        Missing, unreadable, or empty user-list files abort without updating issues.
 
 ================================================================================
 BULK OPERATIONS
@@ -57,8 +66,8 @@ BULK OPERATIONS
     j.manageWatchers.py -j PROJ-1234 PROJ-5678 PROJ-9999 -a user1
 
   Issues from File:
-    j.manageWatchers.py -f issues.txt -a user1
-    j.manageWatchers.py -f $op/pvms -a new.user1 new.user2 -r old.user1 old.user2 -w SIW
+    j.manageWatchers.py -JF issues.txt -a user1
+    j.manageWatchers.py -JF $op/pvms -a new.user1 new.user2 -r old.user1 old.user2 -w SIW
 
   Issues from JQL:
     j.manageWatchers.py -q "project = PROJ AND status = Open" -a user1
@@ -98,12 +107,12 @@ ENVIRONMENT VARIABLES
 FILE FORMATS
 ================================================================================
 
-  Issue file (-f): One issue ID per line, or mixed text with IDs extracted
+    Issue file (-JF): One issue ID per line, or mixed text with IDs extracted
     PROJ-1234
     PROJ-5678
     # Comments are supported
 
-  User file (-A, -R, -S): One username per line
+    User files (-AF, -RF, -SF): One username per line
     john.doe
     jane.smith
     # Comments are supported
@@ -634,21 +643,40 @@ class WatcherManager:
 
 def load_lines_from_file(filepath: str) -> List[str]:
     """Load non-empty, non-comment lines from file."""
-    if not filepath or not os.path.exists(filepath):
-        return []
+    if not filepath:
+        raise ValueError("A user-list file path is required")
 
     lines = []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped or stripped.startswith('#'):
-                continue
-            # Strip inline comments
-            if '#' in stripped:
-                stripped = stripped.split('#', 1)[0].strip()
-            if stripped:
-                lines.append(stripped)
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    continue
+                # Strip inline comments
+                if '#' in stripped:
+                    stripped = stripped.split('#', 1)[0].strip()
+                if stripped:
+                    lines.append(stripped)
+    except OSError as exc:
+        raise OSError(f"Unable to read user-list file '{filepath}': {exc}") from exc
     return lines
+
+
+def load_user_file(filepath: str, operation: str) -> List[str]:
+    """Load a non-empty user list and abort before updates on file errors."""
+    try:
+        users = load_lines_from_file(filepath)
+    except (OSError, UnicodeError) as exc:
+        print(f"Error: Could not load {operation} user file '{filepath}': {exc}",
+              file=sys.stderr)
+        sys.exit(1)
+
+    if not users:
+        print(f"Error: {operation.capitalize()} user file '{filepath}' is empty; "
+              "no issues were updated.", file=sys.stderr)
+        sys.exit(1)
+    return users
 
 
 def parse_issue_keys_from_text(text: str) -> List[str]:
@@ -829,6 +857,23 @@ def cmd_update_watchers(client: JiraClient, issue_keys: List[str],
     manager = WatcherManager(client, custom_field=custom_field)
     results = []
     is_builtin = (custom_field == 'watches')
+    prepared_set_users = None
+
+    if not is_builtin and not force:
+        invalid_add_users = [user for user in add_users if not manager.get_user_details(user)]
+        if invalid_add_users:
+            print("Error: Unknown user(s) for add; no issues were updated: " +
+                  ", ".join(invalid_add_users), file=sys.stderr)
+            sys.exit(1)
+
+        if set_users is not None:
+            prepared_set_users = manager.set_watchers(set_users, verbose=not quiet, force=False)
+            if len(prepared_set_users) != len(set_users):
+                print("Error: Could not validate every set user; no issues were updated.",
+                      file=sys.stderr)
+                sys.exit(1)
+    elif set_users is not None:
+        prepared_set_users = manager.set_watchers(set_users, verbose=not quiet, force=force)
 
     print(f"\nField: {field_name} ({custom_field})")
     if is_builtin:
@@ -894,7 +939,7 @@ def cmd_update_watchers(client: JiraClient, issue_keys: List[str],
             if set_users is not None:
                 # Set mode: replace entire list
                 print(f"Setting {field_name}:")
-                final_watchers = manager.set_watchers(set_users, verbose=not quiet, force=force)
+                final_watchers = prepared_set_users or []
                 added = set_users
                 removed = before_names
             else:
@@ -968,7 +1013,7 @@ def parse_args():
         '-j', '--jira-ids', nargs='+', dest='jira_ids', metavar='ID',
         help='Issue IDs to process (e.g., -j PROJ-1234 PROJ-5678)')
     input_group.add_argument(
-        '-f', '--file', type=str, metavar='FILE',
+        '-JF', '--file', type=str, metavar='FILE',
         help='File containing issue IDs (one per line, comments with #)')
     input_group.add_argument(
         '-q', '--jql', type=str, metavar='JQL',
@@ -988,20 +1033,23 @@ def parse_args():
         help='Remove users from watchers (e.g., -r john.doe)')
     ops_group.add_argument(
         '-s', '--set', nargs='*', default=None, dest='set_users', metavar='USER',
-        help='Set watchers to exactly these users (replaces entire list)')
+        help='Replace the entire watcher list (cannot combine with add/remove)')
+    ops_group.add_argument(
+        '--clear', action='store_true',
+        help='Explicitly clear the selected watcher field for every issue (destructive)')
 
     # User lists from file
     file_group = parser.add_argument_group('User Lists from File',
         'Load usernames from files instead of command line.')
     file_group.add_argument(
-        '-A', '--add-file', type=str, metavar='FILE',
+        '-AF', '--add-file', type=str, metavar='FILE',
         help='File with usernames to add (one per line)')
     file_group.add_argument(
-        '-R', '--remove-file', type=str, metavar='FILE',
+        '-RF', '--remove-file', type=str, metavar='FILE',
         help='File with usernames to remove (one per line)')
     file_group.add_argument(
-        '-S', '--set-file', type=str, metavar='FILE',
-        help='File with usernames to set as watchers (replaces entire list)')
+        '-SF', '--set-file', type=str, metavar='FILE',
+        help='File with usernames to replace the watcher list; file must be non-empty')
 
     # Output options
     output_group = parser.add_argument_group('Output Options')
@@ -1034,7 +1082,7 @@ def parse_args():
         '-w', '--watcher-field', type=str, default=DEFAULT_WATCHER_FIELD,
         metavar='FIELD',
         help='Watcher field alias (e.g., SIW, IW, WG, W, "all" for all fields). '
-             'Use -W to see all available fields')
+             'Use -w SIW to select SIW; -SF is set-file. Use -W to list fields')
     field_group.add_argument(
         '-W', '--list-fields', action='store_true',
         help='List all available watcher fields with their IDs and exit')
@@ -1042,7 +1090,29 @@ def parse_args():
         '--custom-field', type=str, metavar='ID',
         help='Use a custom field ID directly (e.g., customfield_12345)')
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    has_set_source = args.set_users is not None or args.set_file is not None
+    has_add_or_remove = bool(args.add or args.remove or args.add_file or args.remove_file)
+    has_operation = has_set_source or has_add_or_remove or args.clear
+
+    if args.clear:
+        if has_set_source or has_add_or_remove:
+            parser.error('--clear cannot be combined with add, remove, --set, or --set-file')
+        args.set_users = []
+    elif args.set_users == []:
+        parser.error('empty --set is destructive; use --clear to explicitly clear the field')
+
+    if args.set_file and args.set_users is not None:
+        parser.error('--set and --set-file cannot be combined')
+    if has_set_source and has_add_or_remove:
+        parser.error(
+            'set mode replaces the entire list and cannot be combined with add/remove. '
+            'If you meant to select the SIW field, use -w SIW (not -SIW).'
+        )
+    if args.list and has_operation:
+        parser.error('--list cannot be combined with watcher update operations')
+
+    return args
 
 
 # ---------------------------------------------------------------------------
@@ -1190,7 +1260,7 @@ def main():
         if args.jql:
             print("No issues found matching the JQL query.", file=sys.stderr)
         else:
-            print("Error: No issue keys provided. Use -j, -f, -q, or pipe to stdin.",
+            print("Error: No issue keys provided. Use -j, -JF, -q, or pipe to stdin.",
                   file=sys.stderr)
         sys.exit(0 if args.jql else 1)
 
@@ -1201,19 +1271,19 @@ def main():
 
     # Load users from files
     if args.add_file:
-        file_users = load_lines_from_file(args.add_file)
+        file_users = load_user_file(args.add_file, 'add')
         add_users.extend(file_users)
         if not args.quiet:
             print(f"Loaded {len(file_users)} users to add from {args.add_file}", file=sys.stderr)
 
     if args.remove_file:
-        file_users = load_lines_from_file(args.remove_file)
+        file_users = load_user_file(args.remove_file, 'remove')
         remove_users.extend(file_users)
         if not args.quiet:
             print(f"Loaded {len(file_users)} users to remove from {args.remove_file}", file=sys.stderr)
 
     if args.set_file:
-        set_users = load_lines_from_file(args.set_file)
+        set_users = load_user_file(args.set_file, 'set')
         if not args.quiet:
             print(f"Loaded {len(set_users)} users to set from {args.set_file}", file=sys.stderr)
 

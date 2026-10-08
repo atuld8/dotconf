@@ -575,7 +575,10 @@ def get_default_jql(users: str = None, assignee_manager: str = None) -> str:
     assignees = users if users else (
         None if manager_filter_requested else JIRA_MYTEAM_USERS
     )
-    managers = assignee_manager or os.getenv('JIRA_PUN_CFT_ASS_MGR', '')
+    managers = (
+        assignee_manager or os.getenv('JIRA_PUN_CFT_ASS_MGR', '')
+        if manager_filter_requested else ''
+    )
 
     if not assignees and not managers:
         print("Warning: No user or manager filter specified. Using query without assignee filters.", file=sys.stderr)
