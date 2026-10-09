@@ -7,12 +7,14 @@
 # EDITOR/VISUAL: Standard Unix vars used by git commit, crontab -e, fc, visudo, less 'v', kubectl edit, etc.
 export EDITOR="${CFG_EDITOR:-nvim}"
 export VISUAL="$EDITOR"
-# GIT_STATUS_LEVEL=0/1/2/3
+# git status level values are 0-3
 export GIT_STATUS_LEVEL=1
 # export SCP_HOSTNAME=`hostname`.`domainname`
 # export DOTCONF_HOSTNAME=
-# export SPECIAL_PRMPT_DATA='T/B/L/E '
+# special prompt valid values are 'T/B/L/E '
+# export SPECIAL_PRMPT_DATA=' '
 # export CSCOPE_EDITOR=vim
 
 export op="$HOME/op"
+export stg="$HOME/op/stgng"
 
