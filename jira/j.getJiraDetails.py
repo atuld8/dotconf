@@ -11,11 +11,24 @@ Features:
 - Show raw Jira JSON via --verbose
 
 Environment variables expected:
-- JIRA_SERVER_NAME
-- JIRA_ACC_TOKEN
+- JIRA_SERVER_NAME   (e.g. your-site.atlassian.net or on-prem host)
+- JIRA_ACC_TOKEN     (Cloud: API token from id.atlassian.com; Server/DC: PAT)
+- JIRA_USER_EMAIL    (required for Cloud Basic auth; aliases: JIRA_EMAIL, JIRA_USER)
+- JIRA_AUTH_MODE     (optional: basic|bearer — default basic on Cloud, bearer elsewhere)
+- JIRA_CLOUD         (optional: 1/0 force Cloud vs Server behavior)
+- JIRA_CLOUD_ID      (optional: use api.atlassian.com/ex/jira/<id> for scoped tokens)
+- JIRA_CA_BUNDLE     (optional path to an approved CA bundle)
+- JIRA_INSECURE_SSL  (optional: 1 to disable TLS verify — last resort only)
+- JIRA_STRICT_SSL    (optional: 1 to forbid auto-relax on Zscaler/OpenSSL keyUsage failures)
+
+Mac + Zscaler note:
+  OpenSSL/LibreSSL reject Zscaler Root CA ("CA cert does not include key usage extension").
+  Preferred fix: pip install truststore  (uses macOS Keychain/Secure Transport).
+  Otherwise this script auto-relaxes verify after that specific failure (unless JIRA_STRICT_SSL=1).
 """
 
 import argparse
+import base64
 import html
 import json
 import os
@@ -24,8 +37,10 @@ import subprocess
 import sys
 import textwrap
 import time
+import warnings
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import urlsplit
 
 
@@ -45,6 +60,17 @@ try:
     from tabulate import tabulate
 except ImportError:  # pragma: no cover
     tabulate = None
+
+# Prefer macOS Keychain/Secure Transport verification when available.
+# Required for Zscaler SSL inspection: OpenSSL rejects Zscaler Root CA for missing keyUsage.
+_TRUSTSTORE_ENABLED = False
+try:
+    import truststore  # type: ignore
+
+    truststore.inject_into_ssl()
+    _TRUSTSTORE_ENABLED = True
+except Exception:
+    _TRUSTSTORE_ENABLED = False
 
 
 # Header abbreviations for console output (saves horizontal space)
@@ -152,9 +178,13 @@ def _opt_value(field: Any) -> str:
     if field is None:
         return "-"
     if isinstance(field, dict):
-        for key in ("value", "displayName", "name", "key"):
+        # Cloud user objects expose displayName + accountId (no legacy name/key).
+        for key in ("value", "displayName", "name", "key", "accountId"):
             if field.get(key):
                 return str(field[key])
+        if field.get("type") == "doc" or "content" in field:
+            text = _jira_rich_text(field)
+            return text if text else "-"
     if isinstance(field, list):
         values = []
         for item in field:
@@ -171,10 +201,70 @@ def _opt_value(field: Any) -> str:
     return str(field)
 
 
+def _adf_to_text(node: Any) -> str:
+    """Flatten Atlassian Document Format (ADF) nodes to plain text."""
+    if node is None:
+        return ""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, (int, float, bool)):
+        return str(node)
+    if isinstance(node, list):
+        return "".join(_adf_to_text(item) for item in node)
+    if not isinstance(node, dict):
+        return str(node)
+
+    node_type = node.get("type")
+    if node_type == "hardBreak":
+        return "\n"
+    if node_type == "mention":
+        attrs = node.get("attrs") or {}
+        return str(attrs.get("text") or attrs.get("id") or "")
+    if node_type == "emoji":
+        attrs = node.get("attrs") or {}
+        return str(attrs.get("shortName") or attrs.get("text") or "")
+    if node_type == "inlineCard":
+        attrs = node.get("attrs") or {}
+        return str(attrs.get("url") or "")
+    if node_type == "text" or "text" in node:
+        text = node.get("text")
+        if isinstance(text, str):
+            return text
+
+    inner = _adf_to_text(node.get("content"))
+    if node_type in {
+        "paragraph",
+        "heading",
+        "blockquote",
+        "bulletList",
+        "orderedList",
+        "listItem",
+        "codeBlock",
+        "panel",
+        "table",
+        "tableRow",
+        "mediaSingle",
+        "rule",
+    }:
+        return f"{inner}\n" if inner else "\n"
+    return inner
+
+
+def _jira_rich_text(value: Any) -> str:
+    """Normalize Jira rich text (wiki markup string or Cloud ADF) to plain text."""
+    if value is None:
+        return ""
+    if isinstance(value, dict) and (value.get("type") == "doc" or "content" in value):
+        return _adf_to_text(value).strip()
+    if isinstance(value, list):
+        return _adf_to_text(value).strip()
+    return str(value)
+
+
 def _clean_text(value: Any) -> str:
     if value is None:
         return ""
-    text = str(value)
+    text = _jira_rich_text(value)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -193,7 +283,7 @@ def _clean_text_for_long_output(value: Any) -> str:
     if value is None:
         return ""
 
-    text = html.unescape(str(value))
+    text = html.unescape(_jira_rich_text(value))
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     replacements = [
@@ -1156,25 +1246,225 @@ def _print_etrack_fi_comparison(
     return has_mismatch
 
 
+def _normalize_jira_host(server: Optional[str]) -> str:
+    """Strip scheme/path/trailing slash from JIRA_SERVER_NAME."""
+    if not server:
+        return ""
+    host = server.strip()
+    host = re.sub(r"^https?://", "", host, flags=re.IGNORECASE)
+    host = host.split("/", 1)[0].rstrip("/")
+    return host
+
+
+def _detect_jira_cloud(server: Optional[str]) -> bool:
+    """Return True when talking to Jira Cloud (*.atlassian.net) or forced via env."""
+    force = (os.getenv("JIRA_CLOUD") or "").strip().lower()
+    if force in {"1", "true", "yes", "on"}:
+        return True
+    if force in {"0", "false", "no", "off"}:
+        return False
+    host = _normalize_jira_host(server).lower()
+    return host.endswith(".atlassian.net") or host == "atlassian.net"
+
+
+def _truthy_env(name: str) -> bool:
+    return (os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _certifi_ca_bundle() -> Optional[str]:
+    try:
+        import certifi  # type: ignore
+    except ImportError:
+        return None
+    path = certifi.where()
+    return path if path and os.path.exists(path) else None
+
+
+def _export_macos_keychain_certs(output_path: Path) -> bool:
+    """Export PEM certs from macOS System keychains (includes Zscaler corporate roots)."""
+    keychains = [
+        "/Library/Keychains/System.keychain",
+        "/System/Library/Keychains/SystemRootCertificates.keychain",
+    ]
+    chunks: List[bytes] = []
+    for keychain in keychains:
+        if not os.path.exists(keychain):
+            continue
+        try:
+            result = subprocess.run(
+                ["security", "find-certificate", "-a", "-p", keychain],
+                check=False,
+                capture_output=True,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0 and result.stdout and b"BEGIN CERTIFICATE" in result.stdout:
+            chunks.append(result.stdout.rstrip() + b"\n")
+
+    if not chunks:
+        return False
+
+    certifi_path = _certifi_ca_bundle()
+    if certifi_path:
+        try:
+            chunks.append(Path(certifi_path).read_bytes())
+        except OSError:
+            pass
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(b"".join(chunks))
+    return output_path.is_file() and output_path.stat().st_size > 0
+
+
+def _macos_combined_ca_bundle() -> Optional[str]:
+    """Cached Keychain+certifi CA bundle for Apple LibreSSL + SSL-inspection proxies."""
+    if sys.platform != "darwin":
+        return None
+
+    cache_dir = Path(os.getenv("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "jira-tools"
+    cache_path = cache_dir / "macos-keychain-ca-bundle.pem"
+
+    # Refresh daily, or when missing.
+    try:
+        if cache_path.is_file() and (time.time() - cache_path.stat().st_mtime) < 86400:
+            return str(cache_path)
+    except OSError:
+        pass
+
+    try:
+        if _export_macos_keychain_certs(cache_path):
+            return str(cache_path)
+    except OSError:
+        return None
+    return None
+
+
+def _resolve_ssl_verify() -> Union[bool, str]:
+    """Resolve requests ``verify`` for macOS/Zscaler-friendly TLS validation.
+
+    Priority:
+    1. JIRA_INSECURE_SSL=1 -> False (emergency only)
+    2. JIRA_CA_BUNDLE / REQUESTS_CA_BUNDLE / SSL_CERT_FILE
+    3. On macOS: System keychain export + certifi (handles Zscaler roots)
+    4. certifi CA bundle
+    5. True (Python/OS defaults)
+    """
+    if _truthy_env("JIRA_INSECURE_SSL"):
+        print(
+            "WARNING: JIRA_INSECURE_SSL=1 — TLS certificate verification is disabled.",
+            file=sys.stderr,
+        )
+        return False
+
+    for env_name in ("JIRA_CA_BUNDLE", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE"):
+        configured = (os.getenv(env_name) or "").strip()
+        if configured:
+            if not os.path.exists(configured):
+                raise RuntimeError(f"{env_name} path does not exist: {configured}")
+            return configured
+
+    mac_bundle = _macos_combined_ca_bundle()
+    if mac_bundle:
+        return mac_bundle
+
+    certifi_bundle = _certifi_ca_bundle()
+    if certifi_bundle:
+        return certifi_bundle
+
+    return True
+
+
+def _is_zscaler_keyusage_ssl_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "key usage extension" in msg or (
+        "certificate_verify_failed" in msg and "key usage" in msg
+    )
+
+
+def _ssl_error_hint(exc: BaseException) -> str:
+    hints = [
+        "TLS/SSL verification failed while connecting to Jira.",
+    ]
+    if _is_zscaler_keyusage_ssl_error(exc) or "CERTIFICATE_VERIFY_FAILED" in str(exc):
+        hints.append(
+            "On macOS + Zscaler, OpenSSL/LibreSSL reject the Zscaler Root CA "
+            "(missing keyUsage extension)."
+        )
+        hints.append(
+            "Fix options: "
+            "(1) pip install truststore  # uses macOS Keychain, recommended, "
+            "(2) export JIRA_INSECURE_SSL=1, "
+            "(3) set JIRA_CA_BUNDLE only helps if the CA includes keyUsage."
+        )
+    return " ".join(hints) + f" Details: {exc}"
+
+
 class JiraClient:
     def __init__(self):
         load_dotenv()
-        self.server = os.getenv("JIRA_SERVER_NAME")
-        self.token = os.getenv("JIRA_ACC_TOKEN")
-        self.base_url = f"https://{self.server}" if self.server else None
+        self.server = _normalize_jira_host(os.getenv("JIRA_SERVER_NAME"))
+        self.token = (os.getenv("JIRA_ACC_TOKEN") or "").strip()
+        self.email = (
+            os.getenv("JIRA_USER_EMAIL")
+            or os.getenv("JIRA_EMAIL")
+            or os.getenv("JIRA_USER")
+            or ""
+        ).strip()
+        self.cloud_id = (os.getenv("JIRA_CLOUD_ID") or "").strip()
+        self.is_cloud = _detect_jira_cloud(self.server)
         self.timeout = 30
         self._fields_by_name: Optional[Dict[str, str]] = None
+        self.verify = _resolve_ssl_verify()
+        self._ssl_relaxed = self.verify is False
+        self._warned_ssl_relax = False
 
-        if not self.base_url or not self.token:
+        if not self.server or not self.token:
             raise RuntimeError("Missing JIRA_SERVER_NAME or JIRA_ACC_TOKEN in environment")
 
+        # Scoped Cloud API tokens must use the Atlassian API gateway.
+        if self.is_cloud and self.cloud_id:
+            self.base_url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}"
+        else:
+            self.base_url = f"https://{self.server}"
+
+        auth_mode = (os.getenv("JIRA_AUTH_MODE") or "").strip().lower()
+        if not auth_mode:
+            # Cloud personal API tokens require Basic(email:token).
+            # Server/Data Center PATs typically use Bearer.
+            auth_mode = "basic" if self.is_cloud else "bearer"
+
+        if auth_mode == "basic":
+            if not self.email:
+                raise RuntimeError(
+                    "Jira Cloud Basic auth requires JIRA_USER_EMAIL (or JIRA_EMAIL) "
+                    "together with JIRA_ACC_TOKEN (API token from "
+                    "https://id.atlassian.com/manage-profile/security/api-tokens)."
+                )
+            encoded = base64.b64encode(f"{self.email}:{self.token}".encode("utf-8")).decode("ascii")
+            auth_header = f"Basic {encoded}"
+        elif auth_mode == "bearer":
+            auth_header = f"Bearer {self.token}"
+        else:
+            raise RuntimeError(
+                f"Unsupported JIRA_AUTH_MODE={auth_mode!r} (expected 'basic' or 'bearer')"
+            )
+
+        self.auth_mode = auth_mode
         self.headers = {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": auth_header,
             "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
-    def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
-        """GET with retry on transient network/TLS errors (exponential backoff).
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """HTTP request with retry on transient network/TLS errors (exponential backoff).
 
         Uses a fresh Session per attempt with ``Connection: close`` to avoid
         stale keep-alive sockets — a common cause of
@@ -1185,6 +1475,7 @@ class JiraClient:
         last_exc: Optional[Exception] = None
         request_headers = dict(self.headers)
         request_headers["Connection"] = "close"
+        method_upper = method.upper()
 
         for attempt in range(1, max_retries + 1):
             started = time.monotonic()
@@ -1192,11 +1483,14 @@ class JiraClient:
             session = requests.Session()
             try:
                 try:
-                    response = session.get(
+                    response = session.request(
+                        method_upper,
                         url,
                         headers=request_headers,
                         params=params,
+                        json=json_body,
                         timeout=self.timeout,
+                        verify=self.verify,
                     )
                 except requests.exceptions.SSLError as exc:
                     outcome = type(exc).__name__
@@ -1219,9 +1513,30 @@ class JiraClient:
                         )
                         time.sleep(wait)
                         continue
+
+                    # Zscaler Root CA lacks keyUsage; OpenSSL/LibreSSL hard-fail.
+                    # Auto-relax unless the caller demanded strict verification.
+                    if (
+                        not self._ssl_relaxed
+                        and not _truthy_env("JIRA_STRICT_SSL")
+                        and _is_zscaler_keyusage_ssl_error(exc)
+                    ):
+                        self.verify = False
+                        self._ssl_relaxed = True
+                        warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+                        if not self._warned_ssl_relax:
+                            self._warned_ssl_relax = True
+                            print(
+                                "WARNING: TLS verify failed due to Zscaler CA missing keyUsage "
+                                "(OpenSSL/LibreSSL). Retrying with verification disabled for this run. "
+                                "Preferred fix: /opt/homebrew/bin/python3 -m pip install truststore",
+                                file=sys.stderr,
+                            )
+                        continue
+
                     raise RuntimeError(
                         f"TLS/SSL error while connecting to Jira ({self.server}). "
-                        f"Please check VPN/proxy/certificate setup. Details: {exc}"
+                        f"{_ssl_error_hint(exc)}"
                     ) from exc
                 except (requests.exceptions.ConnectionError,
                         requests.exceptions.Timeout,
@@ -1256,14 +1571,31 @@ class JiraClient:
                 return response
             finally:
                 session.close()
-                _jira_timing(f"GET {urlsplit(url).path} attempt {attempt}", started, outcome)
+                _jira_timing(
+                    f"{method_upper} {urlsplit(url).path} attempt {attempt}",
+                    started,
+                    outcome,
+                )
 
         # Should not reach here, but keep a safe fallback.
         raise RuntimeError(
             f"Network error while calling Jira ({self.server}) after {max_retries} attempts: {last_exc}"
         )
 
+    def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
+        return self._request("GET", url, params=params)
+
+    def _post(
+        self,
+        url: str,
+        *,
+        json_body: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        return self._request("POST", url, params=params, json_body=json_body)
+
     def get_issue(self, issue_key: str) -> Dict[str, Any]:
+        # Prefer api/2 so description/comments stay as wiki strings (api/3 returns ADF).
         url = f"{self.base_url}/rest/api/2/issue/{issue_key}"
         params = {"expand": "names"}
         response = self._get(url, params=params)
@@ -1271,18 +1603,39 @@ class JiraClient:
             raise RuntimeError(f"Failed to fetch {issue_key}: {response.status_code} {response.text[:400]}")
         return response.json()
 
-    def search_issues(self, jql: str, max_results: int = 50) -> List[Dict[str, Any]]:
+    def _search_issues_server(self, jql: str, max_results: int, fields: str) -> Dict[str, Any]:
         url = f"{self.base_url}/rest/api/2/search"
         params = {
             "jql": jql,
             "maxResults": max_results,
-            "fields": "*all",   # return all fields including custom fields
-            "expand": "names",  # include field-id->display-name mapping per issue
+            "fields": fields,
+            "expand": "names",
         }
         response = self._get(url, params=params)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to search issues: {response.status_code} {response.text[:400]}")
-        data = response.json()
+        return response.json()
+
+    def _search_issues_cloud(self, jql: str, max_results: int, fields: List[str]) -> Dict[str, Any]:
+        # Legacy /rest/api/{2,3}/search was removed on Jira Cloud; use enhanced search.
+        url = f"{self.base_url}/rest/api/3/search/jql"
+        payload: Dict[str, Any] = {
+            "jql": jql,
+            "maxResults": max_results,
+            "fields": fields,
+            "expand": "names",
+        }
+        response = self._post(url, json_body=payload)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to search issues: {response.status_code} {response.text[:400]}")
+        return response.json()
+
+    def search_issues(self, jql: str, max_results: int = 50) -> List[Dict[str, Any]]:
+        if self.is_cloud:
+            data = self._search_issues_cloud(jql, max_results, ["*all"])
+        else:
+            data = self._search_issues_server(jql, max_results, "*all")
+
         issues = data.get("issues", [])
         # Inject names mapping into each issue for _field_value_by_name() compatibility
         names = data.get("names")
@@ -1315,21 +1668,13 @@ class JiraClient:
 
         unique_keys = sorted(set(issue_keys))
         jql = f"key in ({', '.join(unique_keys)})"
+        field_list = ["status", "resolution", "assignee", "priority", "updated"]
 
-        url = f"{self.base_url}/rest/api/2/search"
-        params = {
-            "jql": jql,
-            "maxResults": len(unique_keys),
-            "fields": "status,resolution,assignee,priority,updated",
-        }
+        if self.is_cloud:
+            payload = self._search_issues_cloud(jql, len(unique_keys), field_list)
+        else:
+            payload = self._search_issues_server(jql, len(unique_keys), ",".join(field_list))
 
-        response = self._get(url, params=params)
-        if response.status_code != 200:
-            raise RuntimeError(
-                f"Failed to fetch linked issue statuses: {response.status_code} {response.text[:400]}"
-            )
-
-        payload = response.json()
         result: Dict[str, Dict[str, str]] = {}
         for issue in payload.get("issues", []):
             fields = issue.get("fields", {})
@@ -1544,13 +1889,13 @@ def _extract_code_links(issue: Dict[str, Any], remote_links: List[Dict[str, Any]
 
     # 2. Extract from description
     fields = issue.get("fields", {})
-    description = fields.get("description", "")
+    description = _jira_rich_text(fields.get("description", ""))
     _extract_from_text(description, "Description")
 
     # 3. Extract from comments (last 10 comments to avoid too much noise)
     comments = fields.get("comment", {}).get("comments", [])
     for comment in comments[-10:]:
-        body = comment.get("body", "")
+        body = _jira_rich_text(comment.get("body", ""))
         _extract_from_text(body, "Comment")
 
     # 4. Extract from custom fields (Release Team Update, Progress Status, etc.)
@@ -3665,7 +4010,7 @@ def _build_json_output(
             {
                 "author": (comment.get("author") or {}).get("displayName", "-"),
                 "created": _normalize_timestamp(comment.get("created")),
-                "body": (comment.get("body") or "").strip(),
+                "body": _jira_rich_text(comment.get("body")),
             }
             for comment in latest
         ]
