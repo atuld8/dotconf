@@ -10,6 +10,9 @@ import argparse
 import sys
 import requests
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get as jira_http_get, search_all_issues, empty_search_hints, log_connection
 import pandas as pd
 from dotenv import load_dotenv
 from prettytable import PrettyTable
@@ -32,18 +35,16 @@ load_dotenv()
 _field_cache = None
 
 # Jira credentials and URL
-JIRA_URL = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN')
+_JIRA_CFG = load_config()
+JIRA_URL = _JIRA_CFG.base_url
+JIRA_API_TOKEN = _JIRA_CFG.token
 
 # JQL query to filter issues
 JQL_QUERY = 'labels = Tracking and labels = NBServerMigrator_2.4'
 MAX_RESULTS = 150  # Adjust this based on the expected number of results
 
 # Headers for authentication and content type
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
+headers = _JIRA_CFG.headers
 
 
 # Set up the command line argument parser
@@ -449,67 +450,8 @@ def _is_transient_ssl_error(exc):
 
 
 def jira_get_with_retry(url, operation, timeout=20, params=None):
-    """GET Jira endpoint with retries/backoff for transient network/TLS failures."""
-    max_retries = 5
-    retryable_http = {429, 500, 502, 503, 504}
-    request_headers = dict(headers)
-    request_headers['Connection'] = 'close'
-
-    last_exc = None
-
-    for attempt in range(1, max_retries + 1):
-        session = requests.Session()
-        try:
-            response = session.get(url, headers=request_headers, params=params, timeout=timeout)
-
-            if response.status_code in retryable_http and attempt < max_retries:
-                wait = min(2 ** attempt, 30)
-                print(
-                    f"{operation}: transient Jira HTTP {response.status_code} "
-                    f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
-                    file=sys.stderr,
-                )
-                time.sleep(wait)
-                continue
-
-            return response
-
-        except requests.exceptions.SSLError as exc:
-            last_exc = exc
-            if _is_transient_ssl_error(exc) and attempt < max_retries:
-                wait = min(2 ** attempt, 30)
-                print(
-                    f"{operation}: transient SSL error (attempt {attempt}/{max_retries}), "
-                    f"retrying in {wait}s...",
-                    file=sys.stderr,
-                )
-                time.sleep(wait)
-                continue
-            raise
-
-        except (requests.exceptions.ConnectionError,
-                requests.exceptions.ConnectTimeout,
-                requests.exceptions.ReadTimeout,
-                requests.exceptions.Timeout,
-                requests.exceptions.ChunkedEncodingError) as exc:
-            last_exc = exc
-            if attempt < max_retries:
-                wait = min(2 ** attempt, 30)
-                print(
-                    f"{operation}: transient network error (attempt {attempt}/{max_retries}), "
-                    f"retrying in {wait}s...",
-                    file=sys.stderr,
-                )
-                time.sleep(wait)
-                continue
-            raise
-
-        finally:
-            session.close()
-
-    if last_exc:
-        raise last_exc
-    raise RuntimeError(f"{operation} failed after retries")
+    """GET Jira endpoint via shared jira_api (auth, TLS verify, retries/backoff)."""
+    return jira_http_get(url, params=params, timeout=timeout)
 
 
 def get_all_fields():
@@ -540,7 +482,7 @@ def get_all_fields():
                 'custom': field.get('custom', False)
             }
         return _field_cache
-    except requests.exceptions.RequestException as e:
+    except (requests.exceptions.RequestException, RuntimeError) as e:
         print(format_jira_request_error('Field discovery', url, timeout, e))
         return {}
 
@@ -812,74 +754,32 @@ def get_issues_by_jql(jql, extra_field_ids=None, max_results=MAX_RESULTS):
             print("Error: --max must be 0 or a positive integer.")
             return None
 
-        all_issues = []
-        start_at = 0
         page_size = 100
-        remaining = None if max_results == 0 else max_results
+        max_total = None if max_results == 0 else max_results
 
-        while True:
-            batch_size = page_size if remaining is None else min(page_size, remaining)
-            if batch_size <= 0:
-                break
-
-            params = {
-                'jql': jql,
-                'startAt': start_at,
-                'maxResults': batch_size,
-                'fields': base_fields
-            }
-
-            response = jira_get_with_retry(
-                url,
-                operation='Issue search',
-                timeout=timeout,
-                params=params,
+        try:
+            all_issues = search_all_issues(
+                jql,
+                page_size=page_size,
+                fields=base_fields,
+                expand="",
+                max_total=max_total,
             )
-
-            # Handle HTTP errors with specific guidance for 400 (JQL syntax)
-            if response.status_code == 400:
-                try:
-                    error_json = response.json()
-                    error_msgs = error_json.get('errorMessages', [])
-                    errors = error_json.get('errors', {})
-                    print("JQL Error (400 Bad Request):", file=sys.stderr)
-                    for msg in error_msgs:
-                        print(f"  - {msg}", file=sys.stderr)
-                    for k, v in errors.items():
-                        print(f"  - {k}: {v}", file=sys.stderr)
-                    print(f"JQL: {jql}", file=sys.stderr)
-                    print("Hints:", file=sys.stderr)
-                    print("  - Check for trailing commas: 'in (\"a\",)' should be 'in (\"a\")'", file=sys.stderr)
-                    print("  - Check for invalid field names or operators", file=sys.stderr)
-                    print("  - Ensure string values are quoted: key = \"ABC-123\"", file=sys.stderr)
-                except Exception:
-                    pass
+        except RuntimeError as exc:
+            if "400" in str(exc):
+                print("JQL Error (400 Bad Request):", file=sys.stderr)
+                print(f"  - {exc}", file=sys.stderr)
+                print(f"JQL: {jql}", file=sys.stderr)
+                print("Hints:", file=sys.stderr)
+                print("  - Check for trailing commas: 'in (\"a\",)' should be 'in (\"a\")'", file=sys.stderr)
+                print("  - Check for invalid field names or operators", file=sys.stderr)
+                print("  - Ensure string values are quoted: key = \"ABC-123\"", file=sys.stderr)
                 return None
-
-            response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
-
-            payload = response.json()
-            issues = payload.get('issues', [])
-            total = payload.get('total', 0)
-
-            if not issues:
-                break
-
-            all_issues.extend(issues)
-            fetched = len(issues)
-            start_at += fetched
-
-            if remaining is not None:
-                remaining -= fetched
-                if remaining <= 0:
-                    break
-
-            if fetched < batch_size or start_at >= total:
-                break
+            raise
 
         return all_issues
 
-    except requests.exceptions.RequestException as e:
+    except (requests.exceptions.RequestException, RuntimeError) as e:
         print(format_jira_request_error('Issue search', url, timeout, e))
         return None
 
@@ -1133,6 +1033,7 @@ def print_issues_in_table_format(issues, excludeCols, extra_fields=None, profile
 
 def main():
     """ Main function """
+    log_connection()
 
     # Resolve extra column names to field IDs
     extra_fields = []  # List of (field_id, display_name)
@@ -1167,16 +1068,17 @@ def main():
     issues = get_issues_by_jql(args.jql, requested_extra_ids, max_results=args.max)
 
     if issues is None:
-        print("Aborting due to Jira request failure.")
-        return
+        print("Aborting due to Jira request failure.", file=sys.stderr)
+        sys.exit(1)
 
     effective_profile = resolve_effective_profile(args.profile, issues)
     if effective_profile != args.profile:
         print(f"Auto-selected profile: {effective_profile} (from issue key pattern)")
 
     if not issues:
-        print("No issues found.")
-        return
+        print("No issues found.", file=sys.stderr)
+        empty_search_hints(args.jql)
+        sys.exit(2)
 
     # Combine profile excludes with user-specified excludes
     all_excludes = list(set(args.excludeCols + PROFILE_EXCLUDES.get(effective_profile, [])))

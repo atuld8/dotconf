@@ -1,35 +1,30 @@
 #!/usr/bin/env python3
 import json
 import os
+import sys
 import argparse
 import requests
-from dotenv import load_dotenv
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get, put, post
 
 
-# Load the environment variables configured on the system
-load_dotenv()
+cfg = load_config()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
+JIRA_URL            = cfg.base_url
 
 
 # Jira API endpoint for updating assignee
 issue_url = f'{JIRA_URL}/rest/api/2/issue'
 board_url = f'{JIRA_URL}/rest/agile/1.0/board'
 
-# Headers
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
 
 
 def get_board_id(board_name):
     """Fetch the board ID using the board name."""
 
     url = f'{board_url}?name={board_name}'
-    response = requests.get(url, headers=headers, timeout=20)
+    response = get(url, timeout=20)
 
     if response.status_code == 200:
         boards = response.json().get('values', [])
@@ -49,7 +44,7 @@ def get_board_id(board_name):
 def get_sprints(board_id):
     """Fetch all sprints for a given board ID."""
     url = f'{board_url}/{board_id}/sprint?state=active'
-    response = requests.get(url, headers=headers, timeout=20)
+    response = get(url, timeout=20)
 
     if response.status_code == 200:
         return response.json().get('values', [])
@@ -76,7 +71,7 @@ def get_field_id(field_name):
     url = f'{JIRA_URL}/rest/api/2/field'
 
     try:
-        response = requests.get(url, headers=headers, timeout=20)
+        response = get(url, timeout=20)
 
         if response.status_code == 200:
             try:
@@ -96,7 +91,7 @@ def get_field_id(field_name):
         else:
             print(f"Error fetching field ID: {response.status_code} - {response.text}")
 
-    except requests.exceptions.RequestException as e:
+    except (requests.exceptions.RequestException, RuntimeError) as e:
         print(f"Request error: {e}")
 
     return None
@@ -118,7 +113,7 @@ def update_issue_sprint(issue_key, sprint_id):
         })
 
         print(f"{payload}")
-        response = requests.put(url, headers=headers, timeout=20, data=payload)
+        response = put(url, timeout=20, data=payload)
         if response.status_code == 204:
             print(f"Sprint updated successfully for issue {issue_key}.")
         else:

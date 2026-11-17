@@ -2,9 +2,11 @@
 
 import argparse
 import os
-import requests
+import sys
 import openpyxl
 from datetime import datetime
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get, search_all_or_fail
 
 
 def get_jira_issues(jira_ids, token):
@@ -17,25 +19,33 @@ def get_jira_issues(jira_ids, token):
     Returns:
         dict: A dictionary mapping Jira issue IDs to their details.
     """
-    jira_server = os.environ.get("JIRA_SERVER_NAME", "")
-    jql = "key in ({})".format(",".join(jira_ids))
-    url = f"https://{jira_server}/rest/api/2/search"
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {"jql": jql, "maxResults": len(jira_ids)}
-    response = requests.get(url, headers=headers, params=params, timeout=10)
-    if response.ok:
-        issues = response.json().get("issues", [])
-        return {issue["key"]: issue for issue in issues}
-    return {}
+    if not jira_ids:
+        return {}
+    result = {}
+    batch_size = 50
+    for i in range(0, len(jira_ids), batch_size):
+        batch = jira_ids[i:i + batch_size]
+        jql = "key in ({})".format(",".join(batch))
+        try:
+            issues = search_all_or_fail(
+                jql, page_size=100, fields="*all", expand="",
+                context=f"Jira key batch {i // batch_size + 1}", on_empty="return",
+            )
+        except RuntimeError as exc:
+            print(f"Failed to fetch Jira issues (batch starting at {batch[0]}): {exc}",
+                  file=sys.stderr)
+            sys.exit(1)
+        for issue in issues:
+            result[issue["key"]] = issue
+    return result
 
 
 def get_jira_resource(jira_url, token, cache):
     """ Fetch a Jira resource by its URL. """
     if jira_url in cache:
         return cache[jira_url]
-    headers = {"Authorization": f"Bearer {token}"}
     try:
-        response = requests.get(jira_url, headers=headers, timeout=10)
+        response = get(jira_url, timeout=10)
         data = response.json() if response.ok else None
     except Exception:
         data = None
@@ -45,10 +55,7 @@ def get_jira_resource(jira_url, token, cache):
 
 def get_jira_fields(token):
     """ Fetch Jira fields.  """
-    jira_server = os.environ.get("JIRA_SERVER_NAME", "")
-    url = f"https://{jira_server}/rest/api/2/field"
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(url, headers=headers, timeout=10)
+    response = get("rest/api/2/field", timeout=10)
     return response.json() if response.ok else None
 
 
@@ -67,10 +74,8 @@ def get_field_value(fields_json, field_id):
 
 def prompt_for_token():
     """ Prompt for Jira API token. """
-    token = os.environ.get("JIRA_ACC_TOKEN")
-    if not token:
-        token = input("Enter your Jira Personal Access Token: ")
-    return token
+    # Credentials/URL/SSL come from jira_api.load_config(); token kept for call compatibility
+    return load_config().token
 
 
 def clean_value(value):

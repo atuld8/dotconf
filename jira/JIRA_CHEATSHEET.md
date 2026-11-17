@@ -6,12 +6,19 @@ Quick reference for all Jira-related scripts and utilities.
 
 ```bash
 # Required environment variables
-export JIRA_SERVER_NAME="your-jira-server.atlassian.net"
-export JIRA_ACC_TOKEN="your_api_token"
+export JIRA_SERVER_NAME="your-site.atlassian.net"   # or on-prem host
+export JIRA_ACC_TOKEN="your_api_token"              # Cloud: id.atlassian.com API token
+export JIRA_USER_EMAIL="you@company.com"            # Required for Cloud Basic auth
+# Optional:
+# export JIRA_AUTH_MODE=basic|bearer
+# export JIRA_INSECURE_SSL=1                        # last-resort TLS bypass (Zscaler/LibreSSL)
+# export JIRA_CLOUD_ID=<uuid>                       # scoped token gateway
 export JIRA_PROJECT_KEY="FI"
 export JIRA_EPIC_LINK="EPIC-1234"        # Default epic for linking
 export JIRA_WATCHERS_LIST="user1 user2"  # Default watchers
 ```
+
+Shared helpers: `jira_api.py` (Python) and `jira_api.sh` (shell) — Cloud Basic auth, `/rest/api/3/search/jql`, and Mac/Zscaler TLS handling.
 
 ---
 

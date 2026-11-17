@@ -40,26 +40,54 @@ import requests
 import re
 from datetime import datetime
 from collections import defaultdict
+from typing import Optional
 from dotenv import load_dotenv
 from prettytable import PrettyTable
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get as jira_get, search_all_issues, whoami
 
 # Load environment variables
 load_dotenv()
 
-# Jira credentials and URL
-JIRA_URL = "https://" + os.getenv('JIRA_SERVER_NAME', '')
-JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN', '')
+# Jira credentials and URL (Cloud/Server aware via jira_api)
 JIRA_MYTEAM_USERS = os.getenv('JIRA_MYTEAM_USERS', '')
 
-if not JIRA_URL or JIRA_URL == "https://" or not JIRA_API_TOKEN:
-    print("Error: JIRA_SERVER_NAME and JIRA_ACC_TOKEN must be set in environment variables")
+try:
+    _JIRA_CFG = load_config()
+except RuntimeError as _cfg_err:
+    print(f"Error: {_cfg_err}", file=sys.stderr)
+    print(
+        "Set JIRA_SERVER_NAME, JIRA_ACC_TOKEN, and for Cloud also JIRA_USER_EMAIL.",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
-# Headers for authentication
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
+JIRA_URL = _JIRA_CFG.base_url
+JIRA_API_TOKEN = _JIRA_CFG.token
+headers = _JIRA_CFG.headers
+_DEBUG = False
+
+
+def _log(msg: str) -> None:
+    print(f"[INFO] {msg}", file=sys.stderr)
+
+
+def _debug(msg: str) -> None:
+    if _DEBUG:
+        print(f"[DEBUG] {msg}", file=sys.stderr)
+
+
+def _log_connection() -> None:
+    _log(
+        f"Jira {_JIRA_CFG.server} | cloud={_JIRA_CFG.is_cloud} | "
+        f"auth={_JIRA_CFG.auth_mode} | base={_JIRA_CFG.base_url}"
+    )
+    if _JIRA_CFG.is_cloud and not _JIRA_CFG.email:
+        print(
+            "[WARN] Cloud auth usually needs JIRA_USER_EMAIL with the API token.",
+            file=sys.stderr,
+        )
 
 # FI Status mapping to board columns
 # Board columns: In Progress | Waiting on Support | Pre closing | Solution Provided | Done - Solution provided
@@ -137,8 +165,7 @@ def get_field_key_by_name(display_name: str) -> str:
 
     if _fields_by_name is None:
         try:
-            url = f'{JIRA_URL}/rest/api/2/field'
-            response = requests.get(url, headers=headers, timeout=30)
+            response = jira_get('rest/api/2/field', timeout=30)
             response.raise_for_status()
 
             _fields_by_name = {}
@@ -147,7 +174,7 @@ def get_field_key_by_name(display_name: str) -> str:
                 field_id = field.get("id")
                 if isinstance(name, str) and isinstance(field_id, str):
                     _fields_by_name[_normalize_field_selector(name)] = field_id
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RuntimeError) as e:
             print(f"[WARN] Unable to fetch Jira fields: {e}", file=sys.stderr)
             _fields_by_name = {}
 
@@ -255,51 +282,84 @@ def _extract_display_value(value) -> str:
     return str(value)
 
 
+def _verify_auth() -> Optional[dict]:
+    """Confirm credentials work; return myself payload or None."""
+    try:
+        me = whoami()
+        label = (
+            me.get("displayName")
+            or me.get("emailAddress")
+            or me.get("accountId")
+            or me.get("name")
+            or "?"
+        )
+        _log(f"Authenticated as: {label}")
+        _debug(f"myself keys={sorted(me.keys())}")
+        return me
+    except Exception as exc:
+        print(f"[ERROR] Auth/connectivity check failed: {exc}", file=sys.stderr)
+        return None
+
+
 def get_issues_by_jql(jql_query: str, max_results: int = 200) -> list:
     """Fetch issues from Jira based on JQL query."""
-    url = f'{JIRA_URL}/rest/api/2/search'
+    # Use *all fields and expand=names for dynamic field discovery.
+    # search_all_issues pages Cloud (/rest/api/3/search/jql) and Server (/search).
+    page_size = 100 if _JIRA_CFG.is_cloud else min(max_results or 100, 100)
+    _log(
+        f"Searching Jira (max_results={max_results}, page_size={page_size}, "
+        f"endpoint={'POST /rest/api/3/search/jql' if _JIRA_CFG.is_cloud else 'GET /rest/api/2/search'})..."
+    )
+    _debug(f"JQL={jql_query}")
+    try:
+        issues = search_all_issues(
+            jql_query,
+            page_size=page_size,
+            fields="*all",
+            expand="names",
+            max_total=max_results if max_results > 0 else None,
+        )
+    except (requests.exceptions.RequestException, RuntimeError) as e:
+        print(f"[ERROR] Jira search failed: {e}", file=sys.stderr)
+        print(f"[ERROR] JQL was: {jql_query}", file=sys.stderr)
+        _verify_auth()
+        sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] Unexpected search failure ({type(e).__name__}): {e}", file=sys.stderr)
+        print(f"[ERROR] JQL was: {jql_query}", file=sys.stderr)
+        sys.exit(1)
 
-    # Use *all fields and expand=names for dynamic field discovery
-    params = {
-        'jql': jql_query,
-        'maxResults': max_results,
-        'fields': '*all',
-        'expand': 'names'
-    }
+    _log(f"Fetched {len(issues)} issue(s) from Jira")
+    if issues:
+        _debug(f"first_keys={[i.get('key') for i in issues[:5]]}")
+        sample_fields = (issues[0].get("fields") or {})
+        _debug(f"first_issue field_count={len(sample_fields)} has_names={bool(issues[0].get('names'))}")
+    return issues
 
-    # Retry with increasing timeouts
-    timeouts = [60, 120, 180]
-    last_error = None
 
-    for attempt, timeout in enumerate(timeouts, 1):
-        try:
-            print(f"[INFO] Attempt {attempt}/{len(timeouts)} (timeout={timeout}s)...", file=sys.stderr)
-            response = requests.get(url, headers=headers, params=params, timeout=timeout)
-            response.raise_for_status()
-
-            result = response.json()
-            issues = result.get('issues', [])
-
-            # Inject names mapping into each issue for _field_value_by_name() compatibility
-            names = result.get('names')
-            if names:
-                for issue in issues:
-                    issue['names'] = names
-
-            print(f"[INFO] Fetched {len(issues)} issues from Jira", file=sys.stderr)
-            return issues
-
-        except requests.exceptions.Timeout as e:
-            last_error = e
-            if attempt < len(timeouts):
-                print(f"[WARN] Request timed out, retrying...", file=sys.stderr)
-            continue
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching issues from Jira: {e}", file=sys.stderr)
-            sys.exit(1)
-
-    print(f"Error fetching issues from Jira: {last_error}", file=sys.stderr)
-    sys.exit(1)
+def _print_empty_result_help(jql_query: str) -> None:
+    print("No issues found matching the query.", file=sys.stderr)
+    print(f"[INFO] JQL: {jql_query}", file=sys.stderr)
+    me = _verify_auth()
+    if me is None:
+        print(
+            "[HINT] Fix auth first (JIRA_SERVER_NAME / JIRA_ACC_TOKEN"
+            + (" / JIRA_USER_EMAIL" if _JIRA_CFG.is_cloud else "")
+            + ").",
+            file=sys.stderr,
+        )
+    if _JIRA_CFG.is_cloud and re.search(r"\bAssignee\s+in\s*\(", jql_query, re.I):
+        print(
+            "[HINT] On Jira Cloud, Assignee in (username) often matches nothing. "
+            "Use accountId values, email, or currentUser(), e.g. "
+            '-q \'project = FIELDISSUE AND assignee = currentUser()\'.',
+            file=sys.stderr,
+        )
+    print(
+        "[HINT] Retry with --debug, or a broader query: "
+        '-q \'project = FIELDISSUE ORDER BY updated DESC\'.',
+        file=sys.stderr,
+    )
 
 
 def get_issue_key_with_type(issue: dict, for_board: bool = True, priority: str = None) -> str:
@@ -636,9 +696,10 @@ FI Status Columns:
 
 Environment Variables:
   JIRA_SERVER_NAME    Jira server hostname (required)
-  JIRA_ACC_TOKEN      Jira API Bearer token (required)
-  JIRA_MYTEAM_USERS   Comma-separated list of usernames for default query (used if -u not provided)
-    JIRA_PUN_CFT_ASS_MGR  Default Assignee Manager value (used when -am has no value)
+  JIRA_ACC_TOKEN      Cloud API token or Server/DC PAT (required)
+  JIRA_USER_EMAIL     Required for Cloud Basic auth
+  JIRA_MYTEAM_USERS   Comma-separated assignees for default query (used if -u not provided)
+  JIRA_PUN_CFT_ASS_MGR  Default Assignee Manager value (used when -am has no value)
         """
     )
 
@@ -678,8 +739,17 @@ Environment Variables:
         help='Maximum number of results to fetch (default: 200)'
     )
 
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Print connection/search diagnostics on stderr'
+    )
+
     args = parser.parse_args()
+    global _DEBUG
+    _DEBUG = bool(args.debug)
     print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
+    _log_connection()
 
     # Use custom query if provided, otherwise build default with -u or env var
     if args.query:
@@ -687,14 +757,16 @@ Environment Variables:
     else:
         jql_query = get_default_jql(users=args.user, assignee_manager=args.assignee_mgr)
 
-    print(f"[INFO] Executing JQL: {jql_query}", file=sys.stderr)
+    _log(f"Executing JQL: {jql_query}")
+    if _DEBUG:
+        _verify_auth()
 
     # Fetch issues
     issues = get_issues_by_jql(jql_query, args.max_results)
 
     if not issues:
-        print("No issues found matching the query.")
-        return
+        _print_empty_result_help(jql_query)
+        sys.exit(2)
 
     # Organize issues
     board_data, issue_details_list = organize_issues_by_assignee_and_status(issues)

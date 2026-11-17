@@ -1,33 +1,37 @@
 import argparse
 import os
-import requests
+import sys
 import openpyxl
 import datetime
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get, put, search_all_or_fail
 
 def get_jira_server_url():
-    jira_server = os.environ.get("JIRA_SERVER_NAME")
-    if not jira_server:
-        raise EnvironmentError("JIRA_SERVER_NAME environment variable is not set.")
-    return f"https://{jira_server}/rest/api/2"
+    return f"{load_config().base_url}/rest/api/2"
 
 def jira_request_bulk(jira_ids, token, field_ids):
-    # Use Jira search API to fetch multiple issues at once
-    jql = "key in ({})".format(",".join(jira_ids))
-    url = f"{get_jira_server_url()}/search"
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {
-        "jql": jql,
-        "fields": ",".join(field_ids)
-    }
-    response = requests.get(url, headers=headers, params=params)
-    return response.json()["issues"] if response.ok else []
+    # Use Jira search API to fetch multiple issues at once (batched, fail loudly)
+    if not jira_ids:
+        return []
+    fields = [f for f in field_ids if f] or "*all"
+    result = []
+    batch_size = 50
+    for i in range(0, len(jira_ids), batch_size):
+        batch = jira_ids[i:i + batch_size]
+        jql = "key in ({})".format(",".join(batch))
+        try:
+            result.extend(search_all_or_fail(
+                jql, page_size=100, fields=fields, expand="",
+                context=f"Jira key batch {i // batch_size + 1}", on_empty="return",
+            ))
+        except RuntimeError as exc:
+            print(f"Failed to fetch Jira issues (batch starting at {batch[0]}): {exc}",
+                  file=sys.stderr)
+            sys.exit(1)
+    return result
 
 def jira_update_field(jira_id, field_id, new_value, token):
     url = f"{get_jira_server_url()}/issue/{jira_id}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
 
     # Prepare the data dictionary according to field type
     # For custom fields, use appropriate format based on field_id
@@ -49,7 +53,7 @@ def jira_update_field(jira_id, field_id, new_value, token):
     else:
         data = {"fields": {field_id: new_value}}
 
-    response = requests.put(url, headers=headers, json=data)
+    response = put(url, json=data)
     if response.ok:
         print(f"Updated Jira issue: {response.text}")
         return response.ok
@@ -59,24 +63,20 @@ def jira_update_field(jira_id, field_id, new_value, token):
 
 def jira_request_for_field(token):
     url = f"{get_jira_server_url()}/field"
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(url, headers=headers)
+    response = get(url)
     return response.json() if response.ok else None
 
 def get_jira_resource(jira_url, token, cache):
     if jira_url in cache:
         return cache[jira_url]
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(jira_url, headers=headers, timeout=10)
+    response = get(jira_url, timeout=10)
     data = response.json() if response.ok else None
     cache[jira_url] = data
     return data
 
 def prompt_for_token():
-    token = os.environ.get("JIRA_ACC_TOKEN")
-    if not token:
-        token = input("Enter your Jira Personal Access Token: ")
-    return token
+    # Credentials/URL/SSL come from jira_api.load_config(); token kept for call compatibility
+    return load_config().token
 
 
 def clean_value(value):

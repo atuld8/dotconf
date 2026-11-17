@@ -27,6 +27,10 @@ from typing import Any, Dict, List, Optional, Set
 import requests
 from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import jira_api
+from jira_api import load_config
+
 try:
     from tabulate import tabulate
 except ImportError:  # pragma: no cover
@@ -65,23 +69,19 @@ def _opt_value(field: Any) -> str:
 class JiraClient:
     def __init__(self):
         load_dotenv()
-        self.server = os.getenv("JIRA_SERVER_NAME")
-        self.token = os.getenv("JIRA_ACC_TOKEN")
-        self.base_url = f"https://{self.server}" if self.server else None
+        # Cloud/Server aware settings (Basic vs Bearer auth, TLS verify) from jira_api
+        cfg = load_config()
+        self.cfg = cfg
+        self.server = cfg.server
+        self.token = cfg.token
+        self.base_url = cfg.base_url
         self.timeout = 30
-
-        if not self.base_url or not self.token:
-            raise RuntimeError("Missing JIRA_SERVER_NAME or JIRA_ACC_TOKEN in environment")
-
-        self.headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
+        self.headers = dict(cfg.headers)
 
     def get_issue(self, issue_key: str) -> Dict[str, Any]:
         url = f"{self.base_url}/rest/api/2/issue/{issue_key}"
         params = {"expand": "names"}
-        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+        response = jira_api.get(url, params=params, timeout=self.timeout)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to fetch {issue_key}: {response.status_code} {response.text[:400]}")
         return response.json()
@@ -94,22 +94,25 @@ class JiraClient:
         key_str = ", ".join(unique_keys)
         jql = f"key in ({key_str})"
 
-        url = f"{self.base_url}/rest/api/2/search"
-        params = {
-            "jql": jql,
-            "maxResults": len(unique_keys),
-            "fields": "status,resolution,assignee,priority,updated",
-        }
-
-        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
-        if response.status_code != 200:
-            raise RuntimeError(
-                f"Failed to fetch linked FI statuses: {response.status_code} {response.text[:400]}"
-            )
-
-        payload = response.json()
+        # Chunk keys (<=50 per search). A failed search raises RuntimeError so
+        # keys are never silently reported as NOT_FOUND because of an API error.
+        found_issues: List[Dict[str, Any]] = []
+        for i in range(0, len(unique_keys), 50):
+            chunk = unique_keys[i:i + 50]
+            chunk_jql = f"key in ({', '.join(chunk)})"
+            try:
+                found_issues.extend(jira_api.search_all_issues(
+                    chunk_jql,
+                    page_size=100,
+                    fields="status,resolution,assignee,priority,updated",
+                    expand="",
+                ))
+            except RuntimeError as exc:
+                print(f"[ERROR] Status batch search failed for {chunk[0]}..{chunk[-1]}: {exc}",
+                      file=sys.stderr)
+                raise
         result = {}
-        for issue in payload.get("issues", []):
+        for issue in found_issues:
             fields = issue.get("fields", {})
             assignee = fields.get("assignee") or {}
             result[issue.get("key", "")] = {

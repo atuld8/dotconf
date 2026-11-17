@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 import os
+import sys
 import argparse
-import requests
 import json
-from dotenv import load_dotenv
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, put
 
-# Load the environment variables configured on the system
-load_dotenv()
+cfg = load_config()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
 JIRA_PROJECT_KEY    = os.getenv('JIRA_PROJECT_KEY')
 
 parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
@@ -22,22 +20,16 @@ JIRA_ISSUE_ID      = args.jira_id
 JIRA_ASSIGNEE      = args.jira_assignee
 
 # Jira API endpoint for updating assignee
-url = f'{JIRA_URL}/rest/api/2/issue/{JIRA_ISSUE_ID}/assignee'
+url = f'rest/api/2/issue/{JIRA_ISSUE_ID}/assignee'
 
-# Headers
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
-
-# Payload
-payload = {
-    'name': JIRA_ASSIGNEE
-}
+# Payload: Cloud identifies users by accountId, Server/DC by name
+if cfg.is_cloud:
+    payload = {'accountId': JIRA_ASSIGNEE}
+else:
+    payload = {'name': JIRA_ASSIGNEE}
 
 # Make the PUT request to update the assignee
-response = requests.put(url, headers=headers, data=json.dumps(payload),
-                        timeout=20)
+response = put(url, data=json.dumps(payload), timeout=20)
 
 # Check the response
 if response.status_code == 204:

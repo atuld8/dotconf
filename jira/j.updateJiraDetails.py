@@ -97,6 +97,10 @@ else:
 import requests
 from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import jira_api
+from jira_api import load_config
+
 
 # ---------------------------------------------------------------------------
 # Field Definitions
@@ -186,76 +190,24 @@ class JiraUpdateClient:
 
     def __init__(self):
         load_dotenv()
-        self.server = os.getenv("JIRA_SERVER_NAME")
-        self.token = os.getenv("JIRA_ACC_TOKEN")
-        self.base_url = "https://{}".format(self.server) if self.server else None
+        # Cloud/Server aware settings (Basic vs Bearer auth, TLS verify) from jira_api
+        cfg = load_config()
+        self.cfg = cfg
+        self.server = cfg.server
+        self.token = cfg.token
+        self.base_url = cfg.base_url
         self.timeout = 30
         self._fields_cache = None  # type: Optional[Dict[str, Dict[str, Any]]]
         self._field_options_cache = {}  # type: Dict[str, List[Dict[str, str]]]
-
-        if not self.base_url or not self.token:
-            raise RuntimeError("Missing JIRA_SERVER_NAME or JIRA_ACC_TOKEN in environment")
-
-        self.headers = {
-            "Authorization": "Bearer {}".format(self.token),
-            "Content-Type": "application/json",
-        }
+        self.headers = dict(cfg.headers)
 
     def _request(self, method, url, params=None, json_data=None):
         # type: (str, str, Optional[Dict], Optional[Dict]) -> requests.Response
-        """Make HTTP request with retry logic."""
-        max_retries = 5
-        last_exc = None  # type: Optional[Exception]
-        request_headers = dict(self.headers)
-        request_headers["Connection"] = "close"
-
-        for attempt in range(1, max_retries + 1):
-            session = requests.Session()
-            try:
-                try:
-                    if method.upper() == 'GET':
-                        response = session.get(url, headers=request_headers, params=params, timeout=self.timeout)
-                    elif method.upper() == 'PUT':
-                        response = session.put(url, headers=request_headers, json=json_data, timeout=self.timeout)
-                    elif method.upper() == 'POST':
-                        response = session.post(url, headers=request_headers, json=json_data, timeout=self.timeout)
-                    else:
-                        raise ValueError("Unsupported HTTP method: {}".format(method))
-                except requests.exceptions.SSLError as exc:
-                    msg = str(exc)
-                    is_transient = any(x in msg for x in [
-                        "UNEXPECTED_EOF", "EOF occurred", "SSLEOFError", "ConnectionReset", "bad record"
-                    ])
-                    if is_transient and attempt < max_retries:
-                        last_exc = exc
-                        wait = min(2 ** attempt, 30)
-                        print("Transient SSL error (attempt {}/{}): {}. Retrying in {}s...".format(
-                            attempt, max_retries, exc, wait), file=sys.stderr)
-                        time.sleep(wait)
-                        continue
-                    raise RuntimeError("TLS/SSL error: {}".format(exc))
-                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
-                    last_exc = exc
-                    if attempt < max_retries:
-                        wait = min(2 ** attempt, 30)
-                        print("Network error (attempt {}/{}): {}. Retrying in {}s...".format(
-                            attempt, max_retries, exc, wait), file=sys.stderr)
-                        time.sleep(wait)
-                        continue
-                    raise RuntimeError("Network error: {}".format(exc))
-
-                if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print("Jira returned {} (attempt {}/{}). Retrying in {}s...".format(
-                        response.status_code, attempt, max_retries, wait), file=sys.stderr)
-                    time.sleep(wait)
-                    continue
-
-                return response
-            finally:
-                session.close()
-
-        raise RuntimeError("Network error after {} attempts: {}".format(max_retries, last_exc))
+        """Make HTTP request via jira_api (auth, TLS verify, retry logic)."""
+        if method.upper() not in ('GET', 'PUT', 'POST'):
+            raise ValueError("Unsupported HTTP method: {}".format(method))
+        return jira_api.request(
+            method, url, params=params, json=json_data, timeout=self.timeout)
 
     def get_issue(self, issue_key):
         # type: (str) -> Dict[str, Any]
@@ -415,6 +367,21 @@ class JiraUpdateClient:
     def find_user(self, username_or_email):
         # type: (str) -> Optional[Dict[str, str]]
         """Find user by username or email."""
+        if self.cfg.is_cloud:
+            # Cloud: no username lookup; search via query param and use accountId.
+            users = jira_api.user_search(username_or_email, max_results=5)
+            if not users:
+                return None
+            needle = username_or_email.strip().lower()
+            chosen = users[0]
+            for user in users:
+                if needle in (str(user.get('emailAddress') or '').lower(),
+                              str(user.get('displayName') or '').lower(),
+                              str(user.get('accountId') or '').lower()):
+                    chosen = user
+                    break
+            return {'accountId': chosen.get('accountId', '')}
+
         # Try exact username first
         url = "{}/rest/api/2/user".format(self.base_url)
         response = self._request('GET', url, params={'username': username_or_email})

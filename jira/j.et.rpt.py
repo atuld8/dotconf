@@ -27,7 +27,8 @@ Dependencies:
 
 Environment Variables:
     JIRA_SERVER_NAME    Jira server hostname (e.g., company.atlassian.net)
-    JIRA_ACC_TOKEN      Jira API Bearer token
+    JIRA_ACC_TOKEN      Jira API token (Cloud API token or Server/DC PAT)
+    JIRA_USER_EMAIL     Atlassian account email (required for Jira Cloud Basic auth)
 """
 
 import os
@@ -52,6 +53,10 @@ import sqlite3
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import jira_api
+from jira_api import load_config, load_config_or_exit, search_all_or_fail
 
 # Check for required modules
 try:
@@ -204,8 +209,16 @@ class Colors:
 # ============================================================================
 
 # Jira credentials
-JIRA_URL = "https://" + os.getenv('JIRA_SERVER_NAME', '')
-JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN', '')
+# (Cloud/Server aware: base URL, auth headers and TLS verify come from jira_api)
+try:
+    _JIRA_CFG = load_config()
+    JIRA_URL = _JIRA_CFG.base_url
+    JIRA_API_TOKEN = _JIRA_CFG.token
+except RuntimeError:
+    # Missing env is reported by main() with the existing messages
+    _JIRA_CFG = None
+    JIRA_URL = "https://" + os.getenv('JIRA_SERVER_NAME', '')
+    JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN', '')
 
 # Default settings
 DEFAULT_BATCH_SIZE = 50
@@ -275,10 +288,9 @@ FIELD_ALIASES = {
 }
 
 # Headers for API requests
-HEADERS = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
+# (No soft Bearer fallback: when config is missing, JiraReportClient calls
+# load_config_or_exit() so Cloud Basic auth / setup errors are reported clearly.)
+HEADERS = dict(_JIRA_CFG.headers) if _JIRA_CFG else {}
 
 
 # ============================================================================
@@ -290,14 +302,12 @@ class JiraReportClient:
 
     def __init__(self, jira_url: str = None, api_token: str = None,
                  batch_size: int = DEFAULT_BATCH_SIZE, timeout: int = DEFAULT_TIMEOUT):
-        self.jira_url = jira_url or JIRA_URL
-        self.api_token = api_token or JIRA_API_TOKEN
+        cfg = _JIRA_CFG or load_config_or_exit()
+        self.jira_url = jira_url or cfg.base_url
+        self.api_token = api_token or cfg.token
         self.batch_size = batch_size
         self.timeout = timeout
-        self.headers = {
-            'Authorization': f'Bearer {self.api_token}',
-            'Content-Type': 'application/json'
-        }
+        self.headers = dict(HEADERS) if HEADERS else dict(cfg.headers)
         self.api_calls = 0
         self.total_time = 0
 
@@ -316,7 +326,7 @@ class JiraReportClient:
 
         try:
             url = f'{self.jira_url}/rest/api/2/field'
-            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+            response = jira_api.get(url, timeout=self.timeout)
             self.api_calls += 1
 
             if response.status_code == 200:
@@ -443,26 +453,16 @@ class JiraReportClient:
         """
         keys_str = ', '.join(issue_keys)
         jql = f'key in ({keys_str})'
-        url = f'{self.jira_url}/rest/api/2/search'
-        params = {
-            'jql': jql,
-            'maxResults': len(issue_keys),
-            'fields': ','.join(fields)
-        }
-
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             start_time = time.time()
             try:
-                response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+                # search_issues uses POST /rest/api/3/search/jql on Cloud
+                data = jira_api.search_issues(
+                    jql, max_results=len(issue_keys), fields=list(fields), expand='')
                 self.api_calls += 1
                 self.total_time += time.time() - start_time
-
-                if response.status_code == 200:
-                    return response.json().get('issues', [])
-                else:
-                    print(f"\nWarning: Batch fetch failed: {response.status_code} - {response.text[:200]}", file=sys.stderr)
-                    return []
+                return data.get('issues', [])
 
             except Exception as e:
                 self.total_time += time.time() - start_time
@@ -473,9 +473,12 @@ class JiraReportClient:
                     time.sleep(wait)
                 else:
                     print(f"\nError fetching batch: {e}", file=sys.stderr)
-                    return []
+                    raise RuntimeError(
+                        f"Failed to fetch batch of {len(issue_keys)} issue(s) after "
+                        f"{max_retries} attempts: {e}"
+                    ) from e
 
-        return []  # unreachable but satisfies linter
+        raise RuntimeError("Failed to fetch batch")  # unreachable
 
     def fetch_issues_by_jql(self, jql: str, fields: List[str] = None,
                             max_results: int = DEFAULT_MAX_RESULTS) -> List[Dict[str, Any]]:
@@ -500,66 +503,30 @@ class JiraReportClient:
             if field_id != 'key':
                 resolved_fields.append(field_id)
 
-        start_at = 0
-        batch_num = 0
+        start_time = time.time()
+        if sys.stderr.isatty():
+            print("\rFetching issues...", end='', file=sys.stderr)
 
-        while start_at < max_results:
-            batch_num += 1
-            if sys.stderr.isatty():
-                print(f"\rFetching page {batch_num}...", end='', file=sys.stderr)
-
-            try:
-                start_time = time.time()
-                url = f'{self.jira_url}/rest/api/2/search'
-                params = {
-                    'jql': jql,
-                    'startAt': start_at,
-                    'maxResults': min(self.batch_size, max_results - start_at),
-                    'fields': ','.join(resolved_fields)
-                }
-
-                max_retries = 3
-                response = None
-                for attempt in range(1, max_retries + 1):
-                    req_start = time.time()
-                    try:
-                        response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
-                        self.api_calls += 1
-                        self.total_time += time.time() - req_start
-                        break
-                    except Exception as req_e:
-                        self.total_time += time.time() - req_start
-                        if attempt < max_retries:
-                            wait = 2 ** attempt
-                            print(f"\nError in JQL search (attempt {attempt}/{max_retries}): {req_e}", file=sys.stderr)
-                            print(f"Retrying in {wait}s...", file=sys.stderr)
-                            time.sleep(wait)
-                        else:
-                            raise
-
-                if response is None:
-                    break
-
-                if response.status_code == 200:
-                    data = response.json()
-                    issues = data.get('issues', [])
-                    all_issues.extend(issues)
-
-                    total = data.get('total', 0)
-                    if len(issues) < self.batch_size or start_at + len(issues) >= total:
-                        break
-
-                    start_at += len(issues)
-                else:
-                    print(f"\nError: JQL search failed: {response.status_code} - {response.text[:200]}", file=sys.stderr)
-                    break
-
-            except Exception as e:
-                print(f"\nError in JQL search: {e}", file=sys.stderr)
-                break
+        try:
+            # search_all_issues paginates via nextPageToken on Cloud, startAt on Server
+            all_issues = search_all_or_fail(
+                jql,
+                page_size=self.batch_size,
+                fields=resolved_fields,
+                expand='',
+                max_total=max_results,
+                context="Etrack report JQL search",
+                on_empty="return",
+            )
+            self.api_calls += max(1, (len(all_issues) + self.batch_size - 1) // self.batch_size)
+        except Exception as e:
+            self.total_time += time.time() - start_time
+            print(f"\nError in JQL search: {e}", file=sys.stderr)
+            raise
+        self.total_time += time.time() - start_time
 
         if sys.stderr.isatty():
-            print(f"\rFetched {len(all_issues)} issues in {batch_num} API calls.    ", file=sys.stderr)
+            print(f"\rFetched {len(all_issues)} issues.    ", file=sys.stderr)
 
         return all_issues
 
@@ -3516,14 +3483,22 @@ def main():
         if args.show_jql:
             print(f"JQL Query: {jql_query}")
 
-        raw_issues = client.fetch_issues_by_jql(jql_query, fields, args.limit)
+        try:
+            raw_issues = client.fetch_issues_by_jql(jql_query, fields, args.limit)
+        except RuntimeError as e:
+            print(f"Error: Jira search failed: {e}", file=sys.stderr)
+            sys.exit(1)
 
     elif issue_ids:
         if args.show_jql or args.verbose:
             jql = f"key in ({', '.join(issue_ids[:10])}{'...' if len(issue_ids) > 10 else ''})"
             print(f"JQL Query: {jql}")
 
-        raw_issues = client.fetch_issues_by_keys(issue_ids, fields)
+        try:
+            raw_issues = client.fetch_issues_by_keys(issue_ids, fields)
+        except RuntimeError as e:
+            print(f"Error: Jira fetch failed: {e}", file=sys.stderr)
+            sys.exit(1)
 
     if not raw_issues:
         print("No issues found.", file=sys.stderr)

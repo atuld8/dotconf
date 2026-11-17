@@ -2,15 +2,15 @@
 import os
 import argparse
 import json
+import sys
 import requests
-from dotenv import load_dotenv
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, post
 
-# Load the environment variables configured on the system
-load_dotenv()
+cfg = load_config()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
+JIRA_URL            = cfg.base_url
 JIRA_PROJECT_KEY    = os.getenv('JIRA_PROJECT_KEY')
 JIRA_WATCHER_GROUP  = os.getenv('JIRA_WATCHER_GROUP')
 JIRA_WATCHERS_LIST  = os.getenv('JIRA_WATCHERS_LIST')
@@ -21,10 +21,6 @@ DRY_RUN = False
 def create_jira_story(project_key, summary, description, assignee, generic_data):
 
     url = f'{JIRA_URL}/rest/api/2/issue'
-    headers = {
-        'Authorization': f'Bearer {JIRA_API_TOKEN}',
-        'Content-Type': 'application/json'
-    }
 
     labels_array = generic_data["labels"]
     priority = generic_data["priority"]
@@ -53,7 +49,10 @@ def create_jira_story(project_key, summary, description, assignee, generic_data)
     }
 
     if assignee:
-        fields["fields"]["assignee"] = {"name": assignee}
+        # Cloud identifies users by accountId; Server/DC by name
+        fields["fields"]["assignee"] = (
+            {"accountId": assignee} if cfg.is_cloud else {"name": assignee}
+        )
 
     # Add Epic link if provided
     if epic_link:
@@ -72,8 +71,7 @@ def create_jira_story(project_key, summary, description, assignee, generic_data)
         return
 
     try:
-        response = requests.post(url, headers=headers,
-                                 data=json.dumps(payload), timeout=20)
+        response = post(url, data=json.dumps(payload), timeout=20)
         response.raise_for_status()  # Raise HTTPError for bad responses
         issue = response.json()
         print(f"Jira story created successfully with key: {issue['key']}")
@@ -84,26 +82,22 @@ def create_jira_story(project_key, summary, description, assignee, generic_data)
     except requests.exceptions.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
         print(f"Response content: {response.content}")
-    except requests.exceptions.RequestException as req_err:
+    except (requests.exceptions.RequestException, RuntimeError) as req_err:
         print(f"Request error occurred: {req_err}")
 
 
 def add_watcher_group(jira_url, api_token, issue_key, watcher_group):
     url = f'{jira_url}/rest/api/2/issue/{issue_key}/watchers'
-    headers = {
-        'Authorization': f'Bearer {api_token}',
-        'Content-Type': 'application/json'
-    }
     payload = json.dumps(watcher_group)
 
     try:
-        response = requests.post(url, headers=headers, data=payload, timeout=20)
+        response = post(url, data=payload, timeout=20)
         response.raise_for_status()  # Raise HTTPError for bad responses
         print(f"Watcher group '{watcher_group}' added to issue {issue_key}")
     except requests.exceptions.HTTPError as http_err:
         print(f"HTTP error occurred while adding watcher group: {http_err}")
         print(f"Response content: {response.content}")
-    except requests.exceptions.RequestException as req_err:
+    except (requests.exceptions.RequestException, RuntimeError) as req_err:
         print(f"Request error occurred while adding watcher group: {req_err}")
 
 

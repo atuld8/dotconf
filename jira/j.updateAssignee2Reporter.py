@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 import os
+import sys
 import json
 import argparse
-import requests
-from dotenv import load_dotenv
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get, put
 
-# Load the environment variables configured on the system
-load_dotenv()
+cfg = load_config()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
 JIRA_PROJECT_KEY    = os.getenv('JIRA_PROJECT_KEY')
 
 parser = argparse.ArgumentParser(description='Get Jira Epic details by ID.')
@@ -21,23 +19,22 @@ print(f"[CMD] {' '.join(sys.argv)}", file=sys.stderr)
 JIRA_ISSUE_ID      = args.jira_id
 
 # Jira API endpoint for updating assignee
-issue_url = f'{JIRA_URL}/rest/api/2/issue/{JIRA_ISSUE_ID}'
+issue_url = f'rest/api/2/issue/{JIRA_ISSUE_ID}'
 assignee_url = issue_url + '/assignee'
-
-# Headers
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
 
 
 # Get issue details to extract the reporter's username
 def get_issue_reporter(ticket_id):
-    response = requests.get(issue_url, headers=headers, timeout=20)
+    response = get(issue_url, timeout=20)
 
     if response.status_code == 200:
         issue_data = response.json()
-        reporter = issue_data['fields']['reporter']['name']  # Get the reporter's username
+        reporter_obj = issue_data['fields']['reporter'] or {}
+        # Cloud users are identified by accountId, Server/DC by username
+        if cfg.is_cloud:
+            reporter = reporter_obj.get('accountId')
+        else:
+            reporter = reporter_obj.get('name')
         return reporter
 
     print(f"Failed to fetch issue details: {response.status_code}")
@@ -45,10 +42,12 @@ def get_issue_reporter(ticket_id):
 
 # Assign the ticket to the reporter
 def assign_ticket_to_reporter(ticket_id, reporter):
-    payload = json.dumps({"name": reporter})
+    if cfg.is_cloud:
+        payload = json.dumps({"accountId": reporter})
+    else:
+        payload = json.dumps({"name": reporter})
 
-    response = requests.put(assignee_url, headers=headers, data=payload,
-                            timeout=20)
+    response = put(assignee_url, data=payload, timeout=20)
 
     if response.status_code == 204:
         print(f"Ticket {ticket_id} assigned to {reporter}.")

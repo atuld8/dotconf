@@ -1,27 +1,22 @@
 #!/usr/bin/env python3
 import json
 import os
+import sys
 import argparse
 import requests
-from dotenv import load_dotenv
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get, put, post
 
 
-# Load the environment variables configured on the system
-load_dotenv()
+cfg = load_config()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
+JIRA_URL            = cfg.base_url
 
 
 # Jira API endpoint for updating assignee
 issue_url = f'{JIRA_URL}/rest/api/2/issueLink'
 
-# Headers
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
 
 
 # Main function to setup a relation between Jira ids
@@ -43,7 +38,7 @@ def link_Jira_ids_with_relation(src_id, dest_id, relation):
         "outwardIssue": {"key": dest_id}
     }
 
-    response = requests.post(url, headers=headers, json=payload, timeout=20)
+    response = post(url, json=payload, timeout=20)
 
     if response.status_code == 201:
         print(f"Updated relation between {src_id} and {dest_id} with {relation}")

@@ -1,4 +1,9 @@
 #!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/jira_api.sh"
+jira_init || exit 1
 # Ex: j.addLabels_id_labels.sh NBU-189147 "label1 label2"
 # Ex: j.addLabels_id_labels.sh NBU-189147 label1 label2
 
@@ -30,14 +35,6 @@ POST_DATA_EOF
 }
 
 
-#
-# Function
-#
-jira_get_call() {
-   REST_API_PATH=$1;
-   shift;
-   curl --silent -H "Authorization: Bearer $JIRA_ACC_TOKEN" "https://$JIRA_SERVER_NAME/rest/api/2/$REST_API_PATH" $@;
-}
 
 
 #
@@ -49,9 +46,9 @@ jira_put_call() {
    REST_GET_DATA_FUNC=$@;
 
    curl --silent -X PUT \
-        -H "Authorization: Bearer $JIRA_ACC_TOKEN" \
+        -H "$JIRA_AUTH_HEADER" \
         -H "Content-Type:application/json" \
-        "https://$JIRA_SERVER_NAME/rest/api/2/$REST_API_PATH" \
+        "$JIRA_BASE_URL/rest/api/2/$REST_API_PATH" \
         -d "$($REST_GET_DATA_FUNC)"
 }
 
@@ -65,9 +62,9 @@ jira_post_call() {
    REST_GET_DATA_FUNC=$@;
 
    echo "curl -D- -X POST \
-        -H \"Authorization: Bearer $JIRA_ACC_TOKEN\" \
+        -H \"$JIRA_AUTH_HEADER\" \
         -H \"Content-Type:application/json\" \
-        \"https://$JIRA_SERVER_NAME/rest/api/2/$REST_API_PATH\" \
+        \"$JIRA_BASE_URL/rest/api/2/$REST_API_PATH\" \
         --data-raw '"$($REST_GET_DATA_FUNC)"'" | sh
 }
 

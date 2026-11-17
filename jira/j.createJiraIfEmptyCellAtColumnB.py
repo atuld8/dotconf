@@ -1,32 +1,25 @@
 import argparse
 import os
-import requests
+import sys
 import openpyxl
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get, post
 
 def get_jira_server_url():
-    jira_server = os.environ.get("JIRA_SERVER_NAME")
-    if not jira_server:
-        raise EnvironmentError("JIRA_SERVER_NAME environment variable is not set.")
-    return f"https://{jira_server}/rest/api/2"
+    return f"{load_config().base_url}/rest/api/2"
 
 def prompt_for_token():
-    token = os.environ.get("JIRA_ACC_TOKEN")
-    if not token:
-        token = input("Enter your Jira Personal Access Token: ")
-    return token
+    # Credentials/URL/SSL come from jira_api.load_config(); token kept for call compatibility
+    return load_config().token
 
 def create_jira_issue(summary, description, token):
     url = f"{get_jira_server_url()}/issue"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
     # The caller will pass all required fields as a dict
     data = {
         "fields": summary  # summary here is actually the full fields dict
     }
 
-    response = requests.post(url, headers=headers, json=data, timeout=10)
+    response = post(url, json=data, timeout=10)
     if response.ok:
         print(f"Created Jira issue: {response.json()['key']}")
         return response.json()['key']
@@ -71,8 +64,7 @@ def main():
     # Fetch Jira field metadata once and cache mapping
     def jira_request_for_field(token):
         url = f"{get_jira_server_url()}/field"
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(url, headers=headers, timeout=10)
+        response = get(url, timeout=10)
         return response.json() if response.ok else None
 
     fields_response = jira_request_for_field(token)

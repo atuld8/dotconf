@@ -18,27 +18,22 @@ Not an Issue        Not an Issue
 
 import json
 import os
+import sys
 import argparse
 import requests
-from dotenv import load_dotenv
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get, put, post
 
 
-# Load the environment variables configured on the system
-load_dotenv()
+cfg = load_config()
 
 # Jira credentials and URL
-JIRA_URL            = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN      = os.getenv('JIRA_ACC_TOKEN')
+JIRA_URL            = cfg.base_url
 
 
 # Jira API endpoint for updating assignee
 issue_url = f'{JIRA_URL}/rest/api/2/issue'
 
-# Headers
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
 
 
 # Function to get the current status of the Jira issue
@@ -47,7 +42,7 @@ def get_current_status(ticket_id):
     Get the status of the Jira ticket
     """
     url = f"{issue_url}/{ticket_id}"
-    response = requests.get(url, headers=headers, timeout=20)
+    response = get(url, timeout=20)
 
     if response.status_code == 200:
         try:
@@ -68,7 +63,7 @@ def get_status_id(ticket_id, status):
     Get the transition id if the status and allowed transition matches
     """
     url = f"{issue_url}/{ticket_id}/transitions"
-    response = requests.get(url, headers=headers, timeout=20)
+    response = get(url, timeout=20)
 
     if response.status_code == 200:
         try:
@@ -112,7 +107,7 @@ def update_status(ticket_id, status_id, resolution="Fixed"):
             }
         })
 
-    response = requests.post(url, headers=headers, data=payload, timeout=20)
+    response = post(url, data=payload, timeout=20)
 
     if response.status_code == 204:
         print(f"Status updated successfully for ticket {ticket_id}: {status_id}")

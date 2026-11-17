@@ -81,6 +81,10 @@ else:
 import requests
 from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import jira_api
+from jira_api import load_config
+
 try:
     from prettytable import PrettyTable
 except ImportError:
@@ -99,8 +103,16 @@ except ImportError:
 load_dotenv()
 
 JIRA_SERVER = os.getenv('JIRA_SERVER_NAME')
-JIRA_TOKEN = os.getenv('JIRA_ACC_TOKEN')
-JIRA_BASE_URL = f"https://{JIRA_SERVER}" if JIRA_SERVER else None
+_JIRA_CFG_ERROR = None
+try:
+    _JIRA_CFG = load_config()
+    JIRA_TOKEN = _JIRA_CFG.token
+    JIRA_BASE_URL = _JIRA_CFG.base_url
+except RuntimeError as _cfg_exc:
+    _JIRA_CFG = None
+    _JIRA_CFG_ERROR = str(_cfg_exc)
+    JIRA_TOKEN = None
+    JIRA_BASE_URL = None
 
 # FI ID pattern
 FI_PATTERN = re.compile(r'^FI-\d+$')
@@ -155,14 +167,13 @@ class JiraClient:
     """Client for interacting with Jira REST API."""
 
     def __init__(self, base_url: str, token: str, timeout: int = 30):
-        self.base_url = base_url
-        self.token = token
+        cfg = load_config()
+        self.cfg = cfg
+        self.base_url = cfg.base_url
+        self.token = cfg.token
         self.timeout = timeout
-        self.headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
-            'Connection': 'close',
-        }
+        self.headers = dict(cfg.headers)
+        self.headers['Connection'] = 'close'
         self._field_cache: Optional[Dict[str, Dict]] = None
         self._user_groups_cache: Dict[str, List[str]] = {}  # username -> groups
 
@@ -180,55 +191,10 @@ class JiraClient:
     def _request_with_retry(self, method: str, url: str, params: Optional[Dict] = None,
                             operation: str = "Request", max_retries: int = 5) -> requests.Response:
         """Make HTTP request with retry logic for transient failures."""
-        retryable_http = {429, 500, 502, 503, 504}
-        last_exc = None
-
-        for attempt in range(1, max_retries + 1):
-            session = requests.Session()
-            try:
-                if method.upper() == 'GET':
-                    response = session.get(url, headers=self.headers, params=params, timeout=self.timeout)
-                else:
-                    response = session.request(method, url, headers=self.headers, params=params, timeout=self.timeout)
-
-                if response.status_code in retryable_http and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(f"{operation}: HTTP {response.status_code} (attempt {attempt}/{max_retries}), "
-                          f"retrying in {wait}s...", file=sys.stderr)
-                    time.sleep(wait)
-                    continue
-
-                return response
-
-            except requests.exceptions.SSLError as exc:
-                last_exc = exc
-                if self._is_transient_error(exc) and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(f"{operation}: transient SSL error (attempt {attempt}/{max_retries}), "
-                          f"retrying in {wait}s...", file=sys.stderr)
-                    time.sleep(wait)
-                    continue
-                raise
-
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.ConnectTimeout,
-                    requests.exceptions.ReadTimeout,
-                    requests.exceptions.Timeout) as exc:
-                last_exc = exc
-                if attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(f"{operation}: network error (attempt {attempt}/{max_retries}), "
-                          f"retrying in {wait}s...", file=sys.stderr)
-                    time.sleep(wait)
-                    continue
-                raise
-
-            finally:
-                session.close()
-
-        if last_exc:
-            raise last_exc
-        raise RuntimeError(f"{operation} failed after retries")
+        # jira_api.request handles Basic/Bearer auth, TLS verify (incl. Zscaler
+        # relax) and retries on transient SSL/network/HTTP 429/5xx failures.
+        return jira_api.request(
+            method, url, params=params, timeout=self.timeout, max_retries=max_retries)
 
     def get_all_fields(self) -> Dict[str, Dict]:
         """Fetch all Jira fields and return name-to-info mapping."""
@@ -265,46 +231,23 @@ class JiraClient:
 
     def search_issues(self, jql: str, fields: List[str], max_results: int = 0) -> List[Dict]:
         """Search issues using JQL query."""
-        url = f"{self.base_url}/rest/api/2/search"
+        # search_all_issues uses POST /rest/api/3/search/jql on Cloud (nextPageToken)
+        # and GET /rest/api/2/search on Server/DC (startAt).
+        issues = jira_api.search_all_issues(
+            jql,
+            page_size=100,
+            fields=list(fields),
+            expand='names',
+            max_total=max_results if max_results > 0 else None,
+        )
+
         all_issues = []
         seen_keys = set()  # Track seen issue keys to prevent duplicates
-        start_at = 0
-        batch_size = 100
-
-        while True:
-            params = {
-                'jql': jql,
-                'startAt': start_at,
-                'maxResults': batch_size if max_results == 0 else min(batch_size, max_results - len(all_issues)),
-                'fields': ','.join(fields),
-                'expand': 'names',
-            }
-
-            response = self._request_with_retry('GET', url, params=params, operation='Issue search')
-            response.raise_for_status()
-
-            payload = response.json()
-            issues = payload.get('issues', [])
-            total = payload.get('total', 0)
-
-            if not issues:
-                break
-
-            # Deduplicate issues by key
-            for issue in issues:
-                key = issue.get('key', '')
-                if key and key not in seen_keys:
-                    seen_keys.add(key)
-                    all_issues.append(issue)
-
-            if max_results > 0 and len(all_issues) >= max_results:
-                all_issues = all_issues[:max_results]
-                break
-
-            start_at += len(issues)
-            if start_at >= total:
-                break
-
+        for issue in issues:
+            key = issue.get('key', '')
+            if key and key not in seen_keys:
+                seen_keys.add(key)
+                all_issues.append(issue)
         return all_issues
 
     def get_issue(self, issue_key: str, fields: List[str]) -> Optional[Dict]:
@@ -344,11 +287,20 @@ class JiraClient:
         if username in self._user_groups_cache:
             groups = self._user_groups_cache[username]
         else:
-            url = f"{self.base_url}/rest/api/2/user"
-            params = {
-                'username': username,
-                'expand': 'groups',
-            }
+            # Cloud identifies users by accountId; Server/DC by username.
+            is_cloud = bool(getattr(getattr(self, "cfg", None), "is_cloud", False))
+            if is_cloud:
+                url = f"{self.base_url}/rest/api/3/user"
+                params = {
+                    'accountId': username,
+                    'expand': 'groups',
+                }
+            else:
+                url = f"{self.base_url}/rest/api/2/user"
+                params = {
+                    'username': username,
+                    'expand': 'groups',
+                }
 
             try:
                 response = self._request_with_retry('GET', url, params=params, operation=f'User groups {username}')
@@ -1770,7 +1722,8 @@ def main():
 
     # Validate environment
     if not JIRA_BASE_URL or not JIRA_TOKEN:
-        print("Error: JIRA_SERVER_NAME and JIRA_ACC_TOKEN environment variables required.",
+        print("Error: JIRA_SERVER_NAME and JIRA_ACC_TOKEN environment variables required."
+              + (f" ({_JIRA_CFG_ERROR})" if _JIRA_CFG_ERROR else ""),
               file=sys.stderr)
         sys.exit(1)
 

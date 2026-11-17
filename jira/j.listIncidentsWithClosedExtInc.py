@@ -29,28 +29,30 @@ Quick Testing:
 '''
 import os
 import re
+import sys
 import argparse
 import requests
 from collections import defaultdict
 from dotenv import load_dotenv
 from prettytable import PrettyTable
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, get as jira_get, search_issues
+
 
 # Load the environment variables configured on the system
 load_dotenv()
 
-# Jira credentials and URL
-JIRA_URL = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN')
+# Jira credentials and URL (Cloud/Server aware via jira_api)
+_JIRA_CFG = load_config()
+JIRA_URL = _JIRA_CFG.base_url
+JIRA_API_TOKEN = _JIRA_CFG.token
 
 # Jira API endpoint for issue details
 issue_url = f'{JIRA_URL}/rest/api/2/issue'
 
 # Headers
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
+headers = _JIRA_CFG.headers
 
 # Closed statuses
 CLOSED_STATUSES = ["Closed", "Done", "Resolved", "Fixed", "Solution Provided"]
@@ -172,32 +174,20 @@ def get_jira_statuses_bulk(jira_ids, batch_size=50):
         jql = f"key in ({keys_str})"
 
         try:
-            url = f'{JIRA_URL}/rest/api/2/search'
-            params = {
-                'jql': jql,
-                'maxResults': batch_size,
-                'fields': 'key,status,resolution'
-            }
+            data = search_issues(jql, max_results=batch_size, fields='key,status,resolution', expand='')
 
-            response = requests.get(url, headers=headers, params=params, timeout=30)
+            issues = data.get('issues', [])
+            for issue in issues:
+                key = issue['key']
+                status = issue['fields']['status']['name']
+                resolution = issue['fields']['resolution']['name'] if issue['fields'].get('resolution') else '-'
+                jira_status_map[key] = {'status': status, 'resolution': resolution}
+            print("✓")
 
-            if response.status_code == 200:
-                issues = response.json().get('issues', [])
-                for issue in issues:
-                    key = issue['key']
-                    status = issue['fields']['status']['name']
-                    resolution = issue['fields']['resolution']['name'] if issue['fields'].get('resolution') else '-'
-                    jira_status_map[key] = {'status': status, 'resolution': resolution}
-                print("✓")
-            else:
-                print(f"✗ Failed: {response.status_code}")
-                # Mark failed fetches as ERROR
-                for jira_id in batch:
-                    if jira_id not in jira_status_map:
-                        jira_status_map[jira_id] = {'status': 'ERROR', 'resolution': '-'}
-
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RuntimeError) as e:
             print(f"✗ Error: {e}")
+            print(f"[ERROR] Batch {batch_num}/{total_batches} search failed "
+                  f"(tickets {batch[0]}..{batch[-1]} marked ERROR): {e}", file=sys.stderr)
             # Mark failed fetches as ERROR
             for jira_id in batch:
                 if jira_id not in jira_status_map:
@@ -224,7 +214,7 @@ def get_jira_status(jira_id):
     url = f"{issue_url}/{jira_id}"
 
     try:
-        response = requests.get(url, headers=headers, timeout=20)
+        response = jira_get(url, timeout=20)
 
         if response.status_code == 200:
             issue_data = response.json()
@@ -236,7 +226,7 @@ def get_jira_status(jira_id):
             print(f"Failed to fetch {jira_id}: {response.status_code} - {response.text}")
             return "ERROR"
 
-    except requests.exceptions.RequestException as e:
+    except (requests.exceptions.RequestException, RuntimeError) as e:
         print(f"Error fetching {jira_id}: {e}")
         return "ERROR"
 

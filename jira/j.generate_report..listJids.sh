@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/jira_api.sh"
+jira_init || exit 1
+
 print_dash() {
         echo -n "--------------------------------------------------------------------------------------------------------------------------------------------------"
         echo "-------------------------------------------------------------------------------------------------------------------------------------"
@@ -17,7 +22,7 @@ printf "%-6s | %-10s | %-100s | %-13s | %-20s | %-20s | %-8s | %-8s | %-10s | %-
 # Function to get issue details from Jira
 get_issue_details() {
     local ticket_id=$1
-    curl $JIRA_ALIAS_EXTRA_OPT -H "Authorization: Bearer $JIRA_ACC_TOKEN" "https://$JIRA_SERVER_NAME/rest/api/2/issue/${ticket_id}" | \
+    curl $JIRA_ALIAS_EXTRA_OPT -H "$JIRA_AUTH_HEADER" "$JIRA_BASE_URL/rest/api/2/issue/${ticket_id}" | \
         jq -r '{
             key: .key,
             summary: .fields.summary,

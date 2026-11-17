@@ -54,6 +54,10 @@ from urllib.parse import urlparse
 from typing import Dict, List, Optional, Tuple, Set
 from collections import OrderedDict
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import jira_api
+from jira_api import load_config, load_config_or_exit
+
 try:
     import requests
     HAS_REQUESTS = True
@@ -80,8 +84,16 @@ DEFAULT_REPO = os.path.expanduser(
     os.getenv('NBSM_DEFAULT_REPO',
               '~/workspace/sandbox/git/stash/NB_Repos/nbsmr_repos/nbservermigrator')
 )
-JIRA_URL = "https://" + os.getenv('JIRA_SERVER_NAME', 'jira.example.com')
-JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN', '')
+try:
+    # Cloud/Server aware settings (Basic vs Bearer auth, TLS verify) from jira_api
+    _JIRA_CFG = load_config()
+    JIRA_URL = _JIRA_CFG.base_url
+    JIRA_API_TOKEN = _JIRA_CFG.token
+except RuntimeError:
+    _JIRA_CFG = None
+    # No placeholder host: JiraClient() calls load_config_or_exit() when Jira ops are needed.
+    JIRA_URL = ""
+    JIRA_API_TOKEN = ""
 JIRA_PATTERN = re.compile(r'NBU-\d{5,8}')
 TAG_PATTERN = re.compile(r'^(NBSM|NBSVRUP)_(\d+\.\d+)_(\d{4})$')
 
@@ -219,12 +231,11 @@ class JiraClient:
 
     def __init__(self, url: str = JIRA_URL, token: str = JIRA_API_TOKEN,
                  circuit_breaker: CircuitBreaker = None):
-        self.url = url.rstrip('/')
-        self.token = token
-        self.headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
-        }
+        cfg = load_config_or_exit()
+        self.cfg = cfg
+        self.url = cfg.base_url.rstrip('/')
+        self.token = cfg.token
+        self.headers = dict(cfg.headers)
         self._field_cache: Optional[Dict[str, Dict]] = None
         self._circuit_breaker = circuit_breaker or CircuitBreaker()
 
@@ -286,91 +297,21 @@ class JiraClient:
             )
 
         url = f"{self.url}/rest/api/2/{endpoint}"
-        max_retries = 5
-        retryable_http = {429, 500, 502, 503, 504}
 
-        def _is_transient_ssl_error(exc: Exception) -> bool:
-            details = str(exc)
-            return (
-                "UNEXPECTED_EOF_WHILE_READING" in details
-                or "EOF occurred in violation of protocol" in details
-                or "SSLEOFError" in details
-                or "ConnectionResetError" in details
-                or "bad record mac" in details.lower()
-            )
-
-        headers = dict(self.headers)
-        # Avoid stale keep-alive sockets when the network edge is unstable.
-        headers['Connection'] = 'close'
-
-        last_exc: Optional[Exception] = None
-        for attempt in range(1, max_retries + 1):
-            session = requests.Session()
-            try:
-                response = session.request(
-                    method, url, headers=headers,
-                    json=data, timeout=timeout
-                )
-
-                if response.status_code in retryable_http and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(
-                        f"Transient Jira HTTP {response.status_code} for {method.upper()} {endpoint} "
-                        f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
-                        file=sys.stderr,
-                    )
-                    time.sleep(wait)
-                    continue
-
-                # Record success in circuit breaker
-                self._circuit_breaker.record_success()
-                return response
-
-            except requests.exceptions.SSLError as exc:
-                last_exc = exc
-                if _is_transient_ssl_error(exc) and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(
-                        f"Transient SSL error for {method.upper()} {endpoint} "
-                        f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
-                        file=sys.stderr,
-                    )
-                    time.sleep(wait)
-                    continue
-                self._circuit_breaker.record_failure()
-                raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
-
-            except (
-                requests.exceptions.ConnectionError,
-                requests.exceptions.ConnectTimeout,
-                requests.exceptions.ReadTimeout,
-                requests.exceptions.Timeout,
-                requests.exceptions.ChunkedEncodingError,
-            ) as exc:
-                last_exc = exc
-                if attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(
-                        f"Transient network error for {method.upper()} {endpoint} "
-                        f"(attempt {attempt}/{max_retries}), retrying in {wait}s...",
-                        file=sys.stderr,
-                    )
-                    time.sleep(wait)
-                    continue
-                self._circuit_breaker.record_failure()
-                raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
-
-            except requests.exceptions.RequestException as exc:
-                self._circuit_breaker.record_failure()
-                raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
-
-            finally:
-                session.close()
-
-        if last_exc:
+        try:
+            # jira_api.request handles auth, TLS verify (incl. Zscaler relax) and
+            # retries on transient SSL/network/HTTP 429/5xx failures.
+            response = jira_api.request(method, url, json=data, timeout=timeout)
+        except RuntimeError as exc:
             self._circuit_breaker.record_failure()
-            raise RuntimeError(self._format_request_error(method, url, timeout, last_exc)) from last_exc
-        raise RuntimeError(f"Jira request failed for {method.upper()} {url} after retries")
+            raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
+        except requests.exceptions.RequestException as exc:
+            self._circuit_breaker.record_failure()
+            raise RuntimeError(self._format_request_error(method, url, timeout, exc)) from exc
+
+        # Record success in circuit breaker
+        self._circuit_breaker.record_success()
+        return response
 
     def get_all_fields(self) -> Dict[str, Dict]:
         """Fetch all Jira fields and cache the mapping.
@@ -496,20 +437,16 @@ class JiraClient:
             keys_str = ', '.join(batch_keys)
             jql = f"key in ({keys_str})"
 
-            # Build request data
-            data = {
-                'jql': jql,
-                'maxResults': batch_size,
-                'startAt': 0
-            }
-            if fields:
-                data['fields'] = fields
-
             try:
-                response = self._request('POST', 'search', data=data,
-                                        timeout=self.TIMEOUT_SEARCH)
-                response.raise_for_status()
-                result = response.json()
+                # search_issues uses POST /rest/api/3/search/jql on Cloud and
+                # GET /rest/api/2/search on Server/DC.
+                result = jira_api.search_issues(
+                    jql,
+                    max_results=batch_size,
+                    fields=list(fields) if fields else "*all",
+                    expand="",
+                )
+                self._circuit_breaker.record_success()
 
                 batch_issues = result.get('issues', [])
                 all_issues.extend(batch_issues)
@@ -607,8 +544,11 @@ class JiraClient:
         return success
 
     def set_assignee(self, issue_key: str, assignee: str) -> bool:
-        """Set issue assignee."""
-        data = {"name": assignee}
+        """Set issue assignee (Cloud: accountId, Server/DC: name)."""
+        if getattr(self, "cfg", None) and self.cfg.is_cloud:
+            data = {"accountId": assignee}
+        else:
+            data = {"name": assignee}
         response = self._request('PUT', f'issue/{issue_key}/assignee', data)
 
         if response.status_code == 204:
@@ -1555,10 +1495,14 @@ class ReleaseProcessor:
                 fields = issue.get('fields', {})
                 issue_type = fields.get('issuetype', {}).get('name', '')
                 reporter = fields.get('reporter', {})
-                reporter_name = reporter.get('name', '') if reporter else ''
+                # Cloud: accountId; Server/DC: name (also what set_assignee expects)
+                reporter_name = (reporter.get('accountId') or reporter.get('name') or '') if reporter else ''
                 reporter_display = reporter.get('displayName', 'Unknown') if reporter else 'Unknown'
                 current_assignee = fields.get('assignee', {})
-                current_assignee_name = current_assignee.get('name', '') if current_assignee else ''
+                current_assignee_name = (
+                    (current_assignee.get('accountId') or current_assignee.get('name') or '')
+                    if current_assignee else ''
+                )
 
                 issue_details[key] = {
                     'type': issue_type,

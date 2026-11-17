@@ -1,4 +1,9 @@
 #!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/jira_api.sh"
+jira_init || exit 1
 #
 
 JIRA_ID=$1
@@ -36,7 +41,7 @@ POST_DATA_EOF
 
 echo  "$(generatePostData)"
 curl -i -X POST \
-    -H "Authorization: Bearer $JIRA_ACC_TOKEN" \
+    -H "$JIRA_AUTH_HEADER" \
     -H "Content-Type:application/json" \
-    "https://$JIRA_SERVER_NAME/rest/api/2/issue/$JIRA_ID/comment" \
+    "$JIRA_BASE_URL/rest/api/2/issue/$JIRA_ID/comment" \
     -d "$(generatePostData)"

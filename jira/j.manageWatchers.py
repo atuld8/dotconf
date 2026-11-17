@@ -134,6 +134,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import requests
 from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import jira_api
+from jira_api import load_config, empty_search_hints
+
 try:
     from prettytable import PrettyTable
 except ImportError:
@@ -155,10 +159,19 @@ load_dotenv()
 
 # Jira credentials and URL
 JIRA_SERVER_NAME = os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN')
 JIRA_PROJECT_KEY = os.getenv('JIRA_PROJECT_KEY', '')
 
-JIRA_URL = f"https://{JIRA_SERVER_NAME}" if JIRA_SERVER_NAME else None
+# Cloud/Server aware connection settings from jira_api (Basic vs Bearer auth, TLS verify)
+_JIRA_CFG_ERROR = None
+try:
+    _JIRA_CFG = load_config()
+    JIRA_URL = _JIRA_CFG.base_url
+    JIRA_API_TOKEN = _JIRA_CFG.token
+except RuntimeError as _cfg_exc:
+    _JIRA_CFG = None
+    _JIRA_CFG_ERROR = str(_cfg_exc)
+    JIRA_URL = None
+    JIRA_API_TOKEN = None
 
 # ---------------------------------------------------------------------------
 # Watcher Field Configuration
@@ -212,14 +225,13 @@ class JiraClient:
     """Client for interacting with Jira REST API with retry support."""
 
     def __init__(self, base_url: str, token: str, timeout: int = 30):
-        self.base_url = base_url
-        self.token = token
+        cfg = load_config()
+        self.cfg = cfg
+        self.base_url = cfg.base_url
+        self.token = cfg.token
         self.timeout = timeout
-        self.headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
-            'Connection': 'close',
-        }
+        self.headers = dict(cfg.headers)
+        self.headers['Connection'] = 'close'
 
     def _is_transient_error(self, exc: Exception) -> bool:
         """Check if error is transient and retryable."""
@@ -236,64 +248,26 @@ class JiraClient:
                             data: Optional[str] = None, operation: str = "Request",
                             max_retries: int = 5) -> requests.Response:
         """Make HTTP request with retry logic for transient failures."""
-        retryable_http = {429, 500, 502, 503, 504}
-        last_exc = None
+        # jira_api.request handles Basic/Bearer auth, TLS verify (incl. Zscaler
+        # relax) and retries on transient SSL/network/HTTP 429/5xx failures.
+        response = jira_api.request(
+            method, url,
+            params=params,
+            data=data,
+            timeout=self.timeout,
+            max_retries=max_retries,
+        )
 
-        for attempt in range(1, max_retries + 1):
-            session = requests.Session()
-            try:
-                response = session.request(
-                    method, url,
-                    headers=self.headers,
-                    params=params,
-                    data=data,
-                    timeout=self.timeout
-                )
+        if response.status_code == 401:
+            # Auth failure applies to every subsequent call too - fail fast
+            # instead of retrying or continuing through the rest of the batch.
+            print(f"\nError: {operation} failed with HTTP 401 Unauthorized.\n"
+                  f"Your JIRA_ACC_TOKEN is missing, invalid, or expired "
+                  f"(Cloud also needs JIRA_USER_EMAIL). "
+                  f"Please refresh it and try again.", file=sys.stderr)
+            sys.exit(1)
 
-                if response.status_code in retryable_http and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(f"{operation}: HTTP {response.status_code} (attempt {attempt}/{max_retries}), "
-                          f"retrying in {wait}s...", file=sys.stderr)
-                    time.sleep(wait)
-                    continue
-
-                if response.status_code == 401:
-                    # Auth failure applies to every subsequent call too - fail fast
-                    # instead of retrying or continuing through the rest of the batch.
-                    print(f"\nError: {operation} failed with HTTP 401 Unauthorized.\n"
-                          f"Your JIRA_ACC_TOKEN is missing, invalid, or expired. "
-                          f"Please refresh it and try again.", file=sys.stderr)
-                    sys.exit(1)
-
-                return response
-
-            except requests.exceptions.SSLError as exc:
-                last_exc = exc
-                if self._is_transient_error(exc) and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(f"{operation}: transient SSL error (attempt {attempt}/{max_retries}), "
-                          f"retrying in {wait}s...", file=sys.stderr)
-                    time.sleep(wait)
-                    continue
-                raise
-
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.Timeout) as exc:
-                last_exc = exc
-                if attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(f"{operation}: {type(exc).__name__} (attempt {attempt}/{max_retries}), "
-                          f"retrying in {wait}s...", file=sys.stderr)
-                    time.sleep(wait)
-                    continue
-                raise
-
-            finally:
-                session.close()
-
-        if last_exc:
-            raise last_exc
-        raise RuntimeError(f"{operation}: Max retries exceeded")
+        return response
 
     @staticmethod
     def _friendly_check(response: requests.Response, operation: str) -> None:
@@ -351,6 +325,16 @@ class JiraClient:
 
     def get_user(self, username: str) -> Optional[Dict]:
         """Fetch user details by username."""
+        if self.cfg.is_cloud:
+            # Cloud has no username lookup; search by query and prefer exact matches.
+            matches = jira_api.user_search(username, max_results=10)
+            for user in matches:
+                if username.lower() in (str(user.get('emailAddress') or '').lower(),
+                                        str(user.get('displayName') or '').lower(),
+                                        str(user.get('accountId') or '').lower()):
+                    return user
+            return matches[0] if matches else None
+
         url = f"{self.base_url}/rest/api/2/user"
         params = {'username': username}
 
@@ -362,57 +346,29 @@ class JiraClient:
 
     def search_issues(self, jql: str, fields: List[str], max_results: int = 0) -> List[Dict]:
         """Search issues using JQL query."""
-        url = f"{self.base_url}/rest/api/2/search"
+        # search_issues/search_all_issues use POST /rest/api/3/search/jql on Cloud
+        # and GET /rest/api/2/search on Server/DC.
+        try:
+            issues = jira_api.search_all_issues(
+                jql,
+                page_size=100,
+                fields=list(fields),
+                expand="",
+                max_total=max_results if max_results > 0 else None,
+            )
+        except RuntimeError as exc:
+            if "400" in str(exc):
+                print(f"JQL Error: {exc}", file=sys.stderr)
+                sys.exit(1)
+            raise
+
         all_issues = []
         seen_keys = set()
-        start_at = 0
-        batch_size = 100
-
-        while True:
-            params = {
-                'jql': jql,
-                'startAt': start_at,
-                'maxResults': batch_size if max_results == 0 else min(batch_size, max_results - len(all_issues)),
-                'fields': ','.join(fields),
-            }
-
-            response = self._request_with_retry('GET', url, params=params, operation='Issue search')
-
-            # Handle JQL errors with clean messaging (no traceback)
-            if response.status_code == 400:
-                try:
-                    error_data = response.json()
-                    error_msgs = error_data.get('errorMessages', [])
-                    errors = error_data.get('errors', {})
-                    msg = '; '.join(error_msgs) if error_msgs else str(errors)
-                    print(f"JQL Error: {msg}", file=sys.stderr)
-                except Exception:
-                    print(f"Error: Bad request (400)", file=sys.stderr)
-                sys.exit(1)
-
-            self._friendly_check(response, 'Issue search')
-
-            payload = response.json()
-            issues = payload.get('issues', [])
-            total = payload.get('total', 0)
-
-            if not issues:
-                break
-
-            for issue in issues:
-                key = issue.get('key', '')
-                if key and key not in seen_keys:
-                    seen_keys.add(key)
-                    all_issues.append(issue)
-
-            if max_results > 0 and len(all_issues) >= max_results:
-                all_issues = all_issues[:max_results]
-                break
-
-            start_at += len(issues)
-            if start_at >= total:
-                break
-
+        for issue in issues:
+            key = issue.get('key', '')
+            if key and key not in seen_keys:
+                seen_keys.add(key)
+                all_issues.append(issue)
         return all_issues
 
     # --- Built-in Watchers API (for 'watches' field) ---
@@ -1167,7 +1123,8 @@ def main():
 
     # Validate environment
     if not JIRA_URL or not JIRA_API_TOKEN:
-        print("Error: JIRA_SERVER_NAME and JIRA_ACC_TOKEN environment variables required.",
+        print("Error: JIRA_SERVER_NAME and JIRA_ACC_TOKEN environment variables required."
+              + (f" ({_JIRA_CFG_ERROR})" if _JIRA_CFG_ERROR else ""),
               file=sys.stderr)
         sys.exit(1)
 
@@ -1235,6 +1192,8 @@ def main():
         if not args.quiet:
             print(f"Executing JQL: {args.jql}", file=sys.stderr)
         issues = client.search_issues(args.jql, ['key'], max_results=args.max or 0)
+        if not issues:
+            empty_search_hints(args.jql)
         jql_keys = [i['key'] for i in issues]
         issue_keys.extend(jql_keys)
         if not args.quiet:
@@ -1262,7 +1221,8 @@ def main():
         else:
             print("Error: No issue keys provided. Use -j, -JF, -q, or pipe to stdin.",
                   file=sys.stderr)
-        sys.exit(0 if args.jql else 1)
+        # Zero results from JQL (hints already printed) is a non-zero exit.
+        sys.exit(2 if args.jql else 1)
 
     # Collect users to add/remove/set
     add_users = list(args.add) if args.add else []

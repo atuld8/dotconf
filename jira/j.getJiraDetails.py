@@ -28,7 +28,6 @@ Mac + Zscaler note:
 """
 
 import argparse
-import base64
 import html
 import json
 import os
@@ -37,10 +36,9 @@ import subprocess
 import sys
 import textwrap
 import time
-import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlsplit
 
 
@@ -56,21 +54,17 @@ else:  # pragma: no cover
 import requests
 from dotenv import load_dotenv
 
+import sys as _sys_for_jira_api
+import os as _os_for_jira_api
+_sys_for_jira_api.path.insert(0, _os_for_jira_api.path.dirname(_os_for_jira_api.path.abspath(__file__)))
+import jira_api
+from jira_api import load_config, search_issues as shared_search_issues, search_all_issues as shared_search_all_issues
+
 try:
     from tabulate import tabulate
 except ImportError:  # pragma: no cover
     tabulate = None
 
-# Prefer macOS Keychain/Secure Transport verification when available.
-# Required for Zscaler SSL inspection: OpenSSL rejects Zscaler Root CA for missing keyUsage.
-_TRUSTSTORE_ENABLED = False
-try:
-    import truststore  # type: ignore
-
-    truststore.inject_into_ssl()
-    _TRUSTSTORE_ENABLED = True
-except Exception:
-    _TRUSTSTORE_ENABLED = False
 
 
 # Header abbreviations for console output (saves horizontal space)
@@ -1246,344 +1240,32 @@ def _print_etrack_fi_comparison(
     return has_mismatch
 
 
-def _normalize_jira_host(server: Optional[str]) -> str:
-    """Strip scheme/path/trailing slash from JIRA_SERVER_NAME."""
-    if not server:
-        return ""
-    host = server.strip()
-    host = re.sub(r"^https?://", "", host, flags=re.IGNORECASE)
-    host = host.split("/", 1)[0].rstrip("/")
-    return host
-
-
-def _detect_jira_cloud(server: Optional[str]) -> bool:
-    """Return True when talking to Jira Cloud (*.atlassian.net) or forced via env."""
-    force = (os.getenv("JIRA_CLOUD") or "").strip().lower()
-    if force in {"1", "true", "yes", "on"}:
-        return True
-    if force in {"0", "false", "no", "off"}:
-        return False
-    host = _normalize_jira_host(server).lower()
-    return host.endswith(".atlassian.net") or host == "atlassian.net"
-
-
-def _truthy_env(name: str) -> bool:
-    return (os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _certifi_ca_bundle() -> Optional[str]:
-    try:
-        import certifi  # type: ignore
-    except ImportError:
-        return None
-    path = certifi.where()
-    return path if path and os.path.exists(path) else None
-
-
-def _export_macos_keychain_certs(output_path: Path) -> bool:
-    """Export PEM certs from macOS System keychains (includes Zscaler corporate roots)."""
-    keychains = [
-        "/Library/Keychains/System.keychain",
-        "/System/Library/Keychains/SystemRootCertificates.keychain",
-    ]
-    chunks: List[bytes] = []
-    for keychain in keychains:
-        if not os.path.exists(keychain):
-            continue
-        try:
-            result = subprocess.run(
-                ["security", "find-certificate", "-a", "-p", keychain],
-                check=False,
-                capture_output=True,
-            )
-        except OSError:
-            continue
-        if result.returncode == 0 and result.stdout and b"BEGIN CERTIFICATE" in result.stdout:
-            chunks.append(result.stdout.rstrip() + b"\n")
-
-    if not chunks:
-        return False
-
-    certifi_path = _certifi_ca_bundle()
-    if certifi_path:
-        try:
-            chunks.append(Path(certifi_path).read_bytes())
-        except OSError:
-            pass
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(b"".join(chunks))
-    return output_path.is_file() and output_path.stat().st_size > 0
-
-
-def _macos_combined_ca_bundle() -> Optional[str]:
-    """Cached Keychain+certifi CA bundle for Apple LibreSSL + SSL-inspection proxies."""
-    if sys.platform != "darwin":
-        return None
-
-    cache_dir = Path(os.getenv("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "jira-tools"
-    cache_path = cache_dir / "macos-keychain-ca-bundle.pem"
-
-    # Refresh daily, or when missing.
-    try:
-        if cache_path.is_file() and (time.time() - cache_path.stat().st_mtime) < 86400:
-            return str(cache_path)
-    except OSError:
-        pass
-
-    try:
-        if _export_macos_keychain_certs(cache_path):
-            return str(cache_path)
-    except OSError:
-        return None
-    return None
-
-
-def _resolve_ssl_verify() -> Union[bool, str]:
-    """Resolve requests ``verify`` for macOS/Zscaler-friendly TLS validation.
-
-    Priority:
-    1. JIRA_INSECURE_SSL=1 -> False (emergency only)
-    2. JIRA_CA_BUNDLE / REQUESTS_CA_BUNDLE / SSL_CERT_FILE
-    3. On macOS: System keychain export + certifi (handles Zscaler roots)
-    4. certifi CA bundle
-    5. True (Python/OS defaults)
-    """
-    if _truthy_env("JIRA_INSECURE_SSL"):
-        print(
-            "WARNING: JIRA_INSECURE_SSL=1 — TLS certificate verification is disabled.",
-            file=sys.stderr,
-        )
-        return False
-
-    for env_name in ("JIRA_CA_BUNDLE", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE"):
-        configured = (os.getenv(env_name) or "").strip()
-        if configured:
-            if not os.path.exists(configured):
-                raise RuntimeError(f"{env_name} path does not exist: {configured}")
-            return configured
-
-    mac_bundle = _macos_combined_ca_bundle()
-    if mac_bundle:
-        return mac_bundle
-
-    certifi_bundle = _certifi_ca_bundle()
-    if certifi_bundle:
-        return certifi_bundle
-
-    return True
-
-
-def _is_zscaler_keyusage_ssl_error(exc: BaseException) -> bool:
-    msg = str(exc).lower()
-    return "key usage extension" in msg or (
-        "certificate_verify_failed" in msg and "key usage" in msg
-    )
-
-
-def _ssl_error_hint(exc: BaseException) -> str:
-    hints = [
-        "TLS/SSL verification failed while connecting to Jira.",
-    ]
-    if _is_zscaler_keyusage_ssl_error(exc) or "CERTIFICATE_VERIFY_FAILED" in str(exc):
-        hints.append(
-            "On macOS + Zscaler, OpenSSL/LibreSSL reject the Zscaler Root CA "
-            "(missing keyUsage extension)."
-        )
-        hints.append(
-            "Fix options: "
-            "(1) pip install truststore  # uses macOS Keychain, recommended, "
-            "(2) export JIRA_INSECURE_SSL=1, "
-            "(3) set JIRA_CA_BUNDLE only helps if the CA includes keyUsage."
-        )
-    return " ".join(hints) + f" Details: {exc}"
-
-
 class JiraClient:
+    """Thin wrapper over shared jira_api (Cloud Basic auth, search/jql, SSL)."""
+
     def __init__(self):
-        load_dotenv()
-        self.server = _normalize_jira_host(os.getenv("JIRA_SERVER_NAME"))
-        self.token = (os.getenv("JIRA_ACC_TOKEN") or "").strip()
-        self.email = (
-            os.getenv("JIRA_USER_EMAIL")
-            or os.getenv("JIRA_EMAIL")
-            or os.getenv("JIRA_USER")
-            or ""
-        ).strip()
-        self.cloud_id = (os.getenv("JIRA_CLOUD_ID") or "").strip()
-        self.is_cloud = _detect_jira_cloud(self.server)
+        self.cfg = load_config()
+        self.server = self.cfg.server
+        self.token = self.cfg.token
+        self.email = self.cfg.email
+        self.cloud_id = self.cfg.cloud_id
+        self.is_cloud = self.cfg.is_cloud
+        self.base_url = self.cfg.base_url
+        self.auth_mode = self.cfg.auth_mode
+        self.headers = dict(self.cfg.headers)
+        self.verify = self.cfg.verify
         self.timeout = 30
         self._fields_by_name: Optional[Dict[str, str]] = None
-        self.verify = _resolve_ssl_verify()
-        self._ssl_relaxed = self.verify is False
-        self._warned_ssl_relax = False
-
-        if not self.server or not self.token:
-            raise RuntimeError("Missing JIRA_SERVER_NAME or JIRA_ACC_TOKEN in environment")
-
-        # Scoped Cloud API tokens must use the Atlassian API gateway.
-        if self.is_cloud and self.cloud_id:
-            self.base_url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}"
-        else:
-            self.base_url = f"https://{self.server}"
-
-        auth_mode = (os.getenv("JIRA_AUTH_MODE") or "").strip().lower()
-        if not auth_mode:
-            # Cloud personal API tokens require Basic(email:token).
-            # Server/Data Center PATs typically use Bearer.
-            auth_mode = "basic" if self.is_cloud else "bearer"
-
-        if auth_mode == "basic":
-            if not self.email:
-                raise RuntimeError(
-                    "Jira Cloud Basic auth requires JIRA_USER_EMAIL (or JIRA_EMAIL) "
-                    "together with JIRA_ACC_TOKEN (API token from "
-                    "https://id.atlassian.com/manage-profile/security/api-tokens)."
-                )
-            encoded = base64.b64encode(f"{self.email}:{self.token}".encode("utf-8")).decode("ascii")
-            auth_header = f"Basic {encoded}"
-        elif auth_mode == "bearer":
-            auth_header = f"Bearer {self.token}"
-        else:
-            raise RuntimeError(
-                f"Unsupported JIRA_AUTH_MODE={auth_mode!r} (expected 'basic' or 'bearer')"
-            )
-
-        self.auth_mode = auth_mode
-        self.headers = {
-            "Authorization": auth_header,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-
-    def _request(
-        self,
-        method: str,
-        url: str,
-        *,
-        params: Optional[Dict[str, Any]] = None,
-        json_body: Optional[Dict[str, Any]] = None,
-    ) -> requests.Response:
-        """HTTP request with retry on transient network/TLS errors (exponential backoff).
-
-        Uses a fresh Session per attempt with ``Connection: close`` to avoid
-        stale keep-alive sockets — a common cause of
-        ``[SSL: UNEXPECTED_EOF_WHILE_READING]`` on macOS (LibreSSL) talking to
-        Jira behind a load balancer that may drop idle TLS sessions.
-        """
-        max_retries = 5
-        last_exc: Optional[Exception] = None
-        request_headers = dict(self.headers)
-        request_headers["Connection"] = "close"
-        method_upper = method.upper()
-
-        for attempt in range(1, max_retries + 1):
-            started = time.monotonic()
-            outcome = "error"
-            session = requests.Session()
-            try:
-                try:
-                    response = session.request(
-                        method_upper,
-                        url,
-                        headers=request_headers,
-                        params=params,
-                        json=json_body,
-                        timeout=self.timeout,
-                        verify=self.verify,
-                    )
-                except requests.exceptions.SSLError as exc:
-                    outcome = type(exc).__name__
-                    # Transient SSL/EOF errors — retry.
-                    msg = str(exc)
-                    is_transient_ssl = (
-                        "UNEXPECTED_EOF_WHILE_READING" in msg
-                        or "EOF occurred in violation of protocol" in msg
-                        or "SSLEOFError" in msg
-                        or "ConnectionResetError" in msg
-                        or "bad record mac" in msg.lower()
-                    )
-                    if is_transient_ssl and attempt < max_retries:
-                        last_exc = exc
-                        wait = min(2 ** attempt, 30)
-                        print(
-                            f"Transient SSL error calling Jira (attempt {attempt}/{max_retries}): {exc}. "
-                            f"Retrying in {wait}s...",
-                            file=sys.stderr,
-                        )
-                        time.sleep(wait)
-                        continue
-
-                    # Zscaler Root CA lacks keyUsage; OpenSSL/LibreSSL hard-fail.
-                    # Auto-relax unless the caller demanded strict verification.
-                    if (
-                        not self._ssl_relaxed
-                        and not _truthy_env("JIRA_STRICT_SSL")
-                        and _is_zscaler_keyusage_ssl_error(exc)
-                    ):
-                        self.verify = False
-                        self._ssl_relaxed = True
-                        warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-                        if not self._warned_ssl_relax:
-                            self._warned_ssl_relax = True
-                            print(
-                                "WARNING: TLS verify failed due to Zscaler CA missing keyUsage "
-                                "(OpenSSL/LibreSSL). Retrying with verification disabled for this run. "
-                                "Preferred fix: /opt/homebrew/bin/python3 -m pip install truststore",
-                                file=sys.stderr,
-                            )
-                        continue
-
-                    raise RuntimeError(
-                        f"TLS/SSL error while connecting to Jira ({self.server}). "
-                        f"{_ssl_error_hint(exc)}"
-                    ) from exc
-                except (requests.exceptions.ConnectionError,
-                        requests.exceptions.Timeout,
-                        requests.exceptions.ChunkedEncodingError) as exc:
-                    outcome = type(exc).__name__
-                    last_exc = exc
-                    if attempt < max_retries:
-                        wait = min(2 ** attempt, 30)
-                        print(
-                            f"Network error calling Jira (attempt {attempt}/{max_retries}): {exc}. "
-                            f"Retrying in {wait}s...",
-                            file=sys.stderr,
-                        )
-                        time.sleep(wait)
-                        continue
-                    raise RuntimeError(f"Network error while calling Jira ({self.server}): {exc}") from exc
-                except requests.exceptions.RequestException as exc:
-                    raise RuntimeError(f"Network error while calling Jira ({self.server}): {exc}") from exc
-
-                # Retry on transient server-side errors as well.
-                outcome = f"HTTP {response.status_code}"
-                if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
-                    wait = min(2 ** attempt, 30)
-                    print(
-                        f"Jira returned {response.status_code} (attempt {attempt}/{max_retries}). "
-                        f"Retrying in {wait}s...",
-                        file=sys.stderr,
-                    )
-                    time.sleep(wait)
-                    continue
-
-                return response
-            finally:
-                session.close()
-                _jira_timing(
-                    f"{method_upper} {urlsplit(url).path} attempt {attempt}",
-                    started,
-                    outcome,
-                )
-
-        # Should not reach here, but keep a safe fallback.
-        raise RuntimeError(
-            f"Network error while calling Jira ({self.server}) after {max_retries} attempts: {last_exc}"
-        )
 
     def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
-        return self._request("GET", url, params=params)
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            response = jira_api.get(url, params=params, timeout=self.timeout)
+            outcome = f"HTTP {response.status_code}"
+            return response
+        finally:
+            _jira_timing(f"GET {urlsplit(url).path}", started, outcome)
 
     def _post(
         self,
@@ -1592,7 +1274,14 @@ class JiraClient:
         json_body: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> requests.Response:
-        return self._request("POST", url, params=params, json_body=json_body)
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            response = jira_api.post(url, params=params, json=json_body, timeout=self.timeout)
+            outcome = f"HTTP {response.status_code}"
+            return response
+        finally:
+            _jira_timing(f"POST {urlsplit(url).path}", started, outcome)
 
     def get_issue(self, issue_key: str) -> Dict[str, Any]:
         # Prefer api/2 so description/comments stay as wiki strings (api/3 returns ADF).
@@ -1603,45 +1292,13 @@ class JiraClient:
             raise RuntimeError(f"Failed to fetch {issue_key}: {response.status_code} {response.text[:400]}")
         return response.json()
 
-    def _search_issues_server(self, jql: str, max_results: int, fields: str) -> Dict[str, Any]:
-        url = f"{self.base_url}/rest/api/2/search"
-        params = {
-            "jql": jql,
-            "maxResults": max_results,
-            "fields": fields,
-            "expand": "names",
-        }
-        response = self._get(url, params=params)
-        if response.status_code != 200:
-            raise RuntimeError(f"Failed to search issues: {response.status_code} {response.text[:400]}")
-        return response.json()
-
-    def _search_issues_cloud(self, jql: str, max_results: int, fields: List[str]) -> Dict[str, Any]:
-        # Legacy /rest/api/{2,3}/search was removed on Jira Cloud; use enhanced search.
-        url = f"{self.base_url}/rest/api/3/search/jql"
-        payload: Dict[str, Any] = {
-            "jql": jql,
-            "maxResults": max_results,
-            "fields": fields,
-            "expand": "names",
-        }
-        response = self._post(url, json_body=payload)
-        if response.status_code != 200:
-            raise RuntimeError(f"Failed to search issues: {response.status_code} {response.text[:400]}")
-        return response.json()
-
     def search_issues(self, jql: str, max_results: int = 50) -> List[Dict[str, Any]]:
-        if self.is_cloud:
-            data = self._search_issues_cloud(jql, max_results, ["*all"])
-        else:
-            data = self._search_issues_server(jql, max_results, "*all")
-
-        issues = data.get("issues", [])
-        # Inject names mapping into each issue for _field_value_by_name() compatibility
-        names = data.get("names")
-        if names:
-            for issue in issues:
-                issue["names"] = names
+        # Always paginate (Cloud caps a page at ~100); honours max_results as a total cap.
+        issues = shared_search_all_issues(
+            jql, page_size=min(max(int(max_results), 1), 100),
+            fields="*all", expand="names", max_total=max_results,
+        )
+        # search_all_issues already attaches page-level "names" to each issue.
         return issues
 
     def get_field_key_by_name(self, display_name: str) -> Optional[str]:
@@ -1668,15 +1325,20 @@ class JiraClient:
 
         unique_keys = sorted(set(issue_keys))
         jql = f"key in ({', '.join(unique_keys)})"
-        field_list = ["status", "resolution", "assignee", "priority", "updated"]
-
-        if self.is_cloud:
-            payload = self._search_issues_cloud(jql, len(unique_keys), field_list)
-        else:
-            payload = self._search_issues_server(jql, len(unique_keys), ",".join(field_list))
+        issues_found: List[Dict[str, Any]] = []
+        # Chunk to keep JQL/page sizes small; a failed search raises (never NOT_FOUND).
+        for i in range(0, len(unique_keys), 50):
+            chunk = unique_keys[i:i + 50]
+            chunk_jql = f"key in ({', '.join(chunk)})"
+            issues_found.extend(shared_search_all_issues(
+                chunk_jql,
+                page_size=100,
+                fields=["status", "resolution", "assignee", "priority", "updated"],
+                expand="",
+            ))
 
         result: Dict[str, Dict[str, str]] = {}
-        for issue in payload.get("issues", []):
+        for issue in issues_found:
             fields = issue.get("fields", {})
             result[issue.get("key", "")] = {
                 "status": _opt_value(fields.get("status")),
@@ -4471,7 +4133,9 @@ def main() -> int:
         ]:
             try:
                 epic_children = jira.search_issues(epic_jql, max_results=500)
-            except RuntimeError:
+            except RuntimeError as exc:
+                print(f"[WARN] Epic children search failed for JQL {epic_jql!r}: {exc}",
+                      file=sys.stderr)
                 continue
             if epic_children:
                 break

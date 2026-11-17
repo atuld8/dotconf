@@ -40,22 +40,22 @@ from collections import defaultdict
 from dotenv import load_dotenv
 from prettytable import PrettyTable
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jira_api import load_config, log_connection, get as jira_get, search_all_or_fail
+
 # Load environment variables
 load_dotenv()
 
-# Jira credentials and URL
-JIRA_URL = "https://" + os.getenv('JIRA_SERVER_NAME')
-JIRA_API_TOKEN = os.getenv('JIRA_ACC_TOKEN')
-
-if not JIRA_URL or not JIRA_API_TOKEN:
-    print("Error: JIRA_SERVER_NAME and JIRA_ACC_TOKEN must be set in environment variables")
+# Jira credentials and URL (Cloud/Server aware via jira_api)
+try:
+    _JIRA_CFG = load_config()
+except RuntimeError as _cfg_err:
+    print(f"Error: {_cfg_err}", file=sys.stderr)
     sys.exit(1)
 
-# Headers for authentication
-headers = {
-    'Authorization': f'Bearer {JIRA_API_TOKEN}',
-    'Content-Type': 'application/json'
-}
+JIRA_URL = _JIRA_CFG.base_url
+JIRA_API_TOKEN = _JIRA_CFG.token
+headers = _JIRA_CFG.headers
 
 # Status mapping to board columns
 STATUS_MAPPING = {
@@ -101,8 +101,7 @@ def get_sprint_field_id():
         return _SPRINT_FIELD_ID
 
     try:
-        url = f'{JIRA_URL}/rest/api/2/field'
-        response = requests.get(url, headers=headers, timeout=30)
+        response = jira_get('rest/api/2/field', timeout=30)
         response.raise_for_status()
 
         fields = response.json()
@@ -110,7 +109,7 @@ def get_sprint_field_id():
             if (field.get('name') or '').strip().lower() == 'sprint':
                 _SPRINT_FIELD_ID = field.get('id')
                 return _SPRINT_FIELD_ID
-    except requests.exceptions.RequestException as e:
+    except (requests.exceptions.RequestException, RuntimeError) as e:
         print(f"[WARN] Unable to fetch Sprint field ID: {e}", file=sys.stderr)
 
     return None
@@ -306,28 +305,23 @@ def get_issues_by_jql(jql_query, max_results=200):
         list: List of issue objects
     """
     try:
-        url = f'{JIRA_URL}/rest/api/2/search'
         sprint_field_id = get_sprint_field_id()
         fields = ['key', 'summary', 'status', 'assignee', 'issuetype', 'priority', 'parent', 'reporter', 'customfield_20303']
         if sprint_field_id:
             fields.append(sprint_field_id)
 
-        params = {
-            'jql': jql_query,
-            'maxResults': max_results,
-            'fields': fields
-        }
-
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
-
-        result = response.json()
-        issues = result.get('issues', [])
-
-        print(f"[INFO] Fetched {len(issues)} issues from Jira", file=sys.stderr)
+        issues = search_all_or_fail(
+            jql_query,
+            page_size=100,
+            fields=fields,
+            expand='',
+            max_total=max_results,
+            context="Sprint board search",
+            on_empty="return",
+        )
         return issues
 
-    except requests.exceptions.RequestException as e:
+    except (requests.exceptions.RequestException, RuntimeError) as e:
         print(f"Error fetching issues from Jira: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -730,14 +724,15 @@ Issue Type Indicators:
         if jql_query != original_query:
             print(f"[INFO] Modified query to include Sub-tasks", file=sys.stderr)
 
+    log_connection()
     print(f"[INFO] Executing JQL: {jql_query}", file=sys.stderr)
 
     # Fetch issues
     issues = get_issues_by_jql(jql_query, args.max_results)
 
     if not issues:
-        print("No issues found matching the query.")
-        return
+        print("No issues found matching the query.", file=sys.stderr)
+        sys.exit(2)
 
     # Organize issues (now returns list for issue_details instead of dict)
     board_data, issue_details_list = organize_issues_by_assignee_and_status(issues)
